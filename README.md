@@ -89,16 +89,19 @@ The included CLI (`main.py`) supports direct training and ONNX export:
 
 ```bash
 python main.py \
-  --dataset_path "/path/to/dataset" \
-  --model_data_path "./model_dir" \
-  --backbone resnet18 \
-  --layer_indices 0 1 \
-  --feat_dim 50 \
-  --batch_size 2 \
-  --output_model "padim_model.onnx"
+  --dataset_path "/path/to/dataset" \           # Path to the dataset folder (should contain 'train/good' subfolder)
+  --model_data_path "./model_dir" \             # Directory to save trained model/distribution files and ONNX output
+  --backbone resnet18 \                         # Backbone network to use ('resnet18' or 'wide_resnet50')
+  --layer_indices 0 1 \                         # Indices of backbone layers to extract features from (space separated)
+  --feat_dim 50 \                               # Number of random feature dimensions to select for training
+  --batch_size 2 \                              # Batch size for training
+  --output_model "padim_model.pt"             # Output filename for PT model
+
 ```
 
 * See all arguments with `python main.py --help`.
+Complete Example
+For a full, step-by-step workflow—including data loading, training, and evaluation—refer to the padim_example.ipynb notebook included in this repository.
 
 ---
 
