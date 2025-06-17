@@ -26,6 +26,9 @@ A production-ready, optimized library focusing on image-based anomaly detection 
 - **Simple Integration:** Use as Python API or CLI for training/export/inference.
 
 ---
+#### Example result with padim on image from [MVTEC dataset](https://www.mvtec.com/company/research/datasets/mvtec-ad)
+![](notebooks/example_images/padim_example_image.png)
+
 
 ## 🚀 Quick Start
 
@@ -232,4 +235,3 @@ export_onnx(
 
 ⭐ Star this repo if you find it useful! ⭐
 
-```
