@@ -9,21 +9,6 @@ import matplotlib.pyplot as plt
 import argparse
 
 
-# DATASET_PATH = os.path.realpath(r"D:\01-DATA\bottle")
-# MODEL_DATA_PATH = os.path.realpath("./distributions/")
-# os.makedirs(MODEL_DATA_PATH,exist_ok=True)
-
-
-# dataset = anodet.AnodetDataset(os.path.join(DATASET_PATH, "train/good"))
-# dataloader = DataLoader(dataset, batch_size=2)
-# print("Number of images in dataset:", len(dataloader.dataset))
-
-
-# padim = anodet.Padim(backbone='resnet18')
-
-# padim.fit(dataloader)
-
-# padim.export_onnx("padim_model.onnx")
 
 
 
@@ -79,10 +64,6 @@ def main(args):
     # Train model
     padim.fit(dataloader)
 
-    # Export model to ONNX
-    onnx_path = os.path.join(MODEL_DATA_PATH, args.output_model)
-    padim.export_onnx(onnx_path)
-    print(f"Model saved to {onnx_path}")
     
 if __name__ == "__main__":
         args = parse_args()
