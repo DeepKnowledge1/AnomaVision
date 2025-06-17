@@ -1,0 +1,56 @@
+[tool.poetry]
+name = "anodet_opti"
+version = "2.0.35"
+description = "Deep learnIng Anomaly Detection EnvironMent [PaDimOpti] is a deep learning library that aims to collect state-of-the-art anomaly detection algorithms for benchmarking on both public and private datasets. PaDimOpti provides several ready-to-use implementations of anomaly detection algorithms described in the recent literature, as well as a set of tools that facilitate the development and implementation of custom models. The library has a strong focus on image-based anomaly detection, where the goal of the algorithm is to identify anomalous images, or anomalous pixel regions within images in a dataset. PaDimOpti is constantly being updated with new algorithms and training/inference extensions, so stay tuned!!"
+authors = ["Deep Knowledge <Deepp.Knowledge@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+paho-mqtt = "1.6.1"
+matplotlib = "3.8.3"
+numpy = "1.26.4"
+pytest = "8.0.2"
+black = "24.2.0"
+flake8 = "7.0.0"
+pre-commit = "3.6.2"
+tox = "4.13.0"
+gitpython = "3.1.42"
+albumentations = "1.4.0"
+pycocotools = "2.0.7"
+ipython = "8.18.1"
+openvino-dev = "2023.0"
+easydict = "1.13"
+pandas = "^2.2.2"
+py-cpuinfo = "^9.0.0"
+thon = "^2.2"
+psutil = "^5.9.8"
+onnx = "1.14.1"
+onnxruntime-gpu = "1.14.1"
+
+torch = { version = "1.13.1+cu117", source="torch"}
+torchaudio = { version = "^0.13.1+cu117", source="torch"}
+torchvision = { version = "0.14.1+cu117", source="torch"}
+
+
+opencv-python = [
+    { version = "^4.6.0", markers = "sys_platform == 'win32'"},
+    { version = "4.10.0.82", markers = "sys_platform == 'linux'" }
+]
+#visionpublisher = {git = "https://ac-it-mvs@dev.azure.com/ac-it-mvs/crd-swec/_git/VisionPublisher", rev = "v0.1.5"}
+mlflow = "^3.1.0"
+
+
+[[tool.poetry.source]]
+name = "torch"
+url = "https://download.pytorch.org/whl/cu117"
+priority = "supplemental"
+
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

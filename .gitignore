@@ -1,0 +1,10 @@
+*__pycache__*
+deprecated/*
+*.ipynb_checkpoints*
+distributions/*
+*anodet.egg-info
+.idea
+
+*venv
+*DS_Store
+mlruns/
