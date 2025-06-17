@@ -233,8 +233,3 @@ export_onnx(
 ⭐ Star this repo if you find it useful! ⭐
 
 ```
-
----
-
-**Let me know if you want this as a file, further edits, or if you want any other clarifications/sections added!**
-```
