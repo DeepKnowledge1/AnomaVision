@@ -27,8 +27,8 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=2,
                         help='Batch size used during training and inference.')
 
-    parser.add_argument('--output_model', type=str, default='padim_model.onnx',
-                        help='Filename to save the exported ONNX model.')
+    parser.add_argument('--output_model', type=str, default='padim_model.pt',
+                        help='Filename to save the PT model.')
 
     parser.add_argument('--layer_indices', nargs='+', type=int, default=[0,1],
                         help='List of layer indices to extract features from. Default: [0].')
@@ -37,6 +37,7 @@ def parse_args():
                         help='Number of random feature dimensions to keep.')
 
     return parser.parse_args()
+
 
 
 def main(args):
@@ -64,6 +65,7 @@ def main(args):
     # Train model
     padim.fit(dataloader)
 
+    torch.save(padim, os.path.join(MODEL_DATA_PATH, args.output_model))
     
 if __name__ == "__main__":
         args = parse_args()
