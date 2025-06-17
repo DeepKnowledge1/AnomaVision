@@ -6,7 +6,7 @@
 
 # AnomaVision 🚀
 
-[![Version](https://img.shields.io/badge/version-2.0.35-blue.svg)](https://github.com/your-repo/anodet_opti)
+[![Version](https://img.shields.io/badge/version-2.0.35-blue.svg)](https://github.com/your-repo/AnomaVision)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/pytorch-1.13.1-red.svg)](https://pytorch.org)
 [![CUDA](https://img.shields.io/badge/CUDA-11.7-yellow.svg)](https://developer.nvidia.com/cuda-toolkit)
@@ -35,8 +35,8 @@ A production-ready, optimized library focusing on image-based anomaly detection 
 ### Installation
 
 ```bash
-git clone https://github.com/your-repo/anodet_opti.git
-cd anodet_opti
+git https://github.com/DeepKnowledge1/AnomaVision.git
+cd AnomaVision
 
 # With Poetry (recommended)
 poetry install
@@ -108,7 +108,7 @@ For a full, step-by-step workflow—including data loading, training, and evalua
 ## 📦 Project Structure
 
 ```
-anodet_opti/
+AnomaVision/
 ├── anodet/
 │   ├── feature_extraction.py   # ResNet feature extraction utilities
 │   ├── mahalanobis.py          # Mahalanobis distance module (torch, ONNX-friendly)
