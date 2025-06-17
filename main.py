@@ -5,7 +5,7 @@ import torch
 import cv2
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
-
+from export import export_onnx
 import argparse
 
 
@@ -65,7 +65,10 @@ def main(args):
     # Train model
     padim.fit(dataloader)
 
+
     torch.save(padim, os.path.join(MODEL_DATA_PATH, args.output_model))
+    
+    export_onnx(padim, os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))
     
 if __name__ == "__main__":
         args = parse_args()
