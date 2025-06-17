@@ -1,10 +1,5 @@
 
-
-> # **Notice:**  
-> This project is a production-optimized and extended fork of [OpenAOI/anodet](https://github.com/OpenAOI/anodet).  
-> Many components, algorithms, and design patterns are adapted from the original anodet repository.
-
-# AnomaVision 🚀
+# 🚀 AnomaVision: State-of-the-Art Visual Anomaly Detection with PaDiM
 
 [![Version](https://img.shields.io/badge/version-2.0.35-blue.svg)](https://github.com/your-repo/AnomaVision)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://python.org)
@@ -12,42 +7,47 @@
 [![CUDA](https://img.shields.io/badge/CUDA-11.7-yellow.svg)](https://developer.nvidia.com/cuda-toolkit)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Deep Learning Anomaly Detection Environment [PaDimOpti]**  
-A production-ready, optimized library focusing on image-based anomaly detection with the PaDiM algorithm and ONNX deployment.
+> # **Notice:**  
+> This project is a highly optimized and extended fork of [OpenAOI/anodet](https://github.com/OpenAOI/anodet).  
+> All core algorithms and designs are adapted and enhanced from the original anodet repository.
 
 ---
 
-## ✨ Key Features
+### 🔥 Production-Ready Deep Learning Library for Anomaly Detection
 
-- **Production-Ready:** Export trained models directly to ONNX for deployment.
-- **Optimized Performance:** Memory and speed improvements for training and inference.
-- **Mixed Precision:** Automatic FP16/FP32 on supported hardware.
-- **Flexible:** Configure backbone (ResNet18/WideResNet50), layers, feature dims.
-- **Simple Integration:** Use as Python API or CLI for training/export/inference.
+AnomaVision brings **cutting-edge PaDiM-based anomaly detection** to your projects, optimized for both research and deployment. Whether you work in manufacturing, quality control, or research, AnomaVision offers blazing-fast inference, easy ONNX export, and a flexible, modern API.
 
 ---
-#### Example result with padim on image from [MVTEC dataset](https://www.mvtec.com/company/research/datasets/mvtec-ad)
-![](notebooks/example_images/padim_example_image.png)
 
+### ✨ Why AnomaVision?
 
-## 🚀 Quick Start
+- **Lightning Fast & Memory Efficient**: Train and infer faster with up to 60% less memory usage.
+- **ONNX Deployment Out-of-the-Box**: Go from training to production in minutes—on the cloud or at the edge.
+- **Mixed Precision Power**: Supports FP16/FP32 automatically for peak GPU/CPU performance.
+- **Flexible & Modular**: Customize everything—backbone, feature layers, dimensions—no code rewrites needed.
+- **Zero-Frustration Integration**: Train, export, and predict via Python or CLI—one codebase, infinite workflows.
 
-### Installation
+---
+
+#### 📸 Example: Detecting Anomalies on MVTec AD
+![Example](notebooks/example_images/padim_example_image.png)
+
+---
+
+## 🚀 Get Started in Minutes
+
+### 1. Installation
 
 ```bash
 git https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
 
-# With Poetry (recommended)
+# Install with Poetry (recommended)
 poetry install
-
-# Or with pip
-pip install -e .
-````
 
 ---
 
-### Usage Examples
+### 2. Quick Usage Examples
 
 #### Python API
 
@@ -56,36 +56,34 @@ import anodet
 import torch
 from torch.utils.data import DataLoader
 
-# Prepare dataset and dataloader
+# Load dataset
 dataset = anodet.AnodetDataset("path/to/train/good")
 dataloader = DataLoader(dataset, batch_size=2)
 
 # Select device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Initialize PaDiM model
+# Build and train PaDiM model
 model = anodet.Padim(
     backbone='resnet18',
     device=device,
-    layer_indices=[0, 1],   # see padim.py for layer meaning
+    layer_indices=[0, 1],
     feat_dim=50
 )
-
-# Train (fit) the model
 model.fit(dataloader)
 
-# Export model to ONNX
+# Export to ONNX for production deployment
 from anodet.export import export_onnx
 export_onnx(model, "padim_model.onnx", input_shape=(1, 3, 224, 224))
 
-# Predict
-test_batch = next(iter(dataloader))[0]   # get image tensor
+# Predict anomalies on new data
+test_batch = next(iter(dataloader))[0]
 image_scores, score_map = model.predict(test_batch)
 ```
 
-#### Command-Line Interface
+#### Command-Line Power (CLI)
 
-The included CLI (`main.py`) supports direct training and ONNX export:
+Train and export in a single command:
 
 ```bash
 python main.py \
@@ -96,35 +94,38 @@ python main.py \
   --feat_dim 50 \                               # Number of random feature dimensions to select for training
   --batch_size 2 \                              # Batch size for training
   --output_model "padim_model.pt"             # Output filename for PT model
-
 ```
 
-* See all arguments with `python main.py --help`.
+*Show all CLI options:*
+
+```bash
+python main.py --help
+```
 Complete Example
 For a full, step-by-step workflow—including data loading, training, and evaluation—refer to the padim_example.ipynb notebook included in this repository.
 
 ---
 
-## 📦 Project Structure
+## 🗂️ Project Structure
 
 ```
 AnomaVision/
 ├── anodet/
 │   ├── feature_extraction.py   # ResNet feature extraction utilities
-│   ├── mahalanobis.py          # Mahalanobis distance module (torch, ONNX-friendly)
+│   ├── mahalanobis.py          # Mahalanobis distance (fast, ONNX-friendly)
 │   ├── padim.py                # PaDiM main model class
-│   ├── export.py               # ONNX export utility
-│   └── ... (other utils)
-├── main.py                     # CLI for training and export
+│   ├── export.py               # ONNX export helper
+│   └── ... (other utilities)
+├── main.py                     # CLI for training/export
 ├── pyproject.toml              # Dependencies and build settings
-├── README.md                   # This file
+├── README.md                   # This file!
 ```
 
 ---
 
-## 🛠️ API Reference
+## 🛠️ Powerful, Intuitive API
 
-### Model: `Padim`
+**Model Instantiation**
 
 ```python
 Padim(
@@ -136,16 +137,16 @@ Padim(
 )
 ```
 
-### Training
+**Training**
 
 ```python
 model.fit(
-    dataloader,      # torch DataLoader, normal/"good" images
-    extractions=1    # Augmentation/repeat count (default: 1)
+    dataloader,      # torch DataLoader of "good" images
+    extractions=1    # Optional: repeat count for augmentation
 )
 ```
 
-### Inference
+**Inference**
 
 ```python
 image_scores, score_map = model.predict(
@@ -154,87 +155,69 @@ image_scores, score_map = model.predict(
 )
 ```
 
-### ONNX Export
+**ONNX Export**
 
 ```python
 from anodet.export import export_onnx
-
 export_onnx(
-    model, 
-    "padim_model.onnx", 
-    input_shape=(1, 3, 224, 224)   # (batch, channels, height, width)
+    model,
+    "padim_model.onnx",
+    input_shape=(1, 3, 224, 224) # (batch, channels, height, width)
 )
 ```
 
 ---
 
-## 🔑 Requirements
+## 🏆 Performance at a Glance
 
-* Python: 3.9+
-* PyTorch: 1.13.1+cu117
-* TorchVision: 0.14.1+cu117
-* ONNX: 1.14.1
-* ONNXRuntime-GPU: 1.14.1
-* OpenCV, NumPy, Matplotlib, tqdm, albumentations, etc.
-  (See `pyproject.toml` for full list.)
+| Metric         | Original  | AnomaVision | Improvement   |
+| -------------- | --------- | ----------- | ------------- |
+| Memory Usage   | High      | Low         | 40-60% ↓      |
+| Training Speed | Baseline  | Faster      | 15-25% ↑      |
+| Inference      | Baseline  | Faster      | 20-30% ↑      |
+| Precision      | FP32 only | Mixed       | 2x batch size |
 
----
-
-## 🏗️ Architecture Highlights
-
-* **`ResnetEmbeddingsExtractor`**: Extracts features from any supported ResNet backbone, supports GPU/CPU and mixed precision.
-* **`MahalanobisDistance`**: Custom torch module, ONNX-exportable, computes anomaly scores from distribution.
-* **`Padim`**: Orchestrates fitting, feature extraction, distance scoring, ONNX export, and prediction.
-* **`export_onnx`**: Standalone ONNX export for trained models (see `export.py`).
+* **ONNX Export**: Deploy anywhere—cloud, edge, production.
+* **Scalable**: Large batches on the same hardware.
+* **Hybrid Precision**: FP16/FP32 auto on GPU, safe fallback on CPU.
+* **Versatile**: Python & CLI—your workflow, your way.
 
 ---
 
-## 📈 Performance & Improvements
+## 🧩 Architecture Highlights
 
-| Metric         | Original  | Optimized | Improvement         |
-| -------------- | --------- | --------- | ------------------- |
-| Memory Usage   | High      | Low       | 40-60% ↓            |
-| Training Speed | Baseline  | Faster    | 15-25% ↑            |
-| Inference      | Baseline  | Faster    | 20-30% ↑            |
-| Precision      | FP32 only | Mixed     | 2x memory per batch |
-
-* **ONNX Export:** Deployable anywhere (cloud, edge, production).
-* **Batch Size:** Can handle larger batches with same hardware.
-* **Mixed Precision:** FP16/FP32 auto on GPU, safe on CPU.
-* **CLI & API:** Scriptable from shell or Python, same results.
+* **`ResnetEmbeddingsExtractor`**: Feature extraction from any ResNet backbone, optimized for GPU/CPU.
+* **`MahalanobisDistance`**: Fast, ONNX-exportable anomaly scoring module.
+* **`Padim`**: Fit, feature extraction, scoring, ONNX export, and inference—all-in-one.
+* **`export_onnx`**: Seamless export for fast, portable inference.
 
 ---
 
-## 📄 References
+## 🔗 References & Acknowledgments
 
-* PaDiM paper: [https://arxiv.org/abs/2011.08785](https://arxiv.org/abs/2011.08785)
-* TorchVision: [https://pytorch.org/vision/](https://pytorch.org/vision/)
-* Example datasets: [MVTec AD](https://www.mvtec.com/company/research/datasets/mvtec-ad)
+* **PaDiM Paper**: [arxiv.org/abs/2011.08785](https://arxiv.org/abs/2011.08785)
+* **TorchVision**: [pytorch.org/vision](https://pytorch.org/vision/)
+* **Example Data**: [MVTec AD](https://www.mvtec.com/company/research/datasets/mvtec-ad)
+* **Original Codebase**: [OpenAOI/anodet](https://github.com/OpenAOI/anodet)
 
----
-
-## 🙏 Acknowledgments & Attribution
-
-* This codebase is originally based on [OpenAOI/anodet](https://github.com/OpenAOI/anodet).
-* Significant portions of logic and architecture are adapted from the official anodet repository.
-* Full credit and thanks to the original authors and contributors.
+*Special thanks to all original authors and contributors for their outstanding work.*
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repo
-2. Create a feature branch
-3. Commit and push your changes
-4. Open a Pull Request
+1. **Fork** this repo
+2. **Create** a feature branch
+3. **Commit & push** your changes
+4. **Open a Pull Request**—collaboration welcome!
 
 ---
 
-## 📧 Contact
+## 📬 Contact
 
-**Deep Knowledge** - [Deepp.Knowledge@gmail.com](mailto:Deepp.Knowledge@gmail.com)
+Questions? Feature requests?
+**Deep Knowledge** – [Deepp.Knowledge@gmail.com](mailto:Deepp.Knowledge@gmail.com)
 
 ---
 
-⭐ Star this repo if you find it useful! ⭐
-
+⭐ **If this project helps you, please star the repo and share it!** ⭐
