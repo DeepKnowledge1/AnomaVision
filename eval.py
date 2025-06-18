@@ -9,6 +9,7 @@ from export import export_onnx
 import argparse
 from anodet.test import *
 
+import time
 
 
 def parse_args():
@@ -54,16 +55,14 @@ def main(args):
     test_dataloader = DataLoader(test_dataset, batch_size=32)
     print("Number of images in dataset:", len(test_dataloader.dataset))
 
-    # results = padim.evaluate(
-    #     dataloader=test_dataloader,
-    #     # threshold=13,              # Adjust as needed
-    #     show_progress=True,
-    #     return_details=True,       # True to get all predictions and images
-    # )
-    
-    res = padim.evaluate(test_dataloader)
+   
+    st = time.time()
+    # res = padim.evaluate(test_dataloader)
+    res = padim.evaluate_memory_efficient(test_dataloader)
+        
+    print(f"Time about {time.time()- st:.4f} s")
     images, image_classifications_target, masks_target, image_scores, score_maps = res
-    anodet.visualize_eval_data(image_classifications_target, masks_target, image_scores, score_maps)
+    # anodet.visualize_eval_data(image_classifications_target, masks_target, image_scores, score_maps)
 
 
 if __name__ == "__main__":
