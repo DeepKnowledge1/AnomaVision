@@ -36,20 +36,22 @@ AnomaVision brings **cutting-edge PaDiM-based anomaly detection** to your projec
 
 ## 🚀 Get Started in Minutes
 
-### 1. Installation
+## 🛠️ 1. Installation
 
 ```bash
-git https://github.com/DeepKnowledge1/AnomaVision.git
+git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
 
 # Install with Poetry (recommended)
+poetry shell
 poetry install
+````
 
 ---
 
-### 2. Quick Usage Examples
+## ⚡ 2. Quick Usage Examples
 
-#### Python API
+### Python API
 
 ```python
 import anodet
@@ -81,6 +83,9 @@ test_batch = next(iter(dataloader))[0]
 image_scores, score_map = model.predict(test_batch)
 ```
 
+
+
+
 #### Command-Line Power (CLI)
 
 Train and export in a single command:
@@ -93,7 +98,7 @@ python main.py \
   --layer_indices 0 1 \                         # Indices of backbone layers to extract features from (space separated)
   --feat_dim 50 \                               # Number of random feature dimensions to select for training
   --batch_size 2 \                              # Batch size for training
-  --output_model "padim_model.pt"             # Output filename for PT model
+  --output_model "padim_model.pt"               # Output filename for PT model
 ```
 
 *Show all CLI options:*
@@ -101,8 +106,6 @@ python main.py \
 ```bash
 python main.py --help
 ```
-Complete Example
-For a full, step-by-step workflow—including data loading, training, and evaluation—refer to the padim_example.ipynb notebook included in this repository.
 
 ---
 
