@@ -7,8 +7,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from export import export_onnx
 import argparse
-
-
+from anodet.test import *
 
 
 
@@ -45,53 +44,28 @@ def main(args):
     DATASET_PATH = os.path.realpath(args.dataset_path)
     MODEL_DATA_PATH = os.path.realpath(args.model_data_path)
     os.makedirs(MODEL_DATA_PATH, exist_ok=True)
-
-    # Load dataset
-    dataset = anodet.AnodetDataset(os.path.join(DATASET_PATH, "train/good"))
-    dataloader = DataLoader(dataset, batch_size=args.batch_size)
-    print("Number of images in dataset:", len(dataloader.dataset))
-
     # Initialize device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    # Initialize model with args
-    padim = anodet.Padim(
-        backbone=args.backbone,
-        device=device,
-        layer_indices=args.layer_indices,
-        feat_dim=args.feat_dim
-    )
-
-    # Train model
-    padim.fit(dataloader)
-
-
-    torch.save(padim, os.path.join(MODEL_DATA_PATH, args.output_model))
-    
-    export_onnx(padim, os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))
-    
+    padim = torch.load(os.path.join(MODEL_DATA_PATH, args.output_model))    
     
     class_name = 'bottle'
     DATASET_PATH = os.path.realpath("D:/01-DATA/")
-    #  os.path.realpath(r"D:\01-DATA\bottle")
     test_dataset = anodet.MVTecDataset(DATASET_PATH, class_name, is_train=False)
     test_dataloader = DataLoader(test_dataset, batch_size=32)
     print("Number of images in dataset:", len(test_dataloader.dataset))
 
-    results = padim.evaluate(
-        dataloader=test_dataloader,
-        # threshold=13,              # Adjust as needed
-        show_progress=True,
-        return_details=True,       # True to get all predictions and images
-    )
-
-
-    if "pixel_auc" in results:
-        print("Pixel-level AUC:", results["pixel_auc"])
-        print("Pixel F1:", results["pixel_f1"])
-        print("pixel_precision:", results["pixel_precision"])
-        print("pixel_recall:", results["pixel_recall"])
+    # results = padim.evaluate(
+    #     dataloader=test_dataloader,
+    #     # threshold=13,              # Adjust as needed
+    #     show_progress=True,
+    #     return_details=True,       # True to get all predictions and images
+    # )
     
+    res = padim.evaluate(test_dataloader)
+    images, image_classifications_target, masks_target, image_scores, score_maps = res
+    anodet.visualize_eval_data(image_classifications_target, masks_target, image_scores, score_maps)
+
+
 if __name__ == "__main__":
         args = parse_args()
         main(args)
