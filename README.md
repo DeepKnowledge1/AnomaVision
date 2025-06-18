@@ -138,26 +138,14 @@ AnomaVision/
 │   ├── __init__.py
 ├── eval.py
 ├── export.py
-├── LICENSE
 ├── main.py
 ├── notebooks
-│   ├── example_images
-│   │   ├── padim_example_image.png
-│   │   ├── patchcore_example_image.png
 │   ├── padim_example.ipynb
 │   ├── patchcore_example.ipynb
 │   ├── tests_example.ipynb
 ├── padim_example.ipynb
 ├── poetry.lock
 ├── pyproject.toml
-├── README.md
-├── requirements.txt
-├── setup.cfg
-├── setup.py
-├── tests
-│   ├── conftest.py
-│   ├── test_example.py
-
 ```
 
 ---
