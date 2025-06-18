@@ -190,6 +190,7 @@ class Padim(torch.nn.Module):
         #     "The model must be trained or provided with mean and cov_inv"
         return self(batch, gaussian_blur=gaussian_blur)
 
+    # Optimized version with memory management
     def evaluate(self, dataloader: torch.utils.data.DataLoader) \
             -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Run predict on all images in a dataloader and return the results.
@@ -207,35 +208,119 @@ class Padim(torch.nn.Module):
             score_maps: An array containing the predicted scores on patch level.
 
         """
-        # Use lists to accumulate results, but use no_grad for speed
-        images = []
-        image_classifications_target = []
-        masks_target = []
-        image_scores = []
-        score_maps = []
+        images_list = []
+        image_classifications_target_list = []
+        masks_target_list = []
+        image_scores_list = []
+        score_maps_list = []
 
-        self.eval()  # Ensure model is in eval mode
+        # Set model to evaluation mode
+        self.eval()
+
         with torch.no_grad():
-            for (batch, image_classifications, masks) in tqdm(dataloader, 'Inference'):
-                # Move batch to the correct device
-                batch = batch.to(self.device, non_blocking=True)
+            for batch_idx, (batch, image_classifications, masks) in enumerate(tqdm(dataloader, desc='Inference')):
+                # Move batch to device if needed
+                batch = batch.to(self.device)
+                
+                # Get predictions
+                batch_image_scores, batch_score_maps = self.predict(batch)
 
-                # Prediction
+                # Append to lists (move to CPU to save GPU memory)
+                images_list.append(batch.cpu())
+                image_classifications_target_list.append(image_classifications)
+                masks_target_list.append(masks)
+                image_scores_list.append(batch_image_scores.cpu())
+                score_maps_list.append(batch_score_maps.cpu())
+
+                # Clear GPU cache periodically to prevent OOM
+                if batch_idx % 10 == 0 and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+        # Concatenate all tensors efficiently
+        try:
+            images = torch.cat(images_list, dim=0).numpy()
+            image_classifications_target = torch.cat(image_classifications_target_list, dim=0).numpy()
+            masks_target = torch.cat(masks_target_list, dim=0).numpy().flatten().astype(np.uint8)
+            image_scores = torch.cat(image_scores_list, dim=0).numpy()
+            score_maps = torch.cat(score_maps_list, dim=0).numpy().flatten()
+        except RuntimeError as e:
+            print(f"Error during tensor concatenation: {e}")
+            print("Trying alternative approach...")
+            
+            # Alternative: convert to numpy first, then concatenate
+            images = np.concatenate([tensor.numpy() for tensor in images_list], axis=0)
+            image_classifications_target = np.concatenate([tensor.numpy() for tensor in image_classifications_target_list], axis=0)
+            masks_target = np.concatenate([tensor.numpy() for tensor in masks_target_list], axis=0).flatten().astype(np.uint8)
+            image_scores = np.concatenate([tensor.numpy() for tensor in image_scores_list], axis=0)
+            score_maps = np.concatenate([tensor.numpy() for tensor in score_maps_list], axis=0).flatten()
+
+        # Final cleanup
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        return images, image_classifications_target, masks_target, image_scores, score_maps
+
+
+    # MEMORY-EFFICIENT VERSION: For very large datasets
+    def evaluate_memory_efficient(self, dataloader: torch.utils.data.DataLoader) \
+            -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+
+        """Memory-efficient version that processes data in chunks."""
+
+        # Pre-allocate arrays if dataset size is known
+        dataset_size = len(dataloader.dataset)
+        
+        # Get sample batch to determine shapes
+        sample_batch, sample_class, sample_mask = next(iter(dataloader))
+        sample_batch = sample_batch.to(self.device)
+        sample_scores, sample_maps = self.predict(sample_batch[:1])  # Test with one sample
+        
+        # Calculate shapes
+        img_shape = sample_batch.shape[1:]  # (C, H, W)
+        map_shape = sample_maps.shape[1:]   # (H, W)
+        
+        # Pre-allocate numpy arrays
+        images = np.zeros((dataset_size, *img_shape), dtype=np.float32)
+        image_classifications_target = np.zeros(dataset_size, dtype=np.int64)
+        masks_target = np.zeros((dataset_size, *sample_mask.shape[1:]), dtype=np.uint8)
+        image_scores = np.zeros(dataset_size, dtype=np.float32)
+        score_maps = np.zeros((dataset_size, *map_shape), dtype=np.float32)
+        
+        # Set model to evaluation mode
+        self.eval()
+        
+        current_idx = 0
+        
+        with torch.no_grad():
+            for batch_idx, (batch, image_classifications, masks) in enumerate(tqdm(dataloader, desc='Inference')):
+                batch = batch.to(self.device)
+                batch_size = batch.shape[0]
+                
+                # Get predictions
                 batch_image_scores, batch_score_maps = self.predict(batch)
                 
-                # Move results to CPU only once, then numpy (efficient)
-                images.append(batch.cpu().numpy())
-                image_classifications_target.append(image_classifications.cpu().numpy())
-                masks_target.append(masks.cpu().numpy())
-                image_scores.append(batch_image_scores.cpu().numpy())
-                score_maps.append(batch_score_maps.cpu().numpy())
-
-        # Concatenate results only once after the loop for speed
-        images = np.concatenate(images, axis=0)
-        image_classifications_target = np.concatenate(image_classifications_target, axis=0)
-        masks_target = np.concatenate(masks_target, axis=0).flatten().astype(np.uint8)
-        image_scores = np.concatenate(image_scores, axis=0)
-        score_maps = np.concatenate(score_maps, axis=0).flatten()
+                # Fill pre-allocated arrays
+                end_idx = current_idx + batch_size
+                images[current_idx:end_idx] = batch.cpu().numpy()
+                image_classifications_target[current_idx:end_idx] = image_classifications.numpy()
+                masks_target[current_idx:end_idx] = masks.numpy()
+                image_scores[current_idx:end_idx] = batch_image_scores.cpu().numpy()
+                score_maps[current_idx:end_idx] = batch_score_maps.cpu().numpy()
+                
+                current_idx = end_idx
+                
+                # Clear GPU cache periodically
+                if batch_idx % 5 == 0 and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+        
+        # Flatten masks and score_maps as expected by the original function
+        masks_target = masks_target.flatten()
+        score_maps = score_maps.flatten()
+        
+        # Final cleanup
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
         return images, image_classifications_target, masks_target, image_scores, score_maps
 
 
