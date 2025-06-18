@@ -113,15 +113,51 @@ python main.py --help
 
 ```
 AnomaVision/
-├── anodet/
-│   ├── feature_extraction.py   # ResNet feature extraction utilities
-│   ├── mahalanobis.py          # Mahalanobis distance (fast, ONNX-friendly)
-│   ├── padim.py                # PaDiM main model class
-│   ├── export.py               # ONNX export helper
-│   └── ... (other utilities)
-├── main.py                     # CLI for training/export
-├── pyproject.toml              # Dependencies and build settings
-├── README.md                   # This file!
+├── anodet
+│   ├── datasets
+│   │   ├── dataset.py
+│   │   ├── mvtec_dataset.py
+│   │   ├── __init__.py
+│   ├── feature_extraction.py
+│   ├── mahalanobis.py
+│   ├── padim.py
+│   ├── patch_core.py
+│   ├── sampling_methods
+│   │   ├── kcenter_greedy.py
+│   │   ├── sampling_def.py
+│   │   ├── __init__.py
+│   ├── test.py
+│   ├── utils.py
+│   ├── visualization
+│   │   ├── boundary.py
+│   │   ├── frame.py
+│   │   ├── heatmap.py
+│   │   ├── highlight.py
+│   │   ├── utils.py
+│   │   ├── __init__.py
+│   ├── __init__.py
+├── eval.py
+├── export.py
+├── LICENSE
+├── main.py
+├── notebooks
+│   ├── example_images
+│   │   ├── padim_example_image.png
+│   │   ├── patchcore_example_image.png
+│   ├── padim_example.ipynb
+│   ├── patchcore_example.ipynb
+│   ├── tests_example.ipynb
+├── padim_example.ipynb
+├── poetry.lock
+├── pyproject.toml
+├── README.md
+├── requirements.txt
+├── setup.cfg
+├── setup.py
+├── tests
+│   ├── conftest.py
+│   ├── test_example.py
+
 ```
 
 ---
