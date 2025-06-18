@@ -192,7 +192,6 @@ class Padim(torch.nn.Module):
 
     def evaluate(self, dataloader: torch.utils.data.DataLoader) \
             -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-
         """Run predict on all images in a dataloader and return the results.
 
         Args:
@@ -208,25 +207,36 @@ class Padim(torch.nn.Module):
             score_maps: An array containing the predicted scores on patch level.
 
         """
-
+        # Use lists to accumulate results, but use no_grad for speed
         images = []
         image_classifications_target = []
         masks_target = []
         image_scores = []
         score_maps = []
 
-        for (batch, image_classifications, masks) in tqdm(dataloader, 'Inference'):
-            batch_image_scores, batch_score_maps = self.predict(batch)
+        self.eval()  # Ensure model is in eval mode
+        with torch.no_grad():
+            for (batch, image_classifications, masks) in tqdm(dataloader, 'Inference'):
+                # Move batch to the correct device
+                batch = batch.to(self.device, non_blocking=True)
 
-            images.extend(batch.cpu().numpy())
-            image_classifications_target.extend(image_classifications.cpu().numpy())
-            masks_target.extend(masks.cpu().numpy())
-            image_scores.extend(batch_image_scores.cpu().numpy())
-            score_maps.extend(batch_score_maps.cpu().numpy())
+                # Prediction
+                batch_image_scores, batch_score_maps = self.predict(batch)
+                
+                # Move results to CPU only once, then numpy (efficient)
+                images.append(batch.cpu().numpy())
+                image_classifications_target.append(image_classifications.cpu().numpy())
+                masks_target.append(masks.cpu().numpy())
+                image_scores.append(batch_image_scores.cpu().numpy())
+                score_maps.append(batch_score_maps.cpu().numpy())
 
-        return np.array(images), np.array(image_classifications_target), \
-            np.array(masks_target).flatten().astype(np.uint8), \
-            np.array(image_scores), np.array(score_maps).flatten()
+        # Concatenate results only once after the loop for speed
+        images = np.concatenate(images, axis=0)
+        image_classifications_target = np.concatenate(image_classifications_target, axis=0)
+        masks_target = np.concatenate(masks_target, axis=0).flatten().astype(np.uint8)
+        image_scores = np.concatenate(image_scores, axis=0)
+        score_maps = np.concatenate(score_maps, axis=0).flatten()
+        return images, image_classifications_target, masks_target, image_scores, score_maps
 
 
 def get_dims_indices(layers, feature_dim, net_feature_size):
