@@ -68,30 +68,8 @@ def main(args):
 
     torch.save(padim, os.path.join(MODEL_DATA_PATH, args.output_model))
     
-    export_onnx(padim, os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))
-    
-    
-    class_name = 'bottle'
-    DATASET_PATH = os.path.realpath("D:/01-DATA/")
-    #  os.path.realpath(r"D:\01-DATA\bottle")
-    test_dataset = anodet.MVTecDataset(DATASET_PATH, class_name, is_train=False)
-    test_dataloader = DataLoader(test_dataset, batch_size=32)
-    print("Number of images in dataset:", len(test_dataloader.dataset))
-
-    results = padim.evaluate(
-        dataloader=test_dataloader,
-        # threshold=13,              # Adjust as needed
-        show_progress=True,
-        return_details=True,       # True to get all predictions and images
-    )
-
-
-    if "pixel_auc" in results:
-        print("Pixel-level AUC:", results["pixel_auc"])
-        print("Pixel F1:", results["pixel_f1"])
-        print("pixel_precision:", results["pixel_precision"])
-        print("pixel_recall:", results["pixel_recall"])
-    
+    export_onnx(padim, os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))    
+        
 if __name__ == "__main__":
         args = parse_args()
         main(args)
