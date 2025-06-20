@@ -14,7 +14,10 @@ stages:
     steps:
     - checkout: self
     - script: |
-        git remote remove github || true
+        git config --global user.email "deepp.knowledge@gmail.com"
+        git config --global user.name "DeepKnowledge1"
+
+        git remote remove github || echo remote not found
         git remote add github https://$(GITHUB_PAT)@github.com/DeepKnowledge1/$(Build.Repository.Name).git
 
         git push github HEAD:main --force
