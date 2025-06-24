@@ -80,7 +80,7 @@ class Padim(torch.nn.Module):
         """Get the inverse covariance tensor."""
         return self._cov_inv
 
-    def forward(self, x: torch.Tensor,gaussian_blur: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor,gaussian_blur: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass for ONNX compatibility.
 
         Args:
