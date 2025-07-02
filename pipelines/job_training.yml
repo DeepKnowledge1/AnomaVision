@@ -1,0 +1,36 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+
+description: Train a PaDiM anomaly detection model on images
+display_name: Train PaDiM Model
+experiment_name: padim_anomaly_detection_experiment
+
+code: ../src
+command: >
+  conda run -n anomavision_env python train.py
+  --dataset_path ${{inputs.dataset_path}}
+  --test_dataset_path ${{inputs.test_dataset_path}}
+  --output_model ${{outputs.model_output}}
+
+
+environment: azureml:anomavision_env:1
+
+
+
+inputs:
+  dataset_path:
+    type: uri_folder
+    path: azureml:anomaly-images:1  # ← from DATASET_NAME
+
+  test_dataset_path:
+    type: uri_folder
+    path: azureml:anomaly-images:1
+
+
+outputs:
+  model_output:
+    type: uri_folder
+    mode: rw_mount
+    # path: azureml://datastores/workspaceblobstore/paths/models/anomavision/    
+
+compute: azureml:compute-anomavision  # ← from COMPUTE_NAME
