@@ -51,15 +51,27 @@ class ModelWrapper:
             return self._predict_openvino(batch)
     
     def _predict_onnx(self, batch):
+        # print(f"ONNX input shape: {batch.shape}, dtype: {batch.dtype}")
+        # print(f"ONNX input stats: min={batch.min()}, max={batch.max()}, mean={batch.mean()}")
         if isinstance(batch, torch.Tensor):
             batch = batch.cpu().numpy()
         outputs = self.session.run(None, {self.input_name: batch})
+        # print(f"ONNX outputs[0] (image_scores): {outputs[0]}")
+        # print(f"ONNX outputs[1] (score_map) stats: min={outputs[1].min()}, max={outputs[1].max()}, mean={outputs[1].mean()}")
+        
         return outputs[0], outputs[1]
     
     def _predict_pytorch(self, batch):
+        # print(f"PyTorch input shape: {batch.shape}, dtype: {batch.dtype}")
+        # print(f"PyTorch input stats: min={batch.min()}, max={batch.max()}, mean={batch.mean()}")
+        
         batch = batch.to(self.device, non_blocking=True)
+        
         with torch.no_grad():
             scores, maps = self.model.predict(batch)
+            # print(f"PyTorch scores: {scores.cpu().numpy()}")
+            # print(f"PyTorch maps stats: min={maps.cpu().numpy().min()}, max={maps.cpu().numpy().max()}, mean={maps.cpu().numpy().mean()}")
+            
             return scores.cpu().numpy(), maps.cpu().numpy()
     
     def _predict_tensorrt(self, batch):

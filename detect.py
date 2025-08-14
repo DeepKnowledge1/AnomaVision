@@ -20,7 +20,7 @@ def parse_args():
                         help='Directory to save model distributions and ONNX file.')
     parser.add_argument('--model', type=str, default='padim_model.onnx',
                         help='Model file (.pt for PyTorch, .onnx for ONNX)')
-    parser.add_argument('--batch_size', type=int, default=2,
+    parser.add_argument('--batch_size', type=int, default=1,
                         help='batch size')
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of worker processes for data loading.')
