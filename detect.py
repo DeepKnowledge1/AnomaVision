@@ -33,7 +33,7 @@ class ModelType(Enum):
             '.xml': cls.OPENVINO,
             '.bin': cls.OPENVINO,
         }
-        
+    
         ext = os.path.splitext(model_path)[1].lower()
         model_type = extension_map.get(ext)
         
