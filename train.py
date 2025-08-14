@@ -10,8 +10,6 @@ import argparse
 
 
 
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a PaDiM model for anomaly detection.")
 
@@ -37,8 +35,6 @@ def parse_args():
                         help='Number of random feature dimensions to keep.')
 
     return parser.parse_args()
-
-
 
 def main(args):
     # Set up paths
