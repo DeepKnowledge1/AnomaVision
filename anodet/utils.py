@@ -152,7 +152,7 @@ def classification(image_scores: torch.Tensor, thresh: float) -> torch.Tensor:
     """
 
     # Apply threshold
-    image_classifications = image_scores.clone()
+    image_classifications = image_scores.copy()
     image_classifications[image_classifications < thresh] = 1
     image_classifications[image_classifications >= thresh] = 0
     return image_classifications
