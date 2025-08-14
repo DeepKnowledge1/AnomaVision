@@ -5,7 +5,8 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
 from ..utils import standard_image_transform, standard_mask_transform
-
+import numpy as np
+import cv2 as cv
 
 def allowed_file(filename):
     return ("." in filename and filename.rsplit(".", 1)[1].lower() in ["png", "jpg", "jpeg"])
@@ -47,7 +48,9 @@ class AnodetDataset(Dataset):
 
         # Load image
         image = Image.open(self.image_paths[idx]).convert('RGB')
-        image = self.image_transforms(image)
+        batch = self.image_transforms(image)
+        image = np.array(image)
+        image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
         # Load mask if mask_directory_path argument is given
         if self.mask_directory_path is not None:
@@ -55,7 +58,7 @@ class AnodetDataset(Dataset):
             mask = self.mask_transforms(mask)
             image_classification = 0
         else:
-            mask = torch.zeros([1, image.shape[1], image.shape[2]])
+            mask = torch.zeros([1, batch.shape[1], batch.shape[2]])
             image_classification = 1
 
-        return image, image_classification, mask
+        return batch,image, image_classification, mask

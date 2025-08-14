@@ -1,7 +1,11 @@
+
 trigger:
   branches:
     include:
       - main
+
+variables:
+  - group: github_Credi
 
 stages:
 - stage: SyncToGitHub
@@ -13,11 +17,7 @@ stages:
       name: Default
     steps:
     - checkout: self
-    - script: |
-        git config --global user.email "deepp.knowledge@gmail.com"
-        git config --global user.name "DeepKnowledge1"
-
-        git remote remove github || echo remote not found
+    - script: |        
         git remote add github https://$(GITHUB_PAT)@github.com/DeepKnowledge1/$(Build.Repository.Name).git
 
         git push github HEAD:main --force

@@ -10,6 +10,24 @@ import argparse
 
 
 
+# during export
+class _ExportWrapper(torch.nn.Module):
+    def __init__(self, m):
+        super().__init__()
+        self.m = m
+        # delegate device to the wrapped model
+        if hasattr(m, "device"):
+            self.device = m.device
+        else:
+            # fall back to parameter device or CPU
+            try:
+                self.device = next(m.parameters()).device
+            except StopIteration:
+                self.device = torch.device("cpu")
+
+    def forward(self, x):
+        scores, maps = self.m.predict(x)
+        return scores, maps
 
 
 def parse_args():
@@ -37,8 +55,6 @@ def parse_args():
                         help='Number of random feature dimensions to keep.')
 
     return parser.parse_args()
-
-
 
 def main(args):
     # Set up paths
@@ -68,8 +84,8 @@ def main(args):
 
     torch.save(padim, os.path.join(MODEL_DATA_PATH, args.output_model))
     
-    export_onnx(padim, os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))    
-        
+    # export_onnx(padim, os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))    
+    export_onnx(_ExportWrapper(padim), os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))    
 if __name__ == "__main__":
         args = parse_args()
         main(args)

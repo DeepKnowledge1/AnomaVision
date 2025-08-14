@@ -115,7 +115,7 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         # Pre-allocate list to store embedding vectors
         embedding_vectors_list: List[torch.Tensor] = []
         
-        for (batch, _, _) in tqdm(dataloader, 'Feature extraction'):
+        for (batch, _, _,_) in tqdm(dataloader, 'Feature extraction'):
             batch_embedding_vectors,_,_ = self(batch,
                                         channel_indices=channel_indices,
                                         layer_hook=layer_hook,
