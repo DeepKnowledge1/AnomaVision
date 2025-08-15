@@ -8,3 +8,5 @@ distributions/*
 *venv
 *DS_Store
 mlruns/
+logs/
+visualizations/
