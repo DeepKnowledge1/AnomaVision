@@ -10,3 +10,4 @@ distributions/*
 mlruns/
 logs/
 visualizations/
+*.onnx
