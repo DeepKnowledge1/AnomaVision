@@ -1,313 +1,436 @@
+# 🔍 AnomaVision: Production-Ready Visual Anomaly Detection
 
-# 🚀 AnomaVision: State-of-the-Art Visual Anomaly Detection with AnomaVision
+<div align="center">
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/your-repo/AnomaVision)
-[![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://python.org)
-[![PyTorch](https://img.shields.io/badge/pytorch-1.13.1-red.svg)](https://pytorch.org)
-[![CUDA](https://img.shields.io/badge/CUDA-11.7-yellow.svg)](https://developer.nvidia.com/cuda-toolkit)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
+[![PyTorch 1.13+](https://img.shields.io/badge/pytorch-1.13+-red.svg)](https://pytorch.org)
+[![CUDA 11.7](https://img.shields.io/badge/CUDA-11.7-green.svg)](https://developer.nvidia.com/cuda-toolkit)
+[![ONNX Ready](https://img.shields.io/badge/ONNX-Export%20Ready-orange.svg)](https://onnx.ai/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> # **Notice:**  
-> This project is a highly optimized and extended fork of [OpenAOI/anodet](https://github.com/OpenAOI/anodet).  
-> All core algorithms and designs are adapted and enhanced from the original anodet repository.
+**State-of-the-art anomaly detection powered by PaDiM algorithm**  
+*From research to production in minutes*
 
----
-
-![Example](notebooks/example_images/AnomaVision.png)
-
-### 🔥 Production-Ready Deep Learning Library for Anomaly Detection
-
-AnomaVision brings **cutting-edge AnomaVision-based anomaly detection** to your projects, optimized for both research and deployment. Whether you work in manufacturing, quality control, or research, AnomaVision offers blazing-fast inference, easy ONNX export, and a flexible, modern API.
+[🚀 Quick Start](#-quick-start) • [📖 Documentation](#-api-reference) • [🎯 Examples](#-examples) • [🔧 Installation](#-installation)
 
 ---
 
-### ✨ Why AnomaVision?
+</div>
 
-- **Lightning Fast & Memory Efficient**: Train and infer faster with up to 60% less memory usage.
-- **ONNX Deployment Out-of-the-Box**: Go from training to production in minutes—on the cloud or at the edge.
-- **Mixed Precision Power**: Supports FP16/FP32 automatically for peak GPU/CPU performance.
-- **Flexible & Modular**: Customize everything—backbone, feature layers, dimensions—no code rewrites needed.
-- **Zero-Frustration Integration**: Train, export, and predict via Python or CLI—one codebase, infinite workflows.
+## ✨ What is AnomaVision?
+
+AnomaVision is a **high-performance deep learning library** for visual anomaly detection, built on the proven PaDiM (Patch Distribution Modeling) algorithm. Whether you're detecting defects in manufacturing, monitoring infrastructure, or ensuring quality control, AnomaVision delivers enterprise-grade performance with research-level accuracy.
+
+> **🎯 Built for Production:** Optimized for real-world deployment with ONNX export, memory efficiency, and multi-format model support.
+
+### 🏆 Key Features
+
+- **⚡ Lightning Fast**: 40-60% less memory usage, 20-30% faster inference
+- **🎛️ Multiple Backends**: PyTorch, ONNX, TensorRT (coming soon), OpenVINO (coming soon)
+- **🔧 Production Ready**: One-click ONNX export for edge deployment
+- **🎨 Rich Visualizations**: Built-in heatmaps, boundary detection, and highlighting
+- **📊 Memory Efficient**: Process large datasets without OOM errors
+- **🛡️ Robust**: Mixed precision support (FP16/FP32) with automatic fallbacks
 
 ---
 
-#### 📸 Example: Detecting Anomalies on MVTec AD
-![Example](notebooks/example_images/padim_example_image.png)
+## 🚀 Quick Start
 
----
-
-## 🚀 Get Started in Minutes
-
-## 🛠️ 1. Installation
+### 1️⃣ Installation
 
 ```bash
+# Clone the repository
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
 
 # Install with Poetry (recommended)
-poetry shell
-poetry install
-````
+poetry install && poetry shell
 
----
+# Or with pip
+pip install -r requirements.txt
+```
 
-## ⚡ 2. Quick Usage Examples
-
-### Python API
+### 2️⃣ Train Your First Model
 
 ```python
 import anodet
 import torch
 from torch.utils.data import DataLoader
 
-# Load dataset
+# 📁 Load your "good" training images
 dataset = anodet.AnodetDataset("path/to/train/good")
 dataloader = DataLoader(dataset, batch_size=2)
 
-# Select device
+# 🧠 Initialize and train PaDiM model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# Build and train AnomaVision model
-model = anodet.AnomaVision(
+model = anodet.Padim(
     backbone='resnet18',
     device=device,
     layer_indices=[0, 1],
     feat_dim=50
 )
+
+# 🎯 Train the model
 model.fit(dataloader)
 
-# Export to ONNX for production deployment
-from anodet.export import export_onnx
-export_onnx(model, "AnomaVision_model.onnx", input_shape=(1, 3, 224, 224))
-
-# Predict anomalies on new data
-test_batch = next(iter(dataloader))[0]
-image_scores, score_map = model.predict(test_batch)
+# 💾 Save for later use
+torch.save(model, "my_anomaly_model.pt")
 ```
 
+### 3️⃣ Detect Anomalies
 
+```python
+# 🔍 Load test images and detect anomalies
+test_dataset = anodet.AnodetDataset("path/to/test/images")
+test_dataloader = DataLoader(test_dataset, batch_size=2)
 
-
-#### Command-Line Power (CLI)
-
-Train and export in a single command:
-
-```bash
-python main.py \
-  --dataset_path "/path/to/dataset" \           # Path to the dataset folder (should contain 'train/good' subfolder)
-  --model_data_path "./model_dir" \             # Directory to save trained model/distribution files and ONNX output
-  --backbone resnet18 \                         # Backbone network to use ('resnet18' or 'wide_resnet50')
-  --layer_indices 0 1 \                         # Indices of backbone layers to extract features from (space separated)
-  --feat_dim 50 \                               # Number of random feature dimensions to select for training
-  --batch_size 2 \                              # Batch size for training
-  --output_model "AnomaVision_model.pt"               # Output filename for PT model
+for batch, images, _, _ in test_dataloader:
+    # Get anomaly scores and heatmaps
+    image_scores, score_maps = model.predict(batch)
+    
+    # Classify as anomalous (threshold = 13)
+    predictions = anodet.classification(image_scores, threshold=13)
+    print(f"Anomaly scores: {image_scores}")
+    print(f"Predictions: {predictions}")
+    break
 ```
 
-*Show all CLI options:*
+### 4️⃣ Export for Production
 
-```bash
-python main.py --help
+```python
+from export import export_onnx, _ExportWrapper
+
+# 🚀 Export to ONNX for deployment
+wrapper = _ExportWrapper(model)
+export_onnx(
+    wrapper, 
+    filepath="anomaly_detector.onnx",
+    input_shape=(1, 3, 224, 224)
+)
 ```
 
 ---
 
-## 🗂️ Project Structure
+## 🔧 Installation
+
+### Prerequisites
+- Python 3.9+
+- CUDA 11.7+ (for GPU acceleration)
+- PyTorch 1.13+
+
+### Method 1: Poetry (Recommended)
+```bash
+git clone https://github.com/DeepKnowledge1/AnomaVision.git
+cd AnomaVision
+poetry install
+poetry shell
+```
+
+### Method 2: pip
+```bash
+git clone https://github.com/DeepKnowledge1/AnomaVision.git
+cd AnomaVision
+pip install -r requirements.txt
+```
+
+### Verify Installation
+```python
+python -c "import anodet; print('✅ AnomaVision installed successfully!')"
+```
+
+---
+
+## 🎯 Examples
+
+### 📋 Command Line Usage
+
+#### Train a Model
+```bash
+python train.py \
+  --dataset_path "data/bottle/train/good" \
+  --model_data_path "./models/" \
+  --backbone resnet18 \
+  --batch_size 4 \
+  --layer_indices 0 1 \
+  --feat_dim 100
+```
+
+#### Run Inference
+```bash
+python detect.py \
+  --dataset_path "data/bottle/test" \
+  --model_data_path "./models/" \
+  --model "padim_model.onnx" \
+  --batch_size 4 \
+  --thresh 15 \
+  --enable_visualization
+```
+
+#### Evaluate Performance
+```bash
+python eval.py \
+  --dataset_path "data/mvtec" \
+  --model_data_path "./models/" \
+  --model_name "padim_model.pt"
+```
+
+### 🎨 Visualization Examples
+
+```python
+import anodet.visualization as viz
+
+# Create boundary visualizations
+boundary_images = viz.framed_boundary_images(
+    images, classifications, padding=40
+)
+
+# Generate anomaly heatmaps
+heatmap_images = viz.heatmap_images(
+    images, score_maps, alpha=0.6
+)
+
+# Highlight anomalous regions
+highlighted = viz.highlighted_images(
+    images, classifications, color=(255, 0, 0)
+)
+```
+
+### 🔄 Multi-Format Model Support
+
+```python
+from anodet.inference.model_wrapper import ModelWrapper
+
+# Automatically detect and load any supported format
+model = ModelWrapper("model.onnx", device='cuda')  # ONNX
+model = ModelWrapper("model.pt", device='cuda')    # PyTorch
+# model = ModelWrapper("model.engine", device='cuda')  # TensorRT (coming soon)
+
+# Unified prediction interface
+scores, maps = model.predict(batch)
+```
+
+---
+
+## 📖 API Reference
+
+### Core Classes
+
+#### `anodet.Padim`
+Main PaDiM model class for training and inference.
+
+```python
+model = anodet.Padim(
+    backbone='resnet18',           # 'resnet18' or 'wide_resnet50'
+    device=torch.device('cuda'),   # Target device
+    layer_indices=[0, 1, 2],       # ResNet layers to use
+    feat_dim=100,                  # Feature dimensions
+    channel_indices=None           # Optional channel selection
+)
+```
+
+**Methods:**
+- `fit(dataloader)` - Train the model on normal images
+- `predict(batch)` - Detect anomalies in test images
+- `evaluate(dataloader)` - Full evaluation with metrics
+
+#### `anodet.AnodetDataset`
+Dataset loader for anomaly detection.
+
+```python
+dataset = anodet.AnodetDataset(
+    "path/to/images",        # Path to image folder
+    transforms=None          # Optional transformations
+)
+```
+
+#### `ModelWrapper`
+Unified interface for multiple model formats.
+
+```python
+wrapper = ModelWrapper(
+    model_path="model.onnx",    # Path to model file
+    device='cuda'               # Target device
+)
+```
+
+### Utility Functions
+
+```python
+# Classification with threshold
+predictions = anodet.classification(scores, threshold=15)
+
+# Export to ONNX
+export_onnx(model, "output.onnx", input_shape=(1, 3, 224, 224))
+```
+
+---
+
+## 🏗️ Project Structure
 
 ```
 AnomaVision/
-├── anodet
-│   ├── datasets
-│   │   ├── dataset.py
-│   │   ├── mvtec_dataset.py
-│   │   ├── __init__.py
-│   ├── feature_extraction.py
-│   ├── mahalanobis.py
-│   ├── AnomaVision.py
-│   ├── patch_core.py
-│   ├── sampling_methods
-│   │   ├── kcenter_greedy.py
-│   │   ├── sampling_def.py
-│   │   ├── __init__.py
-│   ├── test.py
-│   ├── utils.py
-│   ├── visualization
-│   │   ├── boundary.py
-│   │   ├── frame.py
-│   │   ├── heatmap.py
-│   │   ├── highlight.py
-│   │   ├── utils.py
-│   │   ├── __init__.py
-│   ├── __init__.py
-├── eval.py
-├── export.py
-├── main.py
-├── notebooks
-│   ├── AnomaVision_example.ipynb
-│   ├── patchcore_example.ipynb
-│   ├── tests_example.ipynb
-├── AnomaVision_example.ipynb
-├── poetry.lock
-├── pyproject.toml
+├── 📁 anodet/                     # Core library
+│   ├── 📄 padim.py               # PaDiM implementation
+│   ├── 📄 feature_extraction.py  # Feature extraction
+│   ├── 📄 mahalanobis.py         # Distance computation
+│   ├── 📁 datasets/              # Dataset loaders
+│   ├── 📁 visualization/         # Visualization tools
+│   ├── 📁 inference/             # Multi-format inference
+│   └── 📄 utils.py               # Utility functions
+├── 📄 train.py                   # Training script
+├── 📄 detect.py                  # Inference script
+├── 📄 eval.py                    # Evaluation script
+├── 📄 export.py                  # ONNX export utilities
+└── 📁 notebooks/                 # Example notebooks
 ```
 
 ---
 
-## 🛠️ Powerful, Intuitive API
+## 🎛️ Configuration
 
-**Model Instantiation**
+### Training Parameters
 
-```python
-AnomaVision(
-    backbone='resnet18',         # 'resnet18' or 'wide_resnet50'
-    device=torch.device('cuda'), # Target device
-    layer_indices=[0, 1],        # List of ResNet layers (0: shallowest)
-    feat_dim=50,                 # Number of random feature dims (see code)
-    channel_indices=None         # Optional custom channel indices
-)
-```
+| Parameter | Description | Default | Options |
+|-----------|-------------|---------|---------|
+| `backbone` | Feature extractor | `resnet18` | `resnet18`, `wide_resnet50` |
+| `layer_indices` | ResNet layers to use | `[0]` | `[0, 1, 2, 3]` |
+| `feat_dim` | Feature dimensions | `50` | `1-2048` |
+| `batch_size` | Training batch size | `2` | `1+` |
 
-**Training**
+### Inference Parameters
 
-```python
-model.fit(
-    dataloader,      # torch DataLoader of "good" images
-    extractions=1    # Optional: repeat count for augmentation
-)
-```
-
-**Inference**
-
-```python
-image_scores, score_map = model.predict(
-    batch,            # Input tensor (B, 3, H, W)
-    gaussian_blur=True   # Apply Gaussian blur (default: True)
-)
-```
-
-**ONNX Export**
-
-```python
-from anodet.export import export_onnx
-export_onnx(
-    model,
-    "AnomaVision_model.onnx",
-    input_shape=(1, 3, 224, 224) # (batch, channels, height, width)
-)
-```
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `thresh` | Anomaly threshold | `13` |
+| `gaussian_blur` | Apply blur to score maps | `True` |
+| `enable_visualization` | Show results | `False` |
 
 ---
 
+## 🚀 Performance Benchmarks
 
+| Metric | Original Implementation | AnomaVision | Improvement |
+|--------|------------------------|-------------|-------------|
+| **Memory Usage** | Baseline | 40-60% less | ⬇️ 40-60% |
+| **Training Speed** | Baseline | 15-25% faster | ⬆️ 15-25% |
+| **Inference Speed** | Baseline | 20-30% faster | ⬆️ 20-30% |
+| **Batch Size** | Limited | 2x larger | ⬆️ 100% |
 
-### 🧠 Training
- 
+### Hardware Requirements
 
-
-By default python *train.py*
-```bash
-python train.py    # Train AnomaVision on your selected dataset
-```
-
-
-additional to that, there are some of parameters you might need to change:
-```bash
-python train.py \
-  --dataset_path "D:/01-DATA/bottle" \
-  --model_data_path "./distributions/" \
-  --backbone "resnet18" \
-  --batch_size 2 \
-  --output_model "padim_model.pt" \
-  --layer_indices 0 \
-  --feat_dim 50
-```
-
-
-### 🤖 Inference
-
-
-
-The following command can be used to run PyTorch inference from the command line:
-```bash
-python detect.py
-```
-
-
-### 📊 Evaluation
-  Validate a trained model  model on a category of mvtech dataset or your custom dataset (has to have the same format).
-
-```
-    ├───📂ground_truth
-    │   ├───📂broken_large
-    │   ├───📂broken_small
-    │   └───📂contamination
-    ├───📂test
-    │   ├───📂broken_large
-    │   ├───📂broken_small
-    │   ├───📂contamination
-    │   └───📂good
-    └───📂train
-        └───📂good
-```
-
-Command:
-
-```
-python eval.py
-```
-
-
-
-
-## 🏆 Performance at a Glance
-
-| Metric         | Original  | AnomaVision | Improvement   |
-| -------------- | --------- | ----------- | ------------- |
-| Memory Usage   | High      | Low         | 40-60% ↓      |
-| Training Speed | Baseline  | Faster      | 15-25% ↑      |
-| Inference      | Baseline  | Faster      | 20-30% ↑      |
-| Precision      | FP32 only | Mixed       | 2x batch size |
-
-* **ONNX Export**: Deploy anywhere—cloud, edge, production.
-* **Scalable**: Large batches on the same hardware.
-* **Hybrid Precision**: FP16/FP32 auto on GPU, safe fallback on CPU.
-* **Versatile**: Python & CLI—your workflow, your way.
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| **GPU** | GTX 1060 (6GB) | RTX 3080+ (10GB+) |
+| **RAM** | 8GB | 16GB+ |
+| **Storage** | 5GB | 10GB+ |
 
 ---
 
-## 🧩 Architecture Highlights
+## 🔬 Advanced Usage
 
-* **`ResnetEmbeddingsExtractor`**: Feature extraction from any ResNet backbone, optimized for GPU/CPU.
-* **`MahalanobisDistance`**: Fast, ONNX-exportable anomaly scoring module.
-* **`AnomaVision`**: Fit, feature extraction, scoring, ONNX export, and inference—all-in-one.
-* **`export_onnx`**: Seamless export for fast, portable inference.
+### Custom Datasets
 
----
+```python
+# For MVTec AD format
+dataset = anodet.MVTecDataset("path/to/mvtec", "bottle", is_train=True)
 
-## 🔗 References & Acknowledgments
+# For custom folder structure
+dataset = anodet.AnodetDataset("path/to/custom/good_images")
+```
 
-* **AnomaVision Paper**: [arxiv.org/abs/2011.08785](https://arxiv.org/abs/2011.08785)
-* **TorchVision**: [pytorch.org/vision](https://pytorch.org/vision/)
-* **Example Data**: [MVTec AD](https://www.mvtec.com/company/research/datasets/mvtec-ad)
-* **Original Codebase**: [OpenAOI/anodet](https://github.com/OpenAOI/anodet)
+### Memory-Efficient Evaluation
 
-*Special thanks to all original authors and contributors for their outstanding work.*
+```python
+# For large datasets
+results = model.evaluate_memory_efficient(test_dataloader)
+images, targets, masks, scores, maps = results
+```
+
+### Advanced Visualization
+
+```python
+# Save visualizations
+python detect.py \
+  --save_visualizations \
+  --viz_output_dir "./results/" \
+  --viz_alpha 0.7 \
+  --viz_color "255,0,128"
+```
 
 ---
 
 ## 🤝 Contributing
 
-1. **Fork** this repo
-2. **Create** a feature branch
-3. **Commit & push** your changes
-4. **Open a Pull Request**—collaboration welcome!
+We welcome contributions! Here's how to get started:
+
+1. **Fork** the repository
+2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
+3. **Commit** your changes: `git commit -m 'Add amazing feature'`
+4. **Push** to the branch: `git push origin feature/amazing-feature`
+5. **Open** a Pull Request
+
+### Development Setup
+```bash
+git clone https://github.com/DeepKnowledge1/AnomaVision.git
+cd AnomaVision
+poetry install --dev
+pre-commit install
+```
 
 ---
 
-## 📬 Contact
+## 📚 Citation & References
 
-Questions? Feature requests?
-**Deep Knowledge** – [Deepp.Knowledge@gmail.com](mailto:Deepp.Knowledge@gmail.com)
+If you use AnomaVision in your research, please cite:
+
+```bibtex
+@misc{anomavision2024,
+  title={AnomaVision: Production-Ready Visual Anomaly Detection},
+  author={Deep Knowledge},
+  year={2024},
+  url={https://github.com/DeepKnowledge1/AnomaVision}
+}
+```
+
+### Original PaDiM Paper
+```bibtex
+@article{defard2021padim,
+  title={PaDiM: a Patch Distribution Modeling Framework for Anomaly Detection and Localization},
+  author={Defard, Thomas and Setkov, Aleksandr and Loesch, Angelique and Audigier, Romaric},
+  journal={arXiv preprint arXiv:2011.08785},
+  year={2021}
+}
+```
 
 ---
 
-⭐ **If this project helps you, please star the repo and share it!** ⭐
+## 📞 Support & Community
+
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/DeepKnowledge1/AnomaVision/issues)
+- 💡 **Feature Requests**: [GitHub Discussions](https://github.com/DeepKnowledge1/AnomaVision/discussions)
+- 📧 **Email**: [Deepp.Knowledge@gmail.com](mailto:Deepp.Knowledge@gmail.com)
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Original Implementation**: [OpenAOI/anodet](https://github.com/OpenAOI/anodet)
+- **PaDiM Algorithm**: Thomas Defard et al.
+- **PyTorch Team**: For the amazing deep learning framework
+- **Community**: All contributors and users who make this project better
+
+---
+
+<div align="center">
+
+**⭐ Star this repo if it helped you! ⭐**
+
+Made with ❤️ by [Deep Knowledge](https://github.com/DeepKnowledge1)
+
+</div>
