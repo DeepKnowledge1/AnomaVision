@@ -79,7 +79,7 @@ def main(args):
     )
 
     # Train model
-    # padim.fit(dataloader)
+    padim.fit(dataloader)
 
 
     torch.save(padim, os.path.join(MODEL_DATA_PATH, args.output_model))
