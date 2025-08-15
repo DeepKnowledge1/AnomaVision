@@ -63,7 +63,7 @@ def main(args):
     os.makedirs(MODEL_DATA_PATH, exist_ok=True)
 
     # Load dataset
-    dataset = anodet.AnodetDataset(os.path.join(DATASET_PATH, "train/good"))
+    dataset = anodet.AnodetDataset(os.path.join(DATASET_PATH, "train/good"))            
     dataloader = DataLoader(dataset, batch_size=args.batch_size)
     print("Number of images in dataset:", len(dataloader.dataset))
 
@@ -85,7 +85,11 @@ def main(args):
     torch.save(padim, os.path.join(MODEL_DATA_PATH, args.output_model))
     
     # export_onnx(padim, os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))    
-    export_onnx(_ExportWrapper(padim), os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))    
+    batch, _, _, _ = dataset[0]
+    
+    input_shape=(3, batch.shape[0],batch.shape[1],batch.shape[2])
+    
+    export_onnx(_ExportWrapper(padim),input_shape=input_shape,filepath= os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))    
 if __name__ == "__main__":
         args = parse_args()
         main(args)
