@@ -10,8 +10,6 @@ import argparse
 from anodet.inference.model_wrapper import ModelWrapper
 from anodet.inference.modelType import ModelType
 
-THRESH = 13
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a PaDiM model for anomaly detection.")
     parser.add_argument('--dataset_path', default=r"D:\01-DATA\dum\c2", type=str, required=False,
@@ -20,9 +18,13 @@ def parse_args():
                         help='Directory to save model distributions and ONNX file.')
     parser.add_argument('--model', type=str, default='padim_model.onnx',
                         help='Model file (.pt for PyTorch, .onnx for ONNX)')
-    parser.add_argument('--batch_size', type=int, default=1,
+    parser.add_argument('--batch_size', type=int, default=3,
                         help='batch size')
-    parser.add_argument('--num_workers', type=int, default=4,
+
+    parser.add_argument('--thresh', type=int, default=13,
+                        help='thresh')
+      
+    parser.add_argument('--num_workers', type=int, default=1,
                         help='Number of worker processes for data loading.')
     parser.add_argument('--pin_memory', action='store_true',
                         help='Use pinned memory for faster GPU transfers.')
@@ -57,8 +59,8 @@ def main(args):
     for batch_idx, (batch, images, _, _) in enumerate(test_dataloader):
         image_scores, score_maps = model.predict(batch)
         
-        score_map_classifications = anodet.classification(score_maps, THRESH)
-        image_classifications = anodet.classification(image_scores, THRESH)
+        score_map_classifications = anodet.classification(score_maps, args.thresh)
+        image_classifications = anodet.classification(image_scores, args.thresh)
         
         print(f"Batch {batch_idx}: Scores: {image_scores}, Classifications: {image_classifications}")
         
