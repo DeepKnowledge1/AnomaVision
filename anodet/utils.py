@@ -8,6 +8,8 @@ from typing import List, Optional, Callable, Union
 from torchvision import transforms as T
 from PIL import Image
 import os
+import logging
+from datetime import datetime
 
 
 standard_image_transform = T.Compose([T.Resize(224),
@@ -207,3 +209,27 @@ def split_tensor_and_run_function(
     output_tensor = torch.cat(tensors_list)
 
     return output_tensor
+
+
+def setup_logging(log_level='INFO'):
+    """Setup logging configuration"""
+    # Create logs directory if it doesn't exist
+    os.makedirs('logs', exist_ok=True)
+    
+    # Create timestamp for log filename
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_filename = f'logs/detect_{timestamp}.log'
+    
+    # Configure logging
+    logging.basicConfig(
+        level=getattr(logging, log_level.upper()),
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_filename),
+            logging.StreamHandler()  # Also log to console
+        ]
+    )
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Logging initialized. Log file: {log_filename}")
+    return logger
