@@ -33,10 +33,10 @@ class TorchBackend(InferenceBackend):
 
         try:
             self.model = torch.jit.load(model_path, map_location=self.device)
-            logger.debug("Loaded TorchScript model from %s", model_path)
+            logger.info("Loaded TorchScript model from %s", model_path)
         except Exception:
             self.model = torch.load(model_path, map_location=self.device)
-            logger.debug("Loaded raw PyTorch model from %s", model_path)
+            logger.info("Loaded raw PyTorch model from %s", model_path)
 
         self.model.eval()
         for p in self.model.parameters():
@@ -61,10 +61,13 @@ class TorchBackend(InferenceBackend):
         )
 
         with torch.inference_mode(), autocast_ctx:
-            if hasattr(self.model, "forward"):
-                scores, maps = self.model.forward(batch)
-            else:
-                scores, maps = self.model.predict(batch)
+            
+            # calling self.model.forward(batch) and self.model.predict(batch) are giving different results
+            
+            # if hasattr(self.model, "forward"):
+            #     scores, maps = self.model.forward(batch)
+            # else:
+            scores, maps = self.model.predict(batch)
 
         scores_np = scores.cpu().numpy()
         maps_np = maps.cpu().numpy()
