@@ -587,8 +587,8 @@ git push origin feature/amazing-new-feature
 
 ### 📚 Resources
 - 📖 **Full Documentation**: [docs.anomavision.ai](https://docs.anomavision.ai) *(coming soon)*
-- 🎓 **Tutorials**: [YouTube Channel](https://youtube.com/@anomavision) *(coming soon)*
-- 📝 **Blog**: [Medium Publication](https://medium.com/@anomavision) *(coming soon)*
+- 🎓 **Tutorials**: [YouTube Channel](https://www.youtube.com/@DeepKnowledgeSpace) 
+- 📝 **Blog**: [Medium Publication](https://medium.com/@deepp.knowledge)
 
 ---
 
