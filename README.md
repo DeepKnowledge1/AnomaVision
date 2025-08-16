@@ -12,7 +12,7 @@
 <!-- <img src="notebooks/example_images/AnomaVision.png" alt="bg" width="80%" style="border-radius: 15px;"/></a> -->
 <!-- <img src="notebooks/example_images/AnomaVision_banner.png" alt="bg" width="100%" style="border-radius: 15px;"/> -->
 
-<img src="notebooks/example_images/banner.png" alt="bg" width="80%" style="border-radius: 15px;"/>
+<img src="notebooks/example_images/banner.png" alt="bg" width="100%" style="border-radius: 15px;"/>
 
 **🔥 Production-ready anomaly detection powered by state-of-the-art PaDiM algorithm**  
 *Deploy anywhere, run everywhere - from edge devices to cloud infrastructure*
