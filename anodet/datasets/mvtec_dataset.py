@@ -3,7 +3,8 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from ..utils import standard_image_transform, standard_mask_transform
-
+import numpy as np
+import cv2 as cv
 
 # URL =
 # 'ftp://guest:GU.205dldo@ftp.softronics.ch/mvtec_anomaly_detection/mvtec_anomaly_detection.tar.xz'
@@ -30,18 +31,20 @@ class MVTecDataset(Dataset):
         self.mask_transforms = mask_transforms
 
     def __getitem__(self, idx):
-        x, y, mask = self.x[idx], self.y[idx], self.mask[idx]
+        batch, image_classification, mask = self.x[idx], self.y[idx], self.mask[idx]
 
-        x = Image.open(x).convert('RGB')
-        x = self.image_transforms(x)
+        batch = Image.open(batch).convert('RGB')
+        image = np.array(batch)
+        image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+        batch = self.image_transforms(batch)
 
-        if y == 0:
-            mask = torch.zeros([1, x.shape[1], x.shape[2]])
+        if image_classification == 0:
+            mask = torch.zeros([1, batch.shape[1], batch.shape[2]])
         else:
             mask = Image.open(mask)
             mask = self.mask_transforms(mask)
 
-        return x, y, mask
+        return    batch,image, image_classification, mask
 
     def __len__(self):
         return len(self.x)
