@@ -6,26 +6,29 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import argparse
 import time
-import logging
 from datetime import datetime
 
-from anodet.inference.model_wrapper import ModelWrapper
+# Updated imports to use the inference modules
+from anodet.inference.model.wrapper import ModelWrapper
 from anodet.inference.modelType import ModelType
-from anodet.utils import setup_logging
+from anodet.utils import setup_logging, get_logger
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a PaDiM model for anomaly detection.")
+    parser = argparse.ArgumentParser(description="Run anomaly detection inference using trained models.")
     parser.add_argument('--dataset_path', default=r"D:\01-DATA\dum\c2", type=str, required=False,
-                        help='Path to the dataset folder containing "train/good" images.')
+                        help='Path to the dataset folder containing test images.')
     parser.add_argument('--model_data_path', type=str, default='./distributions/',
-                        help='Directory to save model distributions and ONNX file.')
-    parser.add_argument('--model', type=str, default='padim_model.onnx',
-                        help='Model file (.pt for PyTorch, .onnx for ONNX)')
+                        help='Directory containing model files.')
+    parser.add_argument('--model', type=str, default='padim_model.pt',
+                        help='Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)')
+    parser.add_argument('--device', type=str, default='auto',
+                        choices=['auto', 'cpu', 'cuda'],
+                        help='Device to run inference on (auto will choose cuda if available)')
     parser.add_argument('--batch_size', type=int, default=3,
-                        help='batch size')
-    parser.add_argument('--thresh', type=int, default=13,
-                        help='thresh')
+                        help='Batch size for inference')
+    parser.add_argument('--thresh', type=float, default=13.0,
+                        help='Threshold for anomaly classification')
     parser.add_argument('--num_workers', type=int, default=1,
                         help='Number of worker processes for data loading.')
     parser.add_argument('--pin_memory', action='store_true',
@@ -68,9 +71,19 @@ def save_visualization(images, filename, output_dir):
     else:  # Single image
         plt.imsave(filepath, images)
 
+def determine_device(device_arg):
+    """Determine the best device to use for inference"""
+    if device_arg == 'auto':
+        if torch.cuda.is_available():
+            return 'cuda'
+        else:
+            return 'cpu'
+    return device_arg
+
 def main(args):
-    # Setup logging
-    logger = setup_logging(args.log_level)
+    # Setup logging first
+    setup_logging(args.log_level)
+    logger = get_logger(__name__)
     
     # Parse visualization color
     try:
@@ -94,33 +107,43 @@ def main(args):
         'total': 0
     }
     
-    logger.info("Starting anomaly detection process")
+    logger.info("Starting anomaly detection inference process")
     logger.info(f"Arguments: {vars(args)}")
     
     # Setup
     setup_start = time.time()
     DATASET_PATH = os.path.realpath(args.dataset_path)
     MODEL_DATA_PATH = os.path.realpath(args.model_data_path)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # Determine device
+    device_str = determine_device(args.device)
+    logger.info(f"Selected device: {device_str}")
     
     logger.info(f"Dataset path: {DATASET_PATH}")
     logger.info(f"Model data path: {MODEL_DATA_PATH}")
-    logger.info(f"Using device: {device}")
     
-    if torch.cuda.is_available():
+    if device_str == 'cuda' and torch.cuda.is_available():
         torch.backends.cudnn.benchmark = True
         logger.info("CUDA available, enabled cuDNN benchmark")
+        logger.info(f"CUDA device: {torch.cuda.get_device_name()}")
+        logger.info(f"CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     
     timing_stats['setup'] = time.time() - setup_start
     
-    # Load model
+    # Load model using the inference wrapper
     model_load_start = time.time()
     model_path = os.path.join(MODEL_DATA_PATH, args.model)
     logger.info(f"Loading model from: {model_path}")
     
+    if not os.path.exists(model_path):
+        logger.error(f"Model file not found: {model_path}")
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+    
     try:
-        model = ModelWrapper(model_path, device)
-        logger.info(f"Model loaded successfully. Type: {model.model_type.value.upper()}")
+        # Use the inference ModelWrapper
+        model = ModelWrapper(model_path, device_str)
+        model_type = ModelType.from_extension(model_path)
+        logger.info(f"Model loaded successfully. Type: {model_type.value.upper()}")
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
         raise
@@ -142,7 +165,7 @@ def main(args):
             test_dataset, 
             batch_size=args.batch_size,
             num_workers=args.num_workers,
-            pin_memory=args.pin_memory and torch.cuda.is_available() and model.model_type == ModelType.PYTORCH,
+            pin_memory=args.pin_memory and device_str == 'cuda',
             persistent_workers=args.num_workers > 0
         )
         logger.info(f"Dataset created successfully. Total images: {len(test_dataset)}")
@@ -153,7 +176,7 @@ def main(args):
     
     timing_stats['data_loading'] = time.time() - data_load_start
     
-    logger.info(f"Processing {len(test_dataset)} images using {model.model_type.value.upper()}")
+    logger.info(f"Processing {len(test_dataset)} images using {model_type.value.upper()}")
     
     # Process batches
     total_inference_time = 0
@@ -161,111 +184,145 @@ def main(args):
     total_postprocessing_time = 0
     total_visualization_time = 0
     
-    for batch_idx, (batch, images, _, _) in enumerate(test_dataloader):
-        batch_start_time = time.time()
-        logger.debug(f"Processing batch {batch_idx + 1}/{len(test_dataloader)}")
-        
-        # Preprocessing timing
-        if args.detailed_timing:
-            preprocess_start = time.time()
-            # Actual preprocessing happens inside model.predict
-            preprocess_time = 0  # Will be updated if we can measure it separately
-        
-        # Inference
-        inference_start = time.time()
-        try:
-            image_scores, score_maps = model.predict(batch)
-            inference_time = time.time() - inference_start
-            total_inference_time += inference_time
+    try:
+        for batch_idx, (batch, images, _, _) in enumerate(test_dataloader):
+            batch_start_time = time.time()
+            logger.debug(f"Processing batch {batch_idx + 1}/{len(test_dataloader)}")
             
-            logger.debug(f"Batch {batch_idx}: Inference completed in {inference_time:.4f}s")
-        except Exception as e:
-            logger.error(f"Inference failed for batch {batch_idx}: {e}")
-            continue
-        
-        # Postprocessing
-        postprocess_start = time.time()
-        try:
-            score_map_classifications = anodet.classification(score_maps, args.thresh)
-            image_classifications = anodet.classification(image_scores, args.thresh)
-            postprocess_time = time.time() - postprocess_start
-            total_postprocessing_time += postprocess_time
+            # Log batch info
+            if isinstance(batch, torch.Tensor):
+                logger.debug(f"Batch shape: {batch.shape}, dtype: {batch.dtype}")
+            else:
+                logger.debug(f"Batch type: {type(batch)}")
             
-            logger.info(f"Batch {batch_idx + 1}: Scores: {image_scores.tolist()}, Classifications: {image_classifications.tolist()}")
-            logger.debug(f"Postprocessing completed in {postprocess_time:.4f}s")
-        except Exception as e:
-            logger.error(f"Postprocessing failed for batch {batch_idx}: {e}")
-            continue
-        
-        # Visualization
-        if args.enable_visualization:
-            viz_start = time.time()
+            # Inference using the inference wrapper
+            inference_start = time.time()
             try:
-                test_images = np.array(images)
-                boundary_images = anodet.visualization.framed_boundary_images(
-                    test_images, score_map_classifications, image_classifications, 
-                    padding=args.viz_padding
-                )
-                heatmap_images = anodet.visualization.heatmap_images(
-                    test_images, score_maps, alpha=args.viz_alpha
-                )
-                highlighted_images = anodet.visualization.highlighted_images(
-                    [images[i] for i in range(len(images))], 
-                    score_map_classifications, 
-                    color=viz_color
-                )
+                # The ModelWrapper.predict() returns (scores, maps) as numpy arrays
+                image_scores, score_maps = model.predict(batch)
+                inference_time = time.time() - inference_start
+                total_inference_time += inference_time
                 
-                viz_time = time.time() - viz_start
-                total_visualization_time += viz_time
-                logger.debug(f"Visualization processing completed in {viz_time:.4f}s")
+                logger.debug(f"Batch {batch_idx}: Inference completed in {inference_time:.4f}s")
+                logger.debug(f"Image scores shape: {image_scores.shape}, Score maps shape: {score_maps.shape}")
                 
-                # Save visualizations if requested
-                if args.save_visualizations:
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    save_visualization(boundary_images, f"boundary_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
-                    save_visualization(heatmap_images, f"heatmap_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
-                    save_visualization(highlighted_images, f"highlighted_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
-                    logger.debug(f"Visualizations saved for batch {batch_idx}")
-                
-                # Show first batch only (if requested)
-                if batch_idx == 0 and (not args.show_first_batch_only or batch_idx == 0):
-                    try:
-                        fig, axs = plt.subplots(1, 4, figsize=(16, 8))
-                        fig.suptitle(f'Anomaly Detection Results - Batch {batch_idx + 1}', fontsize=14)
-                        
-                        axs[0].imshow(images[0])
-                        axs[0].set_title('Original Image')
-                        axs[0].axis('off')
-                        
-                        axs[1].imshow(boundary_images[0])
-                        axs[1].set_title('Boundary Detection')
-                        axs[1].axis('off')
-                        
-                        axs[2].imshow(heatmap_images[0])
-                        axs[2].set_title('Anomaly Heatmap')
-                        axs[2].axis('off')
-                        
-                        axs[3].imshow(highlighted_images[0])
-                        axs[3].set_title('Highlighted Anomalies')
-                        axs[3].axis('off')
-                        
-                        plt.tight_layout()
-                        
-                        if args.save_visualizations:
-                            combined_filepath = os.path.join(args.viz_output_dir, f"combined_batch_{batch_idx}_{timestamp}.png")
-                            plt.savefig(combined_filepath, dpi=300, bbox_inches='tight')
-                            logger.info(f"Combined visualization saved: {combined_filepath}")
-                        
-                        plt.show()
-                        
-                    except Exception as e:
-                        logger.warning(f"Failed to display visualization for batch {batch_idx}: {e}")
-                        
             except Exception as e:
-                logger.error(f"Visualization failed for batch {batch_idx}: {e}")
-        
-        batch_time = time.time() - batch_start_time
-        logger.debug(f"Batch {batch_idx + 1} completed in {batch_time:.4f}s")
+                logger.error(f"Inference failed for batch {batch_idx}: {e}")
+                continue
+            
+            # Postprocessing
+            postprocess_start = time.time()
+            try:
+                # # Convert to torch tensors for classification if needed
+                # if isinstance(image_scores, np.ndarray):
+                #     image_scores_tensor = torch.from_numpy(image_scores)
+                #     score_maps_tensor = torch.from_numpy(score_maps)
+                # else:
+                #     image_scores_tensor = image_scores
+                #     score_maps_tensor = score_maps
+                
+                # Apply threshold classification
+                score_map_classifications = anodet.classification(score_maps, args.thresh)
+                image_classifications = anodet.classification(image_scores, args.thresh)
+                
+                postprocess_time = time.time() - postprocess_start
+                total_postprocessing_time += postprocess_time
+                
+                # Convert back to numpy for logging if needed
+                if isinstance(image_scores, np.ndarray):
+                    image_scores_list = image_scores.tolist()
+                    image_classifications_list = image_classifications.numpy().tolist() if hasattr(image_classifications, 'numpy') else image_classifications.tolist()
+                else:
+                    image_scores_list = image_scores.tolist()
+                    image_classifications_list = image_classifications.tolist()
+                
+                logger.info(f"Batch {batch_idx + 1}: Scores: {image_scores_list}, Classifications: {image_classifications_list}")
+                logger.debug(f"Postprocessing completed in {postprocess_time:.4f}s")
+                
+            except Exception as e:
+                logger.error(f"Postprocessing failed for batch {batch_idx}: {e}")
+                continue
+            
+            # Visualization
+            if args.enable_visualization:
+                viz_start = time.time()
+                try:
+                    test_images = np.array(images)
+                    
+                    # Convert classifications to numpy if needed for visualization
+                    score_map_classifications_np = score_map_classifications.numpy() if hasattr(score_map_classifications, 'numpy') else score_map_classifications
+                    image_classifications_np = image_classifications.numpy() if hasattr(image_classifications, 'numpy') else image_classifications
+                    score_maps_np = score_maps if isinstance(score_maps, np.ndarray) else score_maps.numpy()
+                    
+                    boundary_images = anodet.visualization.framed_boundary_images(
+                        test_images, score_map_classifications_np, image_classifications_np, 
+                        padding=args.viz_padding
+                    )
+                    heatmap_images = anodet.visualization.heatmap_images(
+                        test_images, score_maps_np, alpha=args.viz_alpha
+                    )
+                    highlighted_images = anodet.visualization.highlighted_images(
+                        [images[i] for i in range(len(images))], 
+                        score_map_classifications_np, 
+                        color=viz_color
+                    )
+                    
+                    viz_time = time.time() - viz_start
+                    total_visualization_time += viz_time
+                    logger.debug(f"Visualization processing completed in {viz_time:.4f}s")
+                    
+                    # Save visualizations if requested
+                    if args.save_visualizations:
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        save_visualization(boundary_images, f"boundary_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
+                        save_visualization(heatmap_images, f"heatmap_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
+                        save_visualization(highlighted_images, f"highlighted_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
+                        logger.debug(f"Visualizations saved for batch {batch_idx}")
+                    
+                    # Show first batch only (if requested)
+                    if batch_idx == 0 and (not args.show_first_batch_only or batch_idx == 0):
+                        try:
+                            fig, axs = plt.subplots(1, 4, figsize=(16, 8))
+                            fig.suptitle(f'Anomaly Detection Results - Batch {batch_idx + 1}', fontsize=14)
+                            
+                            axs[0].imshow(images[0])
+                            axs[0].set_title('Original Image')
+                            axs[0].axis('off')
+                            
+                            axs[1].imshow(boundary_images[0])
+                            axs[1].set_title('Boundary Detection')
+                            axs[1].axis('off')
+                            
+                            axs[2].imshow(heatmap_images[0])
+                            axs[2].set_title('Anomaly Heatmap')
+                            axs[2].axis('off')
+                            
+                            axs[3].imshow(highlighted_images[0])
+                            axs[3].set_title('Highlighted Anomalies')
+                            axs[3].axis('off')
+                            
+                            plt.tight_layout()
+                            
+                            if args.save_visualizations:
+                                combined_filepath = os.path.join(args.viz_output_dir, f"combined_batch_{batch_idx}_{timestamp}.png")
+                                plt.savefig(combined_filepath, dpi=300, bbox_inches='tight')
+                                logger.info(f"Combined visualization saved: {combined_filepath}")
+                            
+                            plt.show()
+                            
+                        except Exception as e:
+                            logger.warning(f"Failed to display visualization for batch {batch_idx}: {e}")
+                            
+                except Exception as e:
+                    logger.error(f"Visualization failed for batch {batch_idx}: {e}")
+            
+            batch_time = time.time() - batch_start_time
+            logger.debug(f"Batch {batch_idx + 1} completed in {batch_time:.4f}s")
+            
+    finally:
+        # Always close the model to free resources
+        logger.info("Closing model and freeing resources")
+        model.close()
     
     # Calculate final timing statistics
     total_time = time.time() - total_start_time
@@ -299,13 +356,15 @@ def main(args):
         total_fps = total_images / timing_stats['total']
         logger.info(f"Overall processing FPS: {total_fps:.2f}")
     
-    logger.info("Anomaly detection process completed successfully")
+    logger.info("Anomaly detection inference process completed successfully")
 
 if __name__ == "__main__":
     args = parse_args()
     try:
         main(args)
     except KeyboardInterrupt:
-        logging.getLogger(__name__).info("Process interrupted by user")
+        logger = get_logger(__name__)
+        logger.info("Process interrupted by user")
     except Exception as e:
-        logging.getLogger(__name__).error(f"Process failed with error: {e}", exc_info=True)
+        logger = get_logger(__name__)
+        logger.error(f"Process failed with error: {e}", exc_info=True)
