@@ -9,6 +9,8 @@
 [![TensorRT Ready](https://img.shields.io/badge/TensorRT-Coming%20Soon-yellow.svg)](https://developer.nvidia.com/tensorrt)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](LICENSE)
 
+<img src="notebooks/example_images/AnomaVision.png" alt="bg" width="80%" /></a>
+
 **🔥 Production-ready anomaly detection powered by state-of-the-art PaDiM algorithm**  
 *Deploy anywhere, run everywhere - from edge devices to cloud infrastructure*
 
