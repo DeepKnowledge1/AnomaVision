@@ -43,7 +43,7 @@ class OnnxBackend(InferenceBackend):
         else:
             providers = ["CPUExecutionProvider"]
 
-        logger.debug("Initializing OnnxRuntime with providers=%s", providers)
+        logger.info("Initializing OnnxRuntime with providers=%s", providers)
 
         self.session = ort.InferenceSession(
             model_path, sess_options=sess_options, providers=providers

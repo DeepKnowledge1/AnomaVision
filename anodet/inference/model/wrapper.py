@@ -25,11 +25,15 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
     """
     logger.info(f"Creating backend for model: {model_path}")
     model_type = ModelType.from_extension(model_path)
+    logger.info(f"Detected model type: {model_type}")
 
     if model_type == ModelType.ONNX:
+        logger.info("Loading ONNX backend...")
         from .backends.onnx_backend import OnnxBackend
         logger.debug("Selected ONNX backend for %s", model_path)
-        return OnnxBackend(model_path, device)
+        backend = OnnxBackend(model_path, device)
+        logger.info("ONNX backend created successfully")
+        return backend
 
     if model_type == ModelType.PYTORCH:
         from .backends.torch_backend import TorchBackend

@@ -219,7 +219,7 @@ _log_filename = None
 def setup_logging(log_level='INFO'):
     """
     Setup logging configuration - call once at application startup.
-    All subsequent calls will return a logger without reconfiguring.
+    Returns the root logger.
     """
     global _logging_configured, _log_filename
     
@@ -232,10 +232,14 @@ def setup_logging(log_level='INFO'):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         _log_filename = f'logs/detect_{timestamp}.log'
         
+        # Clear any existing handlers on the root logger
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        
         # Configure root logger (this affects all loggers)
         logging.basicConfig(
             level=getattr(logging, log_level.upper()),
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Added %(name)s
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.FileHandler(_log_filename),
                 logging.StreamHandler()  # Also log to console
@@ -246,11 +250,10 @@ def setup_logging(log_level='INFO'):
         _logging_configured = True
         
         # Log the initialization message
-        root_logger = logging.getLogger(__name__)
-        root_logger.info(f"Logging initialized. Log file: {_log_filename}")
+        init_logger = logging.getLogger(__name__)
+        init_logger.info(f"Logging initialized. Log file: {_log_filename}")
     
-    # Return a logger for the calling module
-    # This will automatically use the configured handlers
+    # Return the root logger configured with the specified level
     return logging.getLogger()
 
 def get_logger(name=None):

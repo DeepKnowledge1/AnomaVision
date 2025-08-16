@@ -1,22 +1,18 @@
 from anodet.inference.model.wrapper import ModelWrapper
 import numpy as np
 
-from anodet.utils import setup_logging
+from anodet.utils import setup_logging, get_logger
 
-from anodet.utils import get_logger
+# Setup logging first - this configures the entire logging system
+setup_logging("INFO")
 
-# logger = get_logger(__name__)
-
-logger = setup_logging("INFO")
-
-
+# Get logger for this module
 logger = get_logger(__name__)
 
 logger.info("Starting test module...")
 
-
 # Path to your model (e.g., ONNX or PyTorch)
-model_path = "distributions/padim_model.onnx"
+model_path = "distributions/padim_model.pt"
 
 # Create the wrapper. The backend is selected automatically based on the extension.
 wrapper = ModelWrapper(model_path, device="cpu")
