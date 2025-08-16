@@ -211,25 +211,60 @@ def split_tensor_and_run_function(
     return output_tensor
 
 
+
+# Global flag to ensure logging is configured only once
+_logging_configured = False
+_log_filename = None
+
 def setup_logging(log_level='INFO'):
-    """Setup logging configuration"""
-    # Create logs directory if it doesn't exist
-    os.makedirs('logs', exist_ok=True)
+    """
+    Setup logging configuration - call once at application startup.
+    Returns the root logger.
+    """
+    global _logging_configured, _log_filename
     
-    # Create timestamp for log filename
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_filename = f'logs/detect_{timestamp}.log'
+    # Only configure logging once
+    if not _logging_configured:
+        # Create logs directory if it doesn't exist
+        os.makedirs('logs', exist_ok=True)
+        
+        # Create timestamp for log filename (only once)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        _log_filename = f'logs/detect_{timestamp}.log'
+        
+        # Clear any existing handlers on the root logger
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        
+        # Configure root logger (this affects all loggers)
+        logging.basicConfig(
+            level=getattr(logging, log_level.upper()),
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(_log_filename),
+                logging.StreamHandler()  # Also log to console
+            ],
+            force=True  # Override any existing configuration
+        )
+        
+        _logging_configured = True
+        
+        # Log the initialization message
+        init_logger = logging.getLogger(__name__)
+        init_logger.info(f"Logging initialized. Log file: {_log_filename}")
     
-    # Configure logging
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_filename),
-            logging.StreamHandler()  # Also log to console
-        ]
-    )
+    # Return the root logger configured with the specified level
+    return logging.getLogger()
+
+def get_logger(name=None):
+    """
+    Get a logger for a specific module.
+    Call setup_logging() first to configure the logging system.
     
-    logger = logging.getLogger(__name__)
-    logger.info(f"Logging initialized. Log file: {log_filename}")
-    return logger
+    Args:
+        name: Logger name (use __name__ from calling module)
+    """
+    if not _logging_configured:
+        setup_logging()  # Auto-configure if not done yet
+    
+    return logging.getLogger(name)
