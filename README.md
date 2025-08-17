@@ -6,16 +6,24 @@
 [![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0+-red.svg)](https://pytorch.org)
 [![CUDA 11.7+](https://img.shields.io/badge/CUDA-11.7+-green.svg)](https://developer.nvidia.com/cuda-toolkit)
 [![ONNX Ready](https://img.shields.io/badge/ONNX-Export%20Ready-orange.svg)](https://onnx.ai/)
+[![OpenVINO Ready](https://img.shields.io/badge/OpenVINO-Ready-blue.svg)](https://docs.openvino.ai/)
 [![TensorRT Ready](https://img.shields.io/badge/TensorRT-Coming%20Soon-yellow.svg)](https://developer.nvidia.com/tensorrt)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](LICENSE)
 
-<!-- <img src="notebooks/example_images/AnomaVision.png" alt="bg" width="80%" style="border-radius: 15px;"/></a> -->
-<!-- <img src="notebooks/example_images/AnomaVision_banner.png" alt="bg" width="100%" style="border-radius: 15px;"/> -->
 
-<img src="notebooks/example_images/banner.png" alt="bg" width="100%" style="border-radius: 15px;"/>
+<img src="notebooks/example_images/banner.png" alt="bg" width="85%" style="border-radius: 15px;"/>
 
 **🔥 Production-ready anomaly detection powered by state-of-the-art PaDiM algorithm**  
 *Deploy anywhere, run everywhere - from edge devices to cloud infrastructure*
+
+### 🚀 Supported Export Formats
+
+| Format  | Status | Use Case |
+|--------|--------|----------|
+| **PyTorch**  | ✅ Ready | Development & Research |
+| **ONNX**  | ✅ Ready | Cross-platform Deployment |
+| **OpenVINO**  | ✅ Ready | Intel Hardware Optimization |
+| **TensorRT**  | 🚧 Coming Soon | NVIDIA GPU Acceleration |
 
 [⚡ Quick Start](#-quick-start) • [📚 Documentation](#-complete-api-reference) • [🎯 Examples](#-real-world-examples) • [🔧 Installation](#-installation)
 
@@ -27,7 +35,8 @@
 
 </div>
 
-## ✨ What Makes AnomaVision Special?
+<details open>
+<summary>✨ What Makes AnomaVision Special?</summary>
 
 AnomaVision transforms the cutting-edge **PaDiM (Patch Distribution Modeling)** algorithm into a production-ready powerhouse for visual anomaly detection. Whether you're detecting manufacturing defects, monitoring infrastructure, or ensuring quality control, AnomaVision delivers enterprise-grade performance with research-level accuracy.
 
@@ -44,23 +53,50 @@ AnomaVision transforms the cutting-edge **PaDiM (Patch Distribution Modeling)** 
 
 *\*Coming soon*
 
----
+</details>
 
-## 🚀 Quick Start
+<details open>
+<summary>🔧 Installation</summary>
+
+### 📋 Prerequisites
+- **Python**: 3.9+ 
+- **CUDA**: 11.7+ for GPU acceleration
+- **PyTorch**: 2.0+ (automatically installed)
+
+### 🎯 Method 1: Poetry (Recommended)
+```bash
+git clone https://github.com/DeepKnowledge1/AnomaVision.git
+cd AnomaVision
+poetry install
+poetry shell
+```
+
+### 🎯 Method 2: pip
+```bash
+git clone https://github.com/DeepKnowledge1/AnomaVision.git
+cd AnomaVision
+pip install -r requirements.txt
+```
+
+### ✅ Verify Installation
+```python
+python -c "import anodet; print('🎉 AnomaVision installed successfully!')"
+```
+
+### 🐳 Docker Support
+```bash
+# Build Docker image (coming soon)
+docker build -t anomavision:latest .
+docker run --gpus all -v $(pwd):/workspace anomavision:latest
+```
+
+</details>
+
+<details>
+<summary>🚀 Quick Start</summary>
 
 ### 🏃‍♂️ 30-Second Setup
 
-```bash
-# 📥 Clone and install
-git clone https://github.com/DeepKnowledge1/AnomaVision.git
-cd AnomaVision
-
-# 🐍 Install with Poetry (recommended)
-poetry install && poetry shell
-
-# Or with pip
-pip install -r requirements.txt
-```
 
 ### 🎯 Train Your First Model (2 minutes)
 
@@ -127,45 +163,10 @@ export_onnx(
 print("✅ ONNX model ready for deployment!")
 ```
 
----
+</details>
 
-## 🔧 Installation
-
-### 📋 Prerequisites
-- **Python**: 3.9+ 
-- **CUDA**: 11.7+ for GPU acceleration
-- **PyTorch**: 2.0+ (automatically installed)
-
-### 🎯 Method 1: Poetry (Recommended)
-```bash
-git clone https://github.com/DeepKnowledge1/AnomaVision.git
-cd AnomaVision
-poetry install
-poetry shell
-```
-
-### 🎯 Method 2: pip
-```bash
-git clone https://github.com/DeepKnowledge1/AnomaVision.git
-cd AnomaVision
-pip install -r requirements.txt
-```
-
-### ✅ Verify Installation
-```python
-python -c "import anodet; print('🎉 AnomaVision installed successfully!')"
-```
-
-### 🐳 Docker Support
-```bash
-# Build Docker image (coming soon)
-docker build -t anomavision:latest .
-docker run --gpus all -v $(pwd):/workspace anomavision:latest
-```
-
----
-
-## 🎯 Real-World Examples
+<details>
+<summary>🎯 Real-World Examples</summary>
 
 ### 🖥️ Command Line Interface
 
@@ -248,9 +249,194 @@ pytorch_model.close()
 onnx_model.close()
 ```
 
----
+</details>
 
-# <span style="color: red;">🔧 **Adding New Model Formats**</span>
+<details >
+<summary>⚙️ Configuration Guide</summary>
+
+### 🎯 Training Parameters
+
+| Parameter | Description | Default | Range | Pro Tip |
+|-----------|-------------|---------|-------|---------|
+| `backbone` | Feature extractor | `resnet18` | `resnet18`, `wide_resnet50` | Use ResNet18 for speed, Wide-ResNet50 for accuracy |
+| `layer_indices` | ResNet layers | `[0]` | `[0, 1, 2, 3]` | `[0, 1]` gives best speed/accuracy balance |
+| `feat_dim` | Feature dimensions | `50` | `1-2048` | Higher = more accurate but slower |
+| `batch_size` | Training batch size | `2` | `1-64` | Use largest size that fits in memory |
+
+### 🔍 Inference Parameters
+
+| Parameter | Description | Default | Range | Pro Tip |
+|-----------|-------------|---------|-------|---------|
+| `thresh` | Anomaly threshold | `13` | `1-100` | Start with 13, tune based on your data |
+| `gaussian_blur` | Blur score maps | `True` | `True/False` | Reduces noise in heatmaps |
+| `enable_visualization` | Show results | `False` | `True/False` | Great for debugging and demos |
+
+</details>
+
+<details>
+<summary>📚 Complete API Reference</summary>
+
+### 🧠 Core Classes
+
+#### `anodet.Padim` - The Heart of AnomaVision
+```python
+model = anodet.Padim(
+    backbone='resnet18',              # 'resnet18' | 'wide_resnet50'
+    device=torch.device('cuda'),      # Target device
+    layer_indices=[0, 1, 2],          # ResNet layers [0-3]
+    feat_dim=100,                     # Feature dimensions (1-2048)
+    channel_indices=None              # Optional channel selection
+)
+```
+
+**🔥 Methods:**
+- `fit(dataloader, extractions=1)` - Train on normal images
+- `predict(batch, gaussian_blur=True)` - Detect anomalies
+- `evaluate(dataloader)` - Full evaluation with metrics
+- `evaluate_memory_efficient(dataloader)` - For large datasets
+
+#### `anodet.AnodetDataset` - Smart Data Loading
+```python
+dataset = anodet.AnodetDataset(
+    "path/to/images",               # Image directory
+    transforms=None                 # Optional transformations
+)
+
+# For MVTec format
+mvtec_dataset = anodet.MVTecDataset(
+    "path/to/mvtec", 
+    class_name="bottle", 
+    is_train=True
+)
+```
+
+#### `ModelWrapper` - Universal Model Interface
+```python
+wrapper = ModelWrapper(
+    model_path="model.onnx",        # Any supported format
+    device='cuda'                   # Target device
+)
+
+# 🎯 Unified API for all formats
+scores, maps = wrapper.predict(batch)
+wrapper.close()  # Always clean up!
+```
+
+### 🛠️ Utility Functions
+
+```python
+# 🏷️ Smart classification with optimal thresholds
+predictions = anodet.classification(scores, threshold=15)
+
+# 📦 Export to ONNX with advanced options
+export_onnx(
+    model, 
+    "output.onnx", 
+    input_shape=(1, 3, 224, 224),
+    opset=17,
+    output_names=["scores", "maps"]
+)
+
+# 📊 Comprehensive evaluation metrics
+images, targets, masks, scores, maps = model.evaluate(dataloader)
+```
+
+</details>
+
+<details>
+<summary>🚀 Performance Benchmarks</summary>
+
+### 📊 Speed & Memory Comparison
+
+| Metric | Baseline | AnomaVision | Improvement |
+|--------|----------|-------------|-------------|
+| **🧠 Memory Usage** | 100% | **40-60%** | 🔥 40-60% reduction |
+| **⚡ Training Speed** | 100% | **125-140%** | 🚀 25-40% faster |
+| **🔍 Inference Speed** | 100% | **120-130%** | ⚡ 20-30% faster |
+
+### 🖥️ Hardware Requirements
+
+| Use Case | Minimum | Recommended | Enterprise |
+|----------|---------|-------------|------------|
+| **GPU** | GTX 1060 6GB | RTX 3070 8GB | RTX 4090 24GB |
+| **RAM** | 8GB | 16GB | 32GB+ |
+| **Storage** | 5GB | 10GB | 50GB+ |
+| **Throughput** | 10 FPS | 50 FPS | 200+ FPS |
+
+</details>
+
+<details>
+<summary>🏗️ Architecture Overview</summary>
+
+```
+AnomaVision/
+├── 🧠 anodet/                      # Core AI library
+│   ├── 📄 padim.py                 # PaDiM implementation
+│   ├── 📄 feature_extraction.py    # ResNet feature extraction
+│   ├── 📄 mahalanobis.py          # Distance computation
+│   ├── 📁 datasets/               # Dataset loaders
+│   ├── 📁 visualization/          # Rich visualization tools
+│   ├── 📁 inference/              # Multi-format inference engine
+│   │   ├── 📄 wrapper.py          # Universal model wrapper
+│   │   ├── 📄 modelType.py        # Format detection
+│   │   └── 📁 backends/           # Format-specific backends
+│   │       ├── 📄 base.py         # Backend interface
+│   │       ├── 📄 torch_backend.py    # PyTorch support
+│   │       ├── 📄 onnx_backend.py     # ONNX Runtime support
+│   │       ├── 📄 tensorrt_backend.py # TensorRT (coming soon)
+│   │       └── 📄 openvino_backend.py # OpenVINO (coming soon)
+│   └── 📄 utils.py                # Utility functions
+├── 📄 train.py                    # Training script
+├── 📄 detect.py                   # Inference script
+├── 📄 eval.py                     # Evaluation script
+├── 📄 export.py                   # ONNX export utilities
+└── 📁 notebooks/                  # Interactive examples
+```
+
+</details>
+
+<details>
+<summary>🔬 Advanced Features</summary>
+
+### 💾 Memory-Optimized Evaluation
+```python
+# 🚀 Process massive datasets without OOM
+results = model.evaluate_memory_efficient(huge_dataloader)
+images, targets, masks, scores, maps = results
+
+# 📊 Pre-allocated arrays for maximum efficiency
+# Handles datasets 10x larger than traditional methods
+```
+
+### 🎨 Professional Visualizations
+```python
+# 💫 Create publication-ready visualizations
+python detect.py \
+  --save_visualizations \
+  --viz_output_dir "./results/" \
+  --viz_alpha 0.8 \
+  --viz_color "255,64,128" \
+  --viz_padding 60
+```
+
+### 🔧 Custom Layer Hooks
+```python
+# 🎯 Advanced feature engineering
+def custom_hook(layer_output):
+    # Apply custom transformations
+    return F.normalize(layer_output, p=2, dim=1)
+
+model = anodet.Padim(
+    backbone='resnet18',
+    layer_hook=custom_hook,    # 👈 Custom processing
+    layer_indices=[1, 2, 3]
+)
+```
+
+</details>
+
+<details>
+<summary><span style="color: red;">🔧 Adding New Model Formats</span></summary>
 
 AnomaVision's architecture makes it incredibly easy to add support for new model formats. Here's how to integrate a new backend:
 
@@ -361,194 +547,16 @@ scores, maps = model.predict(batch)
 model.close()
 ```
 
----
+</details>
 
-## 📚 Complete API Reference
-
-### 🧠 Core Classes
-
-#### `anodet.Padim` - The Heart of AnomaVision
-```python
-model = anodet.Padim(
-    backbone='resnet18',              # 'resnet18' | 'wide_resnet50'
-    device=torch.device('cuda'),      # Target device
-    layer_indices=[0, 1, 2],          # ResNet layers [0-3]
-    feat_dim=100,                     # Feature dimensions (1-2048)
-    channel_indices=None              # Optional channel selection
-)
-```
-
-**🔥 Methods:**
-- `fit(dataloader, extractions=1)` - Train on normal images
-- `predict(batch, gaussian_blur=True)` - Detect anomalies
-- `evaluate(dataloader)` - Full evaluation with metrics
-- `evaluate_memory_efficient(dataloader)` - For large datasets
-
-#### `anodet.AnodetDataset` - Smart Data Loading
-```python
-dataset = anodet.AnodetDataset(
-    "path/to/images",               # Image directory
-    transforms=None                 # Optional transformations
-)
-
-# For MVTec format
-mvtec_dataset = anodet.MVTecDataset(
-    "path/to/mvtec", 
-    class_name="bottle", 
-    is_train=True
-)
-```
-
-#### `ModelWrapper` - Universal Model Interface
-```python
-wrapper = ModelWrapper(
-    model_path="model.onnx",        # Any supported format
-    device='cuda'                   # Target device
-)
-
-# 🎯 Unified API for all formats
-scores, maps = wrapper.predict(batch)
-wrapper.close()  # Always clean up!
-```
-
-### 🛠️ Utility Functions
-
-```python
-# 🏷️ Smart classification with optimal thresholds
-predictions = anodet.classification(scores, threshold=15)
-
-# 📦 Export to ONNX with advanced options
-export_onnx(
-    model, 
-    "output.onnx", 
-    input_shape=(1, 3, 224, 224),
-    opset=17,
-    output_names=["scores", "maps"]
-)
-
-# 📊 Comprehensive evaluation metrics
-images, targets, masks, scores, maps = model.evaluate(dataloader)
-```
-
----
-
-## 🏗️ Architecture Overview
-
-```
-AnomaVision/
-├── 🧠 anodet/                      # Core AI library
-│   ├── 📄 padim.py                 # PaDiM implementation
-│   ├── 📄 feature_extraction.py    # ResNet feature extraction
-│   ├── 📄 mahalanobis.py          # Distance computation
-│   ├── 📁 datasets/               # Dataset loaders
-│   ├── 📁 visualization/          # Rich visualization tools
-│   ├── 📁 inference/              # Multi-format inference engine
-│   │   ├── 📄 wrapper.py          # Universal model wrapper
-│   │   ├── 📄 modelType.py        # Format detection
-│   │   └── 📁 backends/           # Format-specific backends
-│   │       ├── 📄 base.py         # Backend interface
-│   │       ├── 📄 torch_backend.py    # PyTorch support
-│   │       ├── 📄 onnx_backend.py     # ONNX Runtime support
-│   │       ├── 📄 tensorrt_backend.py # TensorRT (coming soon)
-│   │       └── 📄 openvino_backend.py # OpenVINO (coming soon)
-│   └── 📄 utils.py                # Utility functions
-├── 📄 train.py                    # Training script
-├── 📄 detect.py                   # Inference script
-├── 📄 eval.py                     # Evaluation script
-├── 📄 export.py                   # ONNX export utilities
-└── 📁 notebooks/                  # Interactive examples
-```
-
----
-
-## ⚙️ Configuration Guide
-
-### 🎯 Training Parameters
-
-| Parameter | Description | Default | Range | Pro Tip |
-|-----------|-------------|---------|-------|---------|
-| `backbone` | Feature extractor | `resnet18` | `resnet18`, `wide_resnet50` | Use ResNet18 for speed, Wide-ResNet50 for accuracy |
-| `layer_indices` | ResNet layers | `[0]` | `[0, 1, 2, 3]` | `[0, 1]` gives best speed/accuracy balance |
-| `feat_dim` | Feature dimensions | `50` | `1-2048` | Higher = more accurate but slower |
-| `batch_size` | Training batch size | `2` | `1-64` | Use largest size that fits in memory |
-
-### 🔍 Inference Parameters
-
-| Parameter | Description | Default | Range | Pro Tip |
-|-----------|-------------|---------|-------|---------|
-| `thresh` | Anomaly threshold | `13` | `1-100` | Start with 13, tune based on your data |
-| `gaussian_blur` | Blur score maps | `True` | `True/False` | Reduces noise in heatmaps |
-| `enable_visualization` | Show results | `False` | `True/False` | Great for debugging and demos |
-
----
-
-## 🚀 Performance Benchmarks
-
-### 📊 Speed & Memory Comparison
-
-| Metric | Baseline | AnomaVision | Improvement |
-|--------|----------|-------------|-------------|
-| **🧠 Memory Usage** | 100% | **40-60%** | 🔥 40-60% reduction |
-| **⚡ Training Speed** | 100% | **125-140%** | 🚀 25-40% faster |
-| **🔍 Inference Speed** | 100% | **120-130%** | ⚡ 20-30% faster |
-
-### 🖥️ Hardware Requirements
-
-| Use Case | Minimum | Recommended | Enterprise |
-|----------|---------|-------------|------------|
-| **GPU** | GTX 1060 6GB | RTX 3070 8GB | RTX 4090 24GB |
-| **RAM** | 8GB | 16GB | 32GB+ |
-| **Storage** | 5GB | 10GB | 50GB+ |
-| **Throughput** | 10 FPS | 50 FPS | 200+ FPS |
-
----
-
-## 🔬 Advanced Features
-
-### 💾 Memory-Optimized Evaluation
-```python
-# 🚀 Process massive datasets without OOM
-results = model.evaluate_memory_efficient(huge_dataloader)
-images, targets, masks, scores, maps = results
-
-# 📊 Pre-allocated arrays for maximum efficiency
-# Handles datasets 10x larger than traditional methods
-```
-
-### 🎨 Professional Visualizations
-```python
-# 💫 Create publication-ready visualizations
-python detect.py \
-  --save_visualizations \
-  --viz_output_dir "./results/" \
-  --viz_alpha 0.8 \
-  --viz_color "255,64,128" \
-  --viz_padding 60
-```
-
-### 🔧 Custom Layer Hooks
-```python
-# 🎯 Advanced feature engineering
-def custom_hook(layer_output):
-    # Apply custom transformations
-    return F.normalize(layer_output, p=2, dim=1)
-
-model = anodet.Padim(
-    backbone='resnet18',
-    layer_hook=custom_hook,    # 👈 Custom processing
-    layer_indices=[1, 2, 3]
-)
-```
-
----
-
-## 🤝 Contributing
+<details>
+<summary>🤝 Contributing</summary>
 
 We love contributions! Here's how to make AnomaVision even better:
 
 ### 🚀 Quick Start for Contributors
 ```bash
-# 📥 Fork and clone
+# 🔥 Fork and clone
 git clone https://github.com/yourusername/AnomaVision.git
 cd AnomaVision
 
@@ -581,8 +589,10 @@ git push origin feature/amazing-new-feature
 - 🧪 Ensure all tests pass
 - 📄 Add type hints where possible
 
+</details>
 
-## 📞 Support & Community
+<details>
+<summary>📞 Support & Community</summary>
 
 ### 🆘 Get Help
 - 🐛 **Bug Reports**: [GitHub Issues](https://github.com/DeepKnowledge1/AnomaVision/issues)
@@ -595,9 +605,10 @@ git push origin feature/amazing-new-feature
 - 🎓 **Tutorials**: [YouTube Channel](https://www.youtube.com/@DeepKnowledgeSpace) 
 - 📝 **Blog**: [Medium Publication](https://medium.com/@deepp.knowledge)
 
----
+</details>
 
-## 📚 Research & Citations
+<details>
+<summary>📚 Research & Citations</summary>
 
 ### 📄 Cite AnomaVision
 If you use AnomaVision in your research, please cite:
@@ -622,9 +633,10 @@ If you use AnomaVision in your research, please cite:
 }
 ```
 
----
+</details>
 
-## 📄 License
+<details>
+<summary>📄 License</summary>
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
@@ -633,9 +645,10 @@ MIT License - Use it, modify it, distribute it!
 ✅ Commercial use    ✅ Modification    ✅ Distribution    ✅ Private use
 ```
 
----
+</details>
 
-## 🙏 Acknowledgments
+<details>
+<summary>🙏 Acknowledgments</summary>
 
 ### 🌟 Special Thanks
 - **🔬 Original Research**: [OpenAOI/anodet](https://github.com/OpenAOI/anodet) - Foundation that inspired this work
@@ -650,21 +663,14 @@ MIT License - Use it, modify it, distribute it!
 - **🎨 Matplotlib** - Visualization
 - **⚡ CUDA** - GPU acceleration
 
+</details>
+
 ---
 
 <div align="center">
 
-## 🌟 Star History
 
-<a href="https://star-history.com/#DeepKnowledge1/AnomaVision&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=DeepKnowledge1/AnomaVision&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=DeepKnowledge1/AnomaVision&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=DeepKnowledge1/AnomaVision&type=Date" />
-  </picture>
-</a>
 
----
 
 ### 🚀 Ready to Transform Your Anomaly Detection?
 
