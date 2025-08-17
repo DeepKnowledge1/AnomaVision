@@ -7,7 +7,8 @@
 [![CUDA 11.7+](https://img.shields.io/badge/CUDA-11.7+-green.svg)](https://developer.nvidia.com/cuda-toolkit)
 [![ONNX Ready](https://img.shields.io/badge/ONNX-Export%20Ready-orange.svg)](https://onnx.ai/)
 [![OpenVINO Ready](https://img.shields.io/badge/OpenVINO-Ready-blue.svg)](https://docs.openvino.ai/)
-[![TensorRT Ready](https://img.shields.io/badge/TensorRT-Coming%20Soon-yellow.svg)](https://developer.nvidia.com/tensorrt)
+[![TorchScript Ready](https://img.shields.io/badge/TorchScript-Ready-red.svg)](https://pytorch.org/docs/stable/jit.html)
+[![TorchScript Ready](https://img.shields.io/badge/TorchScript-Ready-purple.svg)](https://pytorch.org/docs/stable/jit.html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](LICENSE)
 
 
@@ -16,14 +17,30 @@
 **🔥 Production-ready anomaly detection powered by state-of-the-art PaDiM algorithm**  
 *Deploy anywhere, run everywhere - from edge devices to cloud infrastructure*
 
+
 ### 🚀 Supported Export Formats
 
-| Format  | Status | Use Case |
-|--------|--------|----------|
-| **PyTorch**  | ✅ Ready | Development & Research |
-| **ONNX**  | ✅ Ready | Cross-platform Deployment |
-| **OpenVINO**  | ✅ Ready | Intel Hardware Optimization |
-| **TensorRT**  | 🚧 Coming Soon | NVIDIA GPU Acceleration |
+| Format  | Status | Use Case | Backend |
+|--------|--------|----------|---------|
+| **PyTorch**  | ✅ <span style="color: green;"> **Ready**</span>| Development & Research | TorchBackend |
+| **TorchScript**  | ✅ <span style="color: green;"> **Ready**</span> | Production Deployment | TorchScriptBackend |
+| **ONNX**  | ✅ <span style="color: green;"> **Ready**</span> | Cross-platform Deployment | OnnxBackend |
+| **OpenVINO**  | ✅ <span style="color: green;"> **Ready**</span> | Intel Hardware Optimization | OpenVinoBackend |
+| **TensorRT**  | 🚧 Coming Soon | NVIDIA GPU Acceleration | TensorRTBackend |
+
+
+
+### 🎯 Format Recommendations
+
+| Use Case | Recommended Format | Reason |
+|----------|-------------------|---------|
+| **Development** | **PyTorch** (.pt) | Training and experimentation |
+| **Production** | **TorchScript** (.torchscript) | Python deployment |
+| **Cross-platform** | **ONNX** (.onnx) | Maximum compatibility |
+| **Intel Hardware** | **OpenVINO** | CPUs, iGPUs, and VPUs |
+| **NVIDIA GPUs** | **TensorRT** | Maximum GPU performance (coming soon) |
+
+
 
 [⚡ Quick Start](#-quick-start) • [📚 Documentation](#-complete-api-reference) • [🎯 Examples](#-real-world-examples) • [🔧 Installation](#-installation)
 
@@ -185,12 +202,19 @@ python train.py \
 ```bash
 python detect.py \
   --dataset_path "data/bottle/test" \
-  --model_data_path "./models/" \
-  --model "padim_model.onnx" \
+  --model_data_path "./distributions/" \
+  --model "padim_model.pt" \
   --batch_size 16 \
-  --thresh 15 \
+  --thresh 13 \
   --enable_visualization \
   --save_visualizations
+
+>> python detect.py --model padim_model.pt                  # PyTorch
+                                padim_model.torchscript        # TorchScript
+                                padim_model.onnx               # ONNX Runtime
+                                padim_model_openvino           # OpenVINO
+                                padim_model.engine             # TensorRT
+
 ```
 
 #### 📊 Comprehensive Model Evaluation
@@ -200,7 +224,10 @@ python eval.py \
   --model_data_path "./models/" \
   --model_name "padim_model.pt" \
   --batch_size 8
+
 ```
+
+
 
 ### 🎨 Advanced Visualization Magic
 
@@ -590,6 +617,7 @@ git push origin feature/amazing-new-feature
 - 📄 Add type hints where possible
 
 </details>
+
 
 <details>
 <summary>📞 Support & Community</summary>

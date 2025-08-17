@@ -5,12 +5,39 @@ Export PyTorch models to ONNX and OpenVINO formats with dynamic batch support.
 """
 
 import argparse
+import json
 import time
 import warnings
 from pathlib import Path
 from typing import Tuple, List, Optional
 
 import torch
+
+# during export
+class _ExportWrapper(torch.nn.Module):
+    """_summary_
+    calling self.model.forward(batch) and self.model.predict(batch) are giving different results
+    So this class will solve the issues
+    Args:
+        torch (_type_): PT model
+    """
+    def __init__(self, m):
+        super().__init__()
+        self.m = m
+        # delegate device to the wrapped model
+        if hasattr(m, "device"):
+            self.device = m.device
+        else:
+            # fall back to parameter device or CPU
+            try:
+                self.device = next(m.parameters()).device
+            except StopIteration:
+                self.device = torch.device("cpu")
+
+    def forward(self, x):
+        scores, maps = self.m.predict(x)
+        return scores, maps
+
 
 
 class ModelExporter:
@@ -24,7 +51,7 @@ class ModelExporter:
     def _load_model(self) -> torch.nn.Module:
         """Load and prepare model for export."""
         print(f"Loading model: {self.model_path}")
-        model = torch.load(self.model_path, map_location="cpu")
+        model = _ExportWrapper(torch.load(self.model_path, map_location="cpu"))
         
         # Handle DataParallel wrapper
         if hasattr(model, "module"):
@@ -67,7 +94,6 @@ class ModelExporter:
         try:
             # Load model
             model = self._load_model()
-            
             # Create dummy input
             dummy_input = torch.randn(*input_shape)
             
@@ -118,6 +144,78 @@ class ModelExporter:
         except Exception as e:
             elapsed = time.time() - start_time
             print(f"❌ Export failed ({elapsed:.1f}s): {e}")
+            return None
+    
+    def export_torchscript(self,
+                          input_shape: Tuple[int, int, int, int] = (1, 3, 224, 224),
+                          output_name: str = "model.torchscript",
+                          optimize: bool = False) -> Optional[Path]:
+        """
+        Export model to TorchScript format.
+        
+        Args:
+            input_shape: Model input shape (batch, channels, height, width)
+            output_name: Output filename
+            optimize: Enable mobile optimization
+            
+        Returns:
+            Path to exported file or None if failed
+        """
+        start_time = time.time()
+        
+        try:
+            # Load model
+            model = self._load_model()
+            # Create dummy input
+            dummy_input = torch.randn(*input_shape)
+            
+            # Warm up model
+            with torch.no_grad():
+                for _ in range(2):
+                    _ = model(dummy_input)
+            
+            # Export path
+            output_path = self.output_dir / output_name
+            if not output_path.suffix:
+                output_path = output_path.with_suffix(".torchscript")
+            
+            print(f"Tracing model for TorchScript (optimize={optimize})...")
+            
+            # Trace the model
+            traced_model = torch.jit.trace(model, dummy_input, strict=False)
+            
+            # Create config with input shape info
+            config_data = {"shape": list(dummy_input.shape)}
+            extra_files = {"config.txt": json.dumps(config_data)}
+            
+            if optimize:
+                # Mobile optimization
+                try:
+                    from torch.utils.mobile_optimizer import optimize_for_mobile
+                    optimized_model = optimize_for_mobile(traced_model)
+                    optimized_model._save_for_lite_interpreter(
+                        str(output_path), 
+                        _extra_files=extra_files
+                    )
+                    print("   Applied mobile optimization")
+                except ImportError:
+                    print("   Warning: Mobile optimization not available, saving standard TorchScript")
+                    traced_model.save(str(output_path), _extra_files=extra_files)
+            else:
+                traced_model.save(str(output_path), _extra_files=extra_files)
+            
+            elapsed = time.time() - start_time
+            file_size = output_path.stat().st_size / (1024 * 1024)  # MB
+            
+            print(f"✅ TorchScript export successful ({elapsed:.1f}s)")
+            print(f"   File: {output_path} ({file_size:.1f} MB)")
+            print(f"   Optimized: {optimize}")
+            
+            return output_path
+            
+        except Exception as e:
+            elapsed = time.time() - start_time
+            print(f"❌ TorchScript export failed ({elapsed:.1f}s): {e}")
             return None
     
     def export_openvino(self,
@@ -212,10 +310,10 @@ def main():
                         help='Model file (.pt for PyTorch)')
     parser.add_argument("--output_path", type=str, default=None,
                         help="Output filename (if None, uses model name)")
-    parser.add_argument("--format", choices=["onnx", "openvino", "both"], 
-                       default="both", help="Export format")
+    parser.add_argument("--format", choices=["onnx", "openvino", "torchscript", "all"], 
+                       default="all", help="Export format")
     parser.add_argument("--input-shape", type=int, nargs=4, 
-                       default=[2, 3, 224, 224],
+                       default=[1, 3, 224, 224],
                        metavar=("BATCH", "CHANNELS", "HEIGHT", "WIDTH"),
                        help="Input shape for the dummy tensor")
     parser.add_argument("--opset", type=int, default=17,
@@ -224,6 +322,8 @@ def main():
                        help="Disable dynamic batch size")
     parser.add_argument("--fp32", action="store_true",
                        help="Use FP32 precision for OpenVINO (default: FP16)")
+    parser.add_argument("--optimize", action="store_true",
+                       help="Enable mobile optimization for TorchScript")
     
     args = parser.parse_args()
     
@@ -243,15 +343,17 @@ def main():
     if args.output_path:
         onnx_name = args.output_path
         openvino_name = Path(args.output_path).stem + "_openvino"
+        torchscript_name = Path(args.output_path).stem + ".torchscript"
     else:
         onnx_name = f"{model_stem}.onnx"
         openvino_name = f"{model_stem}_openvino"
+        torchscript_name = f"{model_stem}.torchscript"
     
     # Determine if dynamic batch should be used
     use_dynamic_batch = not args.static_batch
     
     # Export based on format
-    if args.format in ["onnx", "both"]:
+    if args.format in ["onnx", "all"]:
         result = exporter.export_onnx(
             input_shape=tuple(args.input_shape),
             output_name=onnx_name,
@@ -261,12 +363,21 @@ def main():
         if result is None:
             success = False
     
-    if args.format in ["openvino", "both"]:
+    if args.format in ["openvino", "all"]:
         result = exporter.export_openvino(
             input_shape=tuple(args.input_shape),
             output_name=openvino_name,
             fp16=not args.fp32,
             dynamic_batch=use_dynamic_batch  # Now properly passed
+        )
+        if result is None:
+            success = False
+    
+    if args.format in ["torchscript", "all"]:
+        result = exporter.export_torchscript(
+            input_shape=tuple(args.input_shape),
+            output_name=torchscript_name,
+            optimize=args.optimize
         )
         if result is None:
             success = False
