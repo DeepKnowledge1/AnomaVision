@@ -35,6 +35,14 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
         logger.info("ONNX backend created successfully")
         return backend
 
+    if model_type == ModelType.TORCHSCRIPT:
+        logger.info("Loading TorchScript backend...")
+        from .backends.torchscript_backend import TorchScriptBackend
+        logger.debug("Selected TorchScript backend for %s", model_path)
+        backend = TorchScriptBackend(model_path, device)
+        logger.info("TorchScript backend created successfully")
+        return backend
+
     if model_type == ModelType.PYTORCH:
         from .backends.torch_backend import TorchBackend
         logger.debug("Selected PyTorch backend for %s", model_path)
@@ -46,9 +54,12 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
         return TensorRTBackend(model_path, device)
 
     if model_type == ModelType.OPENVINO:
+        logger.info("Loading OpenVINO backend...")
         from .backends.openvino_backend import OpenVinoBackend
         logger.debug("Selected OpenVINO backend for %s", model_path)
-        return OpenVinoBackend(model_path, device)
+        backend = OpenVinoBackend(model_path, device)
+        logger.info("OpenVINO backend created successfully")
+        return backend
 
     raise NotImplementedError(f"ModelType {model_type} is not supported.")
 

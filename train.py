@@ -5,29 +5,9 @@ import torch
 import cv2
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
-from export import export_onnx
 import argparse
 
 
-
-# during export
-class _ExportWrapper(torch.nn.Module):
-    def __init__(self, m):
-        super().__init__()
-        self.m = m
-        # delegate device to the wrapped model
-        if hasattr(m, "device"):
-            self.device = m.device
-        else:
-            # fall back to parameter device or CPU
-            try:
-                self.device = next(m.parameters()).device
-            except StopIteration:
-                self.device = torch.device("cpu")
-
-    def forward(self, x):
-        scores, maps = self.m.predict(x)
-        return scores, maps
 
 
 def parse_args():
@@ -84,12 +64,6 @@ def main(args):
 
     torch.save(padim, os.path.join(MODEL_DATA_PATH, args.output_model))
     
-    # export_onnx(padim, os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))    
-    batch, _, _, _ = dataset[0]
-    
-    input_shape=(3, batch.shape[0],batch.shape[1],batch.shape[2])
-    
-    export_onnx(_ExportWrapper(padim),input_shape=input_shape,filepath= os.path.join(MODEL_DATA_PATH, "padim_model.onnx"))    
 if __name__ == "__main__":
         args = parse_args()
         main(args)
