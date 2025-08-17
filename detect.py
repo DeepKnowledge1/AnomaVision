@@ -1,3 +1,16 @@
+
+"""
+Run Anomaly detection inference on images using various model formats.
+
+Usage - formats:
+    $ python detect.py --model padim_model.pt                  # PyTorch
+                                   padim_model.torchscript        # TorchScript
+                                   padim_model.onnx               # ONNX Runtime
+                                   padim_model_openvino           # OpenVINO
+                                   padim_model.engine             # TensorRT
+"""
+
+
 import os
 import anodet
 import numpy as np
@@ -25,7 +38,7 @@ def parse_args():
     parser.add_argument('--device', type=str, default='auto',
                         choices=['auto', 'cpu', 'cuda'],
                         help='Device to run inference on (auto will choose cuda if available)')
-    parser.add_argument('--batch_size', type=int, default=3,
+    parser.add_argument('--batch_size', type=int, default=1,
                         help='Batch size for inference')
     parser.add_argument('--thresh', type=float, default=13.0,
                         help='Threshold for anomaly classification')
@@ -274,10 +287,10 @@ def main(args):
                     # Save visualizations if requested
                     if args.save_visualizations:
                         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                        save_visualization(boundary_images, f"boundary_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
-                        save_visualization(heatmap_images, f"heatmap_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
-                        save_visualization(highlighted_images, f"highlighted_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
-                        logger.debug(f"Visualizations saved for batch {batch_idx}")
+                        # save_visualization(boundary_images, f"boundary_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
+                        # save_visualization(heatmap_images, f"heatmap_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
+                        # save_visualization(highlighted_images, f"highlighted_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
+                        # logger.debug(f"Visualizations saved for batch {batch_idx}")
                     
                     # Show first batch only (if requested)
                     if batch_idx == 0 and (not args.show_first_batch_only or batch_idx == 0):
