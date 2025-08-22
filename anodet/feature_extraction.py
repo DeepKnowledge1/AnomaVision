@@ -96,12 +96,13 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
             batch_size, length, width, height = embedding_vectors.shape
             embedding_vectors = embedding_vectors.reshape(batch_size, length, width*height)
             embedding_vectors = embedding_vectors.permute(0, 2, 1)
+      
             
-            embedding_vectors = (
-                embedding_vectors.half()
-                if embedding_vectors.device.type != "cpu"
-                else embedding_vectors
-            )
+            # embedding_vectors = (
+            #     embedding_vectors.half()
+            #     if embedding_vectors.device.type != "cpu"
+            #     else embedding_vectors
+            # )
             
             return embedding_vectors,width, height
 
