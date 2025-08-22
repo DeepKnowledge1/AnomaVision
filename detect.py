@@ -200,6 +200,7 @@ def main(args):
     try:
         for batch_idx, (batch, images, _, _) in enumerate(test_dataloader):
             batch_start_time = time.time()
+            batch = batch.to(device_str)
             logger.debug(f"Processing batch {batch_idx + 1}/{len(test_dataloader)}")
             
             # Log batch info
