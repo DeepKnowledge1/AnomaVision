@@ -50,10 +50,12 @@ class Padim(torch.nn.Module):
             self.layer_indices = [0,1]
 
         self.layer_hook = layer_hook
-        self.to_device(self.device)
+        # self.to_device(self.device)
         # Register channel_indices as a buffer for ONNX compatibility
         if channel_indices is not None:
-            self.register_buffer('channel_indices', channel_indices)
+            # self.register_buffer('channel_indices', channel_indices)
+            self.register_buffer('channel_indices', channel_indices.to(device))
+
         else:
             if backbone == 'resnet18':
                 self.net_feature_size = OrderedDict(
@@ -65,10 +67,14 @@ class Padim(torch.nn.Module):
                     [(0, [255]), (1, [512]), (2, [1024]), (3, [2048])]
                 )                
                                             
-            self.register_buffer(
-                "channel_indices",
-                get_dims_indices(self.layer_indices, feat_dim, self.net_feature_size),
-            )
+            # self.register_buffer(
+            #     "channel_indices",
+            #     get_dims_indices(self.layer_indices, feat_dim, self.net_feature_size),
+            # )
+            
+            channel_indices_tensor = get_dims_indices(self.layer_indices, feat_dim, self.net_feature_size)
+            self.register_buffer("channel_indices", channel_indices_tensor.to(device))
+            
 
     @property
     def mean(self):
