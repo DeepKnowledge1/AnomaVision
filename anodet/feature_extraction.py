@@ -35,8 +35,8 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
             self.backbone = resnet18(weights=ResNet18_Weights.DEFAULT, progress=True)
         elif backbone_name == 'wide_resnet50':
             self.backbone = wide_resnet50_2(weights=Wide_ResNet50_2_Weights.DEFAULT, progress=True)
-
-        self.backbone.to(device)
+        self.device = device
+        self.backbone.to(self.device)
         self.backbone.eval()
         self.eval()
 
@@ -117,6 +117,7 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         embedding_vectors_list: List[torch.Tensor] = []
         
         for (batch, _, _,_) in tqdm(dataloader, 'Feature extraction'):
+            # channel_indices = channel_indices.to(self.backbone.device)
             batch = batch.to(self.device)
             batch_embedding_vectors,_,_ = self(batch,
                                         channel_indices=channel_indices,
