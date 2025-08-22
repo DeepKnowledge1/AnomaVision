@@ -124,7 +124,7 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         for (batch, _, _,_) in tqdm(dataloader, 'Feature extraction'):
             # channel_indices = channel_indices.to(self.backbone.device)
             batch = batch.to(self.device)
-            print("***************** batch.device",batch.device )
+            # print("***************** batch.device",batch.device )
             batch_embedding_vectors,_,_ = self(batch,
                                         channel_indices=channel_indices,
                                         layer_hook=layer_hook,
