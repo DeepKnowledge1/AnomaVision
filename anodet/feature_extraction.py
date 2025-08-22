@@ -90,6 +90,7 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
             embedding_vectors = concatenate_layers(layers)
 
             if channel_indices is not None:
+                channel_indices = self.channel_indices.to(embedding_vectors.device)
                 embedding_vectors = torch.index_select(embedding_vectors, 1, channel_indices)
 
             batch_size, length, width, height = embedding_vectors.shape
@@ -116,6 +117,7 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         embedding_vectors_list: List[torch.Tensor] = []
         
         for (batch, _, _,_) in tqdm(dataloader, 'Feature extraction'):
+            batch = batch.to(self.device)
             batch_embedding_vectors,_,_ = self(batch,
                                         channel_indices=channel_indices,
                                         layer_hook=layer_hook,
