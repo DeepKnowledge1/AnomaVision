@@ -83,10 +83,11 @@ def evaluate_model_with_wrapper(model_wrapper, test_dataloader, logger, detailed
     
     total_inference_time = 0
     batch_count = 0
-    
+    device_str = determine_device("cpu")
     logger.info(f"Starting evaluation on {len(test_dataloader.dataset)} images")
     try:
         for batch_idx, (batch, images, image_targets, mask_targets) in enumerate(test_dataloader):
+            batch = batch.to(device_str)
             batch_start = time.time()
             logger.debug(f"Processing evaluation batch {batch_idx + 1}/{len(test_dataloader)}")
             
