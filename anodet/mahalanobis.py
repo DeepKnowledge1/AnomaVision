@@ -34,6 +34,9 @@ class MahalanobisDistance(nn.Module):
             distances: (B, width, height)
         """
         # Check buffer shapes
+        self._mean_flat = self._mean_flat.to(features.device)        
+        self._cov_inv_flat = self._cov_inv_flat.to(features.device)        
+        
         assert (
             self._mean_flat is not None and self._cov_inv_flat is not None
         ), "_mean_flat and covariance must be set before calling forward."
