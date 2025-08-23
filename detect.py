@@ -48,9 +48,9 @@ def parse_args():
                         help='Use pinned memory for faster GPU transfers.')
     
     # Visualization parameters
-    parser.add_argument('--enable_visualization', action='store_true',
+    parser.add_argument('--enable_visualization', action='store_false',
                         help='Enable visualization of results.')
-    parser.add_argument('--save_visualizations', action='store_true',
+    parser.add_argument('--save_visualizations', action='store_false',
                         help='Save visualization images to disk.')
     parser.add_argument('--viz_output_dir', type=str, default='./visualizations/',
                         help='Directory to save visualization images.')
