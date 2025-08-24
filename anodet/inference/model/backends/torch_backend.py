@@ -61,9 +61,9 @@ class TorchBackend(InferenceBackend):
         )
 
         with torch.inference_mode(), autocast_ctx:
-            
+
             # calling self.model.forward(batch) and self.model.predict(batch) are giving different results
-            
+
             # if hasattr(self.model, "forward"):
             #     scores, maps = self.model.forward(batch)
             # else:

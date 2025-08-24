@@ -17,7 +17,7 @@ stages:
       name: Default
     steps:
     - checkout: self
-    - script: |        
+    - script: |
         git remote add github https://$(GITHUB_PAT)@github.com/DeepKnowledge1/$(Build.Repository.Name).git
 
         git push github HEAD:main --force
@@ -27,12 +27,12 @@ stages:
 
 
 # git remote add devops https://deepknowledge@dev.azure.com/deepknowledge/mlops-AnomaVision/_git/AnomaVision
-# git branch -vv                                                                                                                         
-#  git push --set-upstream devops main  
+# git branch -vv
+#  git push --set-upstream devops main
 
 
 
 
 # git remote add devops https://deepknowledge@dev.azure.com/deepknowledge/mlops-AnomaVision/_git/industrial_anodet_mlops
-# git branch -vv                                                                                                                         
-# git push --set-upstream devops main  
+# git branch -vv
+# git push --set-upstream devops main
