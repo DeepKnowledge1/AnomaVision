@@ -28,7 +28,7 @@ class TorchScriptBackend(InferenceBackend):
         num_threads: int | None = None,
     ):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        
+
         if num_threads and device.lower() == "cpu":
             torch.set_num_threads(num_threads)
 
@@ -44,7 +44,11 @@ class TorchScriptBackend(InferenceBackend):
         else:
             input_tensor = batch.to(self.device)
 
-        logger.debug("TorchScript input shape: %s dtype: %s", input_tensor.shape, input_tensor.dtype)
+        logger.debug(
+            "TorchScript input shape: %s dtype: %s",
+            input_tensor.shape,
+            input_tensor.dtype,
+        )
 
         with torch.no_grad():
             outputs = self.model(input_tensor)

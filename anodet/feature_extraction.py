@@ -4,7 +4,12 @@ Provides classes and functions for extracting embedding vectors from neural netw
 
 import torch
 import torch.nn.functional as F
-from torchvision.models import resnet18, ResNet18_Weights, wide_resnet50_2, Wide_ResNet50_2_Weights
+from torchvision.models import (
+    resnet18,
+    ResNet18_Weights,
+    wide_resnet50_2,
+    Wide_ResNet50_2_Weights,
+)
 from tqdm import tqdm
 from typing import List, Optional, Callable, cast
 from torch.utils.data import DataLoader
@@ -29,17 +34,18 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         """
 
         super().__init__()
-        assert backbone_name in ['resnet18', 'wide_resnet50']
+        assert backbone_name in ["resnet18", "wide_resnet50"]
 
-        if backbone_name == 'resnet18':
+        if backbone_name == "resnet18":
             self.backbone = resnet18(weights=ResNet18_Weights.DEFAULT, progress=True)
-        elif backbone_name == 'wide_resnet50':
-            self.backbone = wide_resnet50_2(weights=Wide_ResNet50_2_Weights.DEFAULT, progress=True)
+        elif backbone_name == "wide_resnet50":
+            self.backbone = wide_resnet50_2(
+                weights=Wide_ResNet50_2_Weights.DEFAULT, progress=True
+            )
         self.device = device
         self.backbone.to(self.device)
         # print("***************** self.backbone",self.backbone.device)
         print("Backbone device:", next(self.backbone.parameters()).device)
-
 
         self.backbone.eval()
         self.eval()
@@ -52,12 +58,13 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         """
         self.backbone.to(device)
 
-    def forward(self,
-                batch: torch.Tensor,
-                channel_indices: Optional[torch.Tensor] = None,
-                layer_hook: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
-                layer_indices: Optional[List[int]] = None
-                ) -> torch.Tensor:
+    def forward(
+        self,
+        batch: torch.Tensor,
+        channel_indices: Optional[torch.Tensor] = None,
+        layer_hook: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+        layer_indices: Optional[List[int]] = None,
+    ) -> torch.Tensor:
         """Run inference on backbone and return the embedding vectors.
 
         Args:
@@ -95,54 +102,59 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
 
             if channel_indices is not None:
                 channel_indices = channel_indices.to(embedding_vectors.device)
-                embedding_vectors = torch.index_select(embedding_vectors, 1, channel_indices)
+                embedding_vectors = torch.index_select(
+                    embedding_vectors, 1, channel_indices
+                )
 
             batch_size, length, width, height = embedding_vectors.shape
-            embedding_vectors = embedding_vectors.reshape(batch_size, length, width*height)
+            embedding_vectors = embedding_vectors.reshape(
+                batch_size, length, width * height
+            )
             embedding_vectors = embedding_vectors.permute(0, 2, 1)
-      
-            
+
             # embedding_vectors = (
             #     embedding_vectors.half()
             #     if embedding_vectors.device.type != "cpu"
             #     else embedding_vectors
             # )
-            
-            return embedding_vectors,width, height
 
-    def from_dataloader(self,
-                        dataloader: DataLoader,
-                        channel_indices: Optional[torch.Tensor] = None,
-                        layer_hook: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
-                        layer_indices: Optional[List[int]] = None
-                        ) -> torch.Tensor:
+            return embedding_vectors, width, height
+
+    def from_dataloader(
+        self,
+        dataloader: DataLoader,
+        channel_indices: Optional[torch.Tensor] = None,
+        layer_hook: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+        layer_indices: Optional[List[int]] = None,
+    ) -> torch.Tensor:
         """Same as self.forward but take a dataloader instead of a tensor as argument."""
 
         # Pre-allocate list to store embedding vectors
         embedding_vectors_list: List[torch.Tensor] = []
-        
-        for (batch, _, _,_) in tqdm(dataloader, 'Feature extraction'):
+
+        for batch, _, _, _ in tqdm(dataloader, "Feature extraction"):
             # channel_indices = channel_indices.to(self.backbone.device)
             batch = batch.to(self.device)
             # print("***************** batch.device",batch.device )
-            batch_embedding_vectors,_,_ = self(batch,
-                                        channel_indices=channel_indices,
-                                        layer_hook=layer_hook,
-                                        layer_indices=layer_indices)
-            
+            batch_embedding_vectors, _, _ = self(
+                batch,
+                channel_indices=channel_indices,
+                layer_hook=layer_hook,
+                layer_indices=layer_indices,
+            )
+
             # Move to CPU and detach to prevent GPU memory accumulation
             batch_embedding_vectors = batch_embedding_vectors.detach().cpu()
             embedding_vectors_list.append(batch_embedding_vectors)
-            
+
             # Clear GPU cache periodically to prevent memory buildup
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-        
+
         # Concatenate all tensors at once (more memory efficient than incremental concat)
         embedding_vectors = torch.cat(embedding_vectors_list, dim=0)
-                
-        return embedding_vectors
 
+        return embedding_vectors
 
 
 def concatenate_layers(layers: List[torch.Tensor]) -> torch.Tensor:
@@ -164,13 +176,11 @@ def concatenate_layers(layers: List[torch.Tensor]) -> torch.Tensor:
     target_size = layers[0].shape[-2:]
 
     # Resize all layers to match the target size
-    resized_layers = [F.interpolate(l, size=target_size, mode='nearest') for l in layers]
+    resized_layers = [
+        F.interpolate(l, size=target_size, mode="nearest") for l in layers
+    ]
 
     # Concatenate once along the channel dimension
     embedding = torch.cat(resized_layers, dim=1)
 
     return embedding
-
-
-
-
