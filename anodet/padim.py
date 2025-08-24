@@ -18,9 +18,10 @@ from .mahalanobis import MahalanobisDistance
 
 
 BACKBONE_FEATURE_SIZES = {
-            "resnet18": OrderedDict([(0, [64]), (1, [128]), (2, [256]), (3, [512])]),
-            "wide_resnet50": OrderedDict([(0, [256]), (1, [512]), (2, [1024]), (3, [2048])]),
-        }
+    "resnet18": OrderedDict([(0, [64]), (1, [128]), (2, [256]), (3, [512])]),
+    "wide_resnet50": OrderedDict([(0, [256]), (1, [512]), (2, [1024]), (3, [2048])]),
+}
+
 
 class Padim(torch.nn.Module):
     """A padim model with functions to train and perform inference."""
@@ -56,8 +57,8 @@ class Padim(torch.nn.Module):
         if self.layer_indices is None:
             self.layer_indices = [0, 1]
 
-        self.layer_hook = layer_hook        
-        
+        self.layer_hook = layer_hook
+
         # Validate backbone early and set feature sizes (always define it)
         if backbone not in BACKBONE_FEATURE_SIZES:
             raise ValueError(
@@ -74,7 +75,6 @@ class Padim(torch.nn.Module):
                 self.layer_indices, feat_dim, self.net_feature_size
             )
             self.register_buffer("channel_indices", channel_indices_tensor.to(device))
-
 
     @property
     def mean(self):
