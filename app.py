@@ -26,6 +26,7 @@ app.add_middleware(
 # Load model once at startup
 model = torch.load(MODEL_PATH)
 
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return """
@@ -73,6 +74,7 @@ def index():
     </html>
     """
 
+
 @app.post("/process")
 async def process_image(file: UploadFile = File(...)):
     contents = await file.read()
@@ -111,7 +113,7 @@ async def process_image(file: UploadFile = File(...)):
     axs[3].set_title("Highlighted")
 
     for ax in axs:
-        ax.axis('off')
+        ax.axis("off")
 
     # Convert figure to PNG
     buf = BytesIO()

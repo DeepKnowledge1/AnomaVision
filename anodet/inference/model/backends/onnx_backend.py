@@ -17,6 +17,7 @@ from anodet.utils import get_logger
 
 logger = get_logger(__name__)
 
+
 class OnnxBackend(InferenceBackend):
     """Inference backend based on ONNX Runtime."""
 
@@ -48,12 +49,8 @@ class OnnxBackend(InferenceBackend):
         self.session = ort.InferenceSession(
             model_path, sess_options=sess_options, providers=providers
         )
-        self.input_names: List[str] = [
-            inp.name for inp in self.session.get_inputs()
-        ]
-        self.output_names: List[str] = [
-            out.name for out in self.session.get_outputs()
-        ]
+        self.input_names: List[str] = [inp.name for inp in self.session.get_inputs()]
+        self.output_names: List[str] = [out.name for out in self.session.get_outputs()]
 
     def predict(self, batch: Batch) -> ScoresMaps:
         """Run ONNX inference on the input batch."""
@@ -64,9 +61,7 @@ class OnnxBackend(InferenceBackend):
 
         logger.debug("ONNX input shape: %s dtype: %s", input_arr.shape, input_arr.dtype)
 
-        outputs = self.session.run(
-            self.output_names, {self.input_names[0]: input_arr}
-        )
+        outputs = self.session.run(self.output_names, {self.input_names[0]: input_arr})
 
         scores, maps = outputs[0], outputs[1]
         logger.debug("ONNX output shapes: %s, %s", scores.shape, maps.shape)

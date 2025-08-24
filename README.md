@@ -14,7 +14,7 @@
 
 <img src="notebooks/example_images/banner.png" alt="bg" width="85%" style="border-radius: 15px;"/>
 
-**🔥 Production-ready anomaly detection powered by state-of-the-art PaDiM algorithm**  
+**🔥 Production-ready anomaly detection powered by state-of-the-art PaDiM algorithm**
 *Deploy anywhere, run everywhere - from edge devices to cloud infrastructure*
 
 
@@ -76,7 +76,7 @@ AnomaVision transforms the cutting-edge **PaDiM (Patch Distribution Modeling)** 
 <summary>🔧 Installation</summary>
 
 ### 📋 Prerequisites
-- **Python**: 3.9+ 
+- **Python**: 3.9+
 - **CUDA**: 11.7+ for GPU acceleration
 - **PyTorch**: 2.0+ (automatically installed)
 
@@ -154,10 +154,10 @@ test_dataloader = DataLoader(test_dataset, batch_size=4)
 for batch, images, _, _ in test_dataloader:
     # 🎯 Get anomaly scores and detailed heatmaps
     image_scores, score_maps = model.predict(batch)
-    
+
     # 🏷️ Classify anomalies (threshold=13 works great for most cases)
     predictions = anodet.classification(image_scores, threshold=13)
-    
+
     print(f"🔥 Anomaly scores: {image_scores.tolist()}")
     print(f"📋 Predictions: {predictions.tolist()}")
     break
@@ -172,7 +172,7 @@ from export import export_onnx, _ExportWrapper
 print("📦 Exporting to ONNX...")
 wrapper = _ExportWrapper(model)
 export_onnx(
-    wrapper, 
+    wrapper,
     filepath="anomaly_detector.onnx",
     input_shape=(1, 3, 224, 224),  # Batch size can be dynamic
     opset=17                        # Latest ONNX version
@@ -236,21 +236,21 @@ import anodet.visualization as viz
 
 # 🖼️ Create stunning boundary visualizations
 boundary_images = viz.framed_boundary_images(
-    images, classifications, 
+    images, classifications,
     padding=50,                    # Generous padding
     color=(255, 64, 64)           # Eye-catching red
 )
 
 # 🔥 Generate professional anomaly heatmaps
 heatmap_images = viz.heatmap_images(
-    images, score_maps, 
+    images, score_maps,
     alpha=0.7,                     # Perfect transparency
     colormap='hot'                 # Heat-style colormap
 )
 
 # ✨ Highlight anomalous regions with precision
 highlighted = viz.highlighted_images(
-    images, classifications, 
+    images, classifications,
     color=(255, 255, 0),          # Bright yellow highlight
     thickness=3                    # Bold boundaries
 )
@@ -331,8 +331,8 @@ dataset = anodet.AnodetDataset(
 
 # For MVTec format
 mvtec_dataset = anodet.MVTecDataset(
-    "path/to/mvtec", 
-    class_name="bottle", 
+    "path/to/mvtec",
+    class_name="bottle",
     is_train=True
 )
 ```
@@ -357,8 +357,8 @@ predictions = anodet.classification(scores, threshold=15)
 
 # 📦 Export to ONNX with advanced options
 export_onnx(
-    model, 
-    "output.onnx", 
+    model,
+    "output.onnx",
     input_shape=(1, 3, 224, 224),
     opset=17,
     output_names=["scores", "maps"]
@@ -477,7 +477,7 @@ class ModelType(Enum):
     TENSORRT = "tensorrt"
     OPENVINO = "openvino"
     YOUR_NEW_FORMAT = "your_format"  # 👈 Add your format
-    
+
     @classmethod
     def from_extension(cls, model_path):
         extension_map = {
@@ -501,36 +501,36 @@ logger = get_logger(__name__)
 
 class YourBackend(InferenceBackend):
     """Your custom backend implementation."""
-    
+
     def __init__(self, model_path: str, device: str = "cuda"):
         logger.info(f"Initializing YourBackend with {model_path}")
-        
+
         # 🔧 Initialize your model format here
         self.model = your_framework.load_model(model_path)
         self.device = device
-        
+
         # 🎯 Any format-specific setup
         self.setup_optimizations()
-        
+
     def predict(self, batch: Batch) -> ScoresMaps:
         """Run inference using your framework."""
         logger.debug(f"Running inference on batch shape: {batch.shape}")
-        
+
         # 🔄 Convert input format if needed
         if isinstance(batch, torch.Tensor):
             input_data = batch.numpy()
         else:
             input_data = batch
-            
+
         # 🚀 Run inference with your framework
         outputs = self.model.run(input_data)
-        
+
         # 📊 Extract scores and maps
         scores, maps = outputs[0], outputs[1]
-        
+
         logger.debug(f"Inference complete. Output shapes: {scores.shape}, {maps.shape}")
         return scores, maps
-    
+
     def close(self) -> None:
         """Release resources."""
         logger.info("Closing YourBackend resources")
@@ -545,14 +545,14 @@ class YourBackend(InferenceBackend):
 # In wrapper.py - add to make_backend function
 def make_backend(model_path: str, device: str) -> InferenceBackend:
     model_type = ModelType.from_extension(model_path)
-    
+
     # ... existing backends ...
-    
+
     if model_type == ModelType.YOUR_NEW_FORMAT:
         from .backends.your_backend import YourBackend
         logger.debug("Selected YourBackend for %s", model_path)
         return YourBackend(model_path, device)  # 👈 Add your backend
-    
+
     raise NotImplementedError(f"ModelType {model_type} is not supported.")
 ```
 
@@ -563,7 +563,7 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
 your-framework>=1.0.0  # Add your framework dependency
 ```
 
-### ✅ That's It! 
+### ✅ That's It!
 
 Your new format is now fully integrated with AnomaVision's unified API:
 
@@ -630,7 +630,7 @@ git push origin feature/amazing-new-feature
 
 ### 📚 Resources
 - 📖 **Full Documentation**: [docs.anomavision.ai](https://docs.anomavision.ai) *(coming soon)*
-- 🎓 **Tutorials**: [YouTube Channel](https://www.youtube.com/@DeepKnowledgeSpace) 
+- 🎓 **Tutorials**: [YouTube Channel](https://www.youtube.com/@DeepKnowledgeSpace)
 - 📝 **Blog**: [Medium Publication](https://medium.com/@deepp.knowledge)
 
 </details>
@@ -702,7 +702,7 @@ MIT License - Use it, modify it, distribute it!
 
 ### 🚀 Ready to Transform Your Anomaly Detection?
 
-**⭐ Star this repo if it helped you!** 
+**⭐ Star this repo if it helped you!**
 
 **🔥 Watch for updates** • **🍴 Fork to contribute** • **📢 Share with your team**
 
