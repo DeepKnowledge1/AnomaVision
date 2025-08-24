@@ -1,82 +1,94 @@
-
 name: 🐛 Bug Report
-# title: " "
-description: Problems with AnomaVision
+description: Report issues with AnomaVision
 labels: [bug, triage]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for submitting a AnomaVision 🐛 Bug Report!
+        Thank you for reporting a bug! Please fill out the sections below to help us resolve the issue quickly.
 
   - type: checkboxes
     attributes:
       label: Search before asking
-      description: >
-        Please search the [issues](https://github.com/DeepKnowledge1/AnomaVision/issues) to see if a similar bug report already exists.
+      description: Please search existing issues to avoid duplicates
       options:
-        - label: >
-            I have searched the AnomaVision [issues](https://github.com/DeepKnowledge1/AnomaVision/issues) and found no similar bug report.
+        - label: I have searched the [AnomaVision issues](https://github.com/DeepKnowledge1/AnomaVision/issues) and found no similar bug report
           required: true
 
   - type: dropdown
     attributes:
-      label: AnomaVision Component
-      description: |
-        Please select the part of AnomaVision where you found the bug.
+      label: Component
+      description: Select the component where the bug occurs
       multiple: true
       options:
-        - "Training"
-        - "Validation"
-        - "Detection"
-        - "Export"
-        - "Integrations"
-        - "Other"
+        - Training
+        - Validation
+        - Detection
+        - Export
+        - Integrations
+        - Other
     validations:
-      required: false
+      required: true
 
   - type: textarea
     attributes:
-      label: Bug
-      description: Provide console output with error messages and/or screenshots of the bug.
+      label: Bug Description
+      description: Describe the bug and provide error messages, logs, or screenshots
       placeholder: |
-        💡 ProTip! Include as much information as possible (screenshots, logs, tracebacks etc.) to receive the most helpful response.
+        **What happened:**
+        
+        **Expected behavior:**
+        
+        **Error messages/logs:**
+        ```
+        Paste error logs here
+        ```
+        
+        💡 Include screenshots, stack traces, and detailed error messages for faster resolution
     validations:
       required: true
 
   - type: textarea
     attributes:
       label: Environment
-      description: Please specify the software and hardware you used to produce the bug.
+      description: Specify your environment details
       placeholder: |
-        - AnomaVision: AnomaVision 🚀 
-        - OS: Ubuntu 20.04
-        - Python: 3.9.0
+        - AnomaVision version: 
+        - OS: 
+        - Python version: 
+        - GPU/CPU: 
+        - Dependencies: 
+      value: |
+        - AnomaVision version: 
+        - OS: 
+        - Python version: 
+        - GPU/CPU: 
+        - Dependencies: 
     validations:
-      required: false
+      required: true
 
   - type: textarea
     attributes:
       label: Minimal Reproducible Example
-      description: >
-        When asking a question, people will be better able to provide help if you provide code that they can easily understand and use to **reproduce** the problem.
+      description: Provide code that reproduces the issue
       placeholder: |
-        ```
-        # Code to reproduce your issue here
+        ```python
+        # Minimal code to reproduce the bug
+        import anomavision
+        
+        # Your reproduction code here
         ```
     validations:
-      required: false
+      required: true
 
   - type: textarea
     attributes:
-      label: Additional
-      description: Anything else you would like to share?
+      label: Additional Context
+      description: Any other relevant information, workarounds, or related issues
 
   - type: checkboxes
     attributes:
-      label: Are you willing to submit a PR?
-      description: >
-        (Optional) We encourage you to submit a [Pull Request](https://github.com/DeepKnowledge1/AnomaVision/pulls) (PR) to help improve AnomaVision for everyone, especially if you have a good understanding of how to implement a fix or feature.
-        See the AnomaVision [Contributing Guide](code_review_checklist.md) to get started.
+      label: Contribution
+      description: Would you like to contribute a fix?
       options:
-        - label: Yes I'd like to help by submitting a PR!
+        - label: I'm willing to submit a PR to fix this issue
