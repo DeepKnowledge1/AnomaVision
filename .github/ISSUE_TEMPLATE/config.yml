@@ -1,0 +1,16 @@
+# AnomaVision 🔍 MIT License - https://github.com/DeepKnowledge1/AnomaVision
+
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 README & Documentation
+    url: https://github.com/DeepKnowledge1/AnomaVision#readme
+    about: Check the README for setup instructions and usage examples
+  - name: 💬 Discussions
+    url: https://github.com/DeepKnowledge1/AnomaVision/discussions
+    about: Ask questions and discuss with the community
+  - name: 🛠️ Examples
+    url: https://github.com/DeepKnowledge1/AnomaVision/tree/main/examples
+    about: Browse code examples and tutorials
+  - name: 🔍 Existing Issues
+    url: https://github.com/DeepKnowledge1/AnomaVision/issues?q=is%3Aissue
+    about: Search existing issues to see if your question was already answered

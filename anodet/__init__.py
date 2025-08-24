@@ -10,7 +10,8 @@ from .utils import (
     standard_mask_transform,
     image_score,
     classification,
-    split_tensor_and_run_function)
+    split_tensor_and_run_function,
+)
 
 from .feature_extraction import ResnetEmbeddingsExtractor
 
