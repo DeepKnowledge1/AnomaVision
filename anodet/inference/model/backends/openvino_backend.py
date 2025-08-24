@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 
 try:
     import openvino.runtime as ov
+
     OPENVINO_AVAILABLE = True
 except ImportError:
     OPENVINO_AVAILABLE = False
@@ -34,7 +35,9 @@ class OpenVinoBackend(InferenceBackend):
         num_threads: int | None = None,
     ):
         if not OPENVINO_AVAILABLE:
-            raise ImportError("OpenVINO is not installed. Install with: pip install openvino")
+            raise ImportError(
+                "OpenVINO is not installed. Install with: pip install openvino"
+            )
 
         self.device = device.upper()
         self.core = ov.Core()
@@ -46,7 +49,6 @@ class OpenVinoBackend(InferenceBackend):
 
         # Handle directory or .xml file
         model_path = Path(model_path)
-        
 
         if model_path.is_dir():
             xml_files = list(model_path.glob("*.xml"))
@@ -61,7 +63,8 @@ class OpenVinoBackend(InferenceBackend):
 
         self.input_layer = self.compiled_model.input(0)
         self.output_layers: List = [
-            self.compiled_model.output(i) for i in range(len(self.compiled_model.outputs))
+            self.compiled_model.output(i)
+            for i in range(len(self.compiled_model.outputs))
         ]
 
     def predict(self, batch: Batch) -> ScoresMaps:
@@ -71,7 +74,9 @@ class OpenVinoBackend(InferenceBackend):
         else:
             input_arr = batch.detach().cpu().numpy()
 
-        logger.debug("OpenVINO input shape: %s dtype: %s", input_arr.shape, input_arr.dtype)
+        logger.debug(
+            "OpenVINO input shape: %s dtype: %s", input_arr.shape, input_arr.dtype
+        )
 
         outputs = self.compiled_model([input_arr])
 

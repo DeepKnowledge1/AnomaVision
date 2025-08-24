@@ -8,16 +8,24 @@ from ..utils import standard_image_transform, standard_mask_transform
 import numpy as np
 import cv2 as cv
 
+
 def allowed_file(filename):
-    return ("." in filename and filename.rsplit(".", 1)[1].lower() in ["png", "jpg", "jpeg"])
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in [
+        "png",
+        "jpg",
+        "jpeg",
+    ]
 
 
 class AnodetDataset(Dataset):
 
-    def __init__(self, image_directory_path: str,
-                 mask_directory_path: Optional[str] = None,
-                 image_transforms: T.Compose = standard_image_transform,
-                 mask_transforms: T.Compose = standard_mask_transform) -> None:
+    def __init__(
+        self,
+        image_directory_path: str,
+        mask_directory_path: Optional[str] = None,
+        image_transforms: T.Compose = standard_image_transform,
+        mask_transforms: T.Compose = standard_mask_transform,
+    ) -> None:
 
         self.image_transforms = image_transforms
         self.mask_transforms = mask_transforms
@@ -28,7 +36,9 @@ class AnodetDataset(Dataset):
         for file in os.listdir(self.image_directory_path):
             filename = os.fsdecode(file)
             if allowed_file(filename):
-                self.image_paths.append(os.path.join(self.image_directory_path, filename))
+                self.image_paths.append(
+                    os.path.join(self.image_directory_path, filename)
+                )
 
         # Load mask paths if mask_directory_path argument is given
         self.mask_directory_path = mask_directory_path
@@ -37,7 +47,9 @@ class AnodetDataset(Dataset):
             for file in os.listdir(self.mask_directory_path):
                 filename = os.fsdecode(file)
                 if allowed_file(filename):
-                    self.mask_paths.append(os.path.join(self.mask_directory_path, filename))
+                    self.mask_paths.append(
+                        os.path.join(self.mask_directory_path, filename)
+                    )
 
             assert len(self.image_paths) == len(self.mask_paths)
 
@@ -47,7 +59,7 @@ class AnodetDataset(Dataset):
     def __getitem__(self, idx):
 
         # Load image
-        image = Image.open(self.image_paths[idx]).convert('RGB')
+        image = Image.open(self.image_paths[idx]).convert("RGB")
         batch = self.image_transforms(image)
         image = np.array(image)
         image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
@@ -61,4 +73,4 @@ class AnodetDataset(Dataset):
             mask = torch.zeros([1, batch.shape[1], batch.shape[2]])
             image_classification = 1
 
-        return batch,image, image_classification, mask
+        return batch, image, image_classification, mask
