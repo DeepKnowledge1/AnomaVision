@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.pt",
+        default="padim_model_openvino",
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
@@ -79,7 +79,7 @@ def parse_args():
     # Visualization parameters
     parser.add_argument(
         "--enable_visualization",
-        action="store_true",
+        action="store_false",
         help="Enable visualization of results.",
     )
     parser.add_argument(

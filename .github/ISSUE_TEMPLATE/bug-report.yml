@@ -36,14 +36,14 @@ body:
       description: Describe the bug and provide error messages, logs, or screenshots
       placeholder: |
         **What happened:**
-        
+
         **Expected behavior:**
-        
+
         **Error messages/logs:**
         ```
         Paste error logs here
         ```
-        
+
         💡 Include screenshots, stack traces, and detailed error messages for faster resolution
     validations:
       required: true
@@ -53,17 +53,17 @@ body:
       label: Environment
       description: Specify your environment details
       placeholder: |
-        - AnomaVision version: 
-        - OS: 
-        - Python version: 
-        - GPU/CPU: 
-        - Dependencies: 
+        - AnomaVision version:
+        - OS:
+        - Python version:
+        - GPU/CPU:
+        - Dependencies:
       value: |
-        - AnomaVision version: 
-        - OS: 
-        - Python version: 
-        - GPU/CPU: 
-        - Dependencies: 
+        - AnomaVision version:
+        - OS:
+        - Python version:
+        - GPU/CPU:
+        - Dependencies:
     validations:
       required: true
 
@@ -75,7 +75,7 @@ body:
         ```python
         # Minimal code to reproduce the bug
         import anomavision
-        
+
         # Your reproduction code here
         ```
     validations:
