@@ -42,12 +42,12 @@ body:
       placeholder: |
         **Your Question:**
         Be as specific as possible about what you're trying to achieve or understand.
-        
+
         **Context:**
         - What are you working on?
         - What have you tried so far?
         - What results are you getting vs. what you expected?
-        
+
         💡 Include screenshots, code snippets, error messages, or logs for faster help!
     validations:
       required: true
@@ -57,17 +57,17 @@ body:
       label: Environment
       description: Your setup details (if relevant to the question)
       placeholder: |
-        - AnomaVision version: 
-        - OS: 
-        - Python version: 
-        - GPU/CPU: 
-        - Dataset size/type: 
+        - AnomaVision version:
+        - OS:
+        - Python version:
+        - GPU/CPU:
+        - Dataset size/type:
       value: |
-        - AnomaVision version: 
-        - OS: 
-        - Python version: 
-        - GPU/CPU: 
-        - Dataset size/type: 
+        - AnomaVision version:
+        - OS:
+        - Python version:
+        - GPU/CPU:
+        - Dataset size/type:
 
   - type: textarea
     attributes:
@@ -84,9 +84,9 @@ body:
       description: What did you expect vs what actually happened? (if applicable)
       placeholder: |
         **Expected:** What you thought would happen
-        
+
         **Actual:** What actually happened
-        
+
         **Error messages:** Any error messages or unexpected outputs
 
   - type: textarea
