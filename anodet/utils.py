@@ -148,24 +148,30 @@ def image_score(patch_scores: torch.Tensor) -> torch.Tensor:
     return image_scores
 
 
-def classification(image_scores: torch.Tensor, thresh: float) -> torch.Tensor:
+def classification(image_scores, thresh: float):
     """Calculate image classifications from image scores.
-
     Args:
-        image_scores: A batch of image scores.
-        thresh: A treshold value. If an image score is larger than
-                or equal to thresh it is classified as anomalous.
-
+        image_scores (torch.Tensor | np.ndarray): A batch of image scores.
+        thresh (float): A threshold value. If an image score is larger than
+                        or equal to thresh it is classified as anomalous.
     Returns:
-        image_classifications: A batch of image classifcations.
-
+        image_classifications (same type as input): A batch of image classifications.
     """
 
-    # Apply threshold
-    image_classifications = image_scores.copy()
-    image_classifications[image_classifications < thresh] = 1
-    image_classifications[image_classifications >= thresh] = 0
+    if isinstance(image_scores, torch.Tensor):
+        image_classifications = image_scores.clone()
+        image_classifications[image_classifications < thresh] = 1
+        image_classifications[image_classifications >= thresh] = 0
+
+    elif isinstance(image_scores, np.ndarray):
+        image_classifications = image_scores.copy()
+        image_classifications[image_classifications < thresh] = 1
+        image_classifications[image_classifications >= thresh] = 0
+    else:
+        raise TypeError("image_scores must be a torch.Tensor or numpy.ndarray")
+
     return image_classifications
+
 
 
 def rename_files(source_path: str, destination_path: Optional[str] = None) -> None:
