@@ -6,8 +6,8 @@ from typing import Optional
 class MahalanobisDistance(nn.Module):
     def __init__(
         self,
-        mean: Optional[torch.Tensor],  # (N, D)
-        cov_inv: Optional[torch.Tensor],  # (N, D, D)
+        mean: torch.Tensor,  # (N, D)
+        cov_inv: torch.Tensor,  # (N, D, D)
     ):
         """
         A module that computes the Mahalanobis distance using precomputed mean and inverse covariance.
@@ -17,9 +17,22 @@ class MahalanobisDistance(nn.Module):
             cov_inv: Inverse covariance tensor of shape (N, D, D)
         """
         super().__init__()
+
         # Ensure right shapes for ONNX and buffer registration
         self.register_buffer("_mean_flat", mean)  # (N, D)
         self.register_buffer("_cov_inv_flat", cov_inv)  # (N, D, D)
+        self._validate_initialization()
+
+    def _validate_initialization(self):
+        """Validate that the model is properly initialized."""
+        if self._mean_flat is None:
+            raise RuntimeError("Model not initialized: mean tensor is None. "
+                            "Please fit the model first or provide mean tensor.")
+
+        if self._cov_inv_flat is None:
+            raise RuntimeError("Model not initialized: inverse covariance is None. "
+                            "Please fit the model first or provide covariance tensor.")
+
 
     def forward(self, features: torch.Tensor, width: int, height: int) -> torch.Tensor:
         """
@@ -33,13 +46,16 @@ class MahalanobisDistance(nn.Module):
         Returns:
             distances: (B, width, height)
         """
-        # Check buffer shapes
+        # Validate inputs
+        if not isinstance(features, torch.Tensor):
+            raise TypeError(f"Expected torch.Tensor, got {type(features)}")
+
+        if len(features.shape) != 3:
+            raise ValueError(f"Expected 3D features tensor (B,N,D), got shape {features.shape}")
+
         self._mean_flat = self._mean_flat.to(features.device)
         self._cov_inv_flat = self._cov_inv_flat.to(features.device)
 
-        assert (
-            self._mean_flat is not None and self._cov_inv_flat is not None
-        ), "_mean_flat and covariance must be set before calling forward."
         B, N, D = features.shape
 
         # delta: (B, N, D)
@@ -59,5 +75,7 @@ class MahalanobisDistance(nn.Module):
         mahalanobis = mahalanobis.clamp_min(0).sqrt()  # Numerical safety
 
         # Reshape to (B, width, height)
+        if N != width * height:
+            raise ValueError(f"Number of patches N ({N}) does not match width * height ({width * height})")
         distances = mahalanobis.view(B, width, height)
         return distances

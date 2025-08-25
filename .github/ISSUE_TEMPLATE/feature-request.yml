@@ -40,9 +40,9 @@ body:
       description: Clearly describe the feature you'd like to see
       placeholder: |
         **What:** Brief summary of the feature
-        
+
         **Why:** What problem does this solve or what improvement does it provide?
-        
+
         **How:** Any ideas on implementation approach (optional)
     validations:
       required: true
@@ -53,9 +53,9 @@ body:
       description: Describe how this feature would be used and who would benefit
       placeholder: |
         **Target Users:** Who would use this feature?
-        
+
         **Use Case:** Specific scenarios where this would be helpful
-        
+
         **Expected Benefits:** How would this improve AnomaVision?
     validations:
       required: true
