@@ -53,6 +53,9 @@ class MahalanobisDistance(nn.Module):
         if len(features.shape) != 3:
             raise ValueError(f"Expected 3D features tensor (B,N,D), got shape {features.shape}")
 
+        self._mean_flat = self._mean_flat.to(features.device)
+        self._cov_inv_flat = self._cov_inv_flat.to(features.device)
+
         B, N, D = features.shape
 
         # delta: (B, N, D)
