@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
 Model Export Utility
-Export PyTorch models to ONNX and OpenVINO formats with dynamic batch support.
+Export PyTorch models to ONNX, TorchScript, and OpenVINO with dynamic batch support.
+Logging is concise: key config, start/end, timings, sizes, and clear errors.
 """
 
 import argparse
 import json
+import sys
 import time
 import warnings
 from pathlib import Path
@@ -14,14 +16,30 @@ from typing import Tuple, List, Optional
 import torch
 
 
+# Suppress "To copy construct from a tensor..." warnings
+warnings.filterwarnings(
+    "ignore",
+    message="To copy construct from a tensor"
+)
+
+# Suppress ONNX shape inference + constant folding warnings
+warnings.filterwarnings(
+    "ignore",
+    message="The shape inference of prim::Constant type is missing"
+)
+warnings.filterwarnings(
+    "ignore",
+    message="Constant folding"
+)
+
+
+# If these utils live in your project (as in your training script):
+from anodet.utils import get_logger, setup_logging
+
+
 # during export
 class _ExportWrapper(torch.nn.Module):
-    """_summary_
-    calling self.model.forward(batch) and self.model.predict(batch) are giving different results
-    So this class will solve the issues
-    Args:
-        torch (_type_): PT model
-    """
+    """Call model.predict(x) for consistent outputs during export."""
 
     def __init__(self, m):
         super().__init__()
@@ -44,14 +62,15 @@ class _ExportWrapper(torch.nn.Module):
 class ModelExporter:
     """Professional model exporter with clean interface."""
 
-    def __init__(self, model_path: str, output_dir: str = "./"):
+    def __init__(self, model_path: Path, output_dir: Path, logger):
         self.model_path = Path(model_path)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.logger = logger
 
     def _load_model(self) -> torch.nn.Module:
         """Load and prepare model for export."""
-        print(f"Loading model: {self.model_path}")
+        self.logger.info("load: %s", self.model_path)
         model = _ExportWrapper(torch.load(self.model_path, map_location="cpu"))
 
         # Handle DataParallel wrapper
@@ -84,7 +103,6 @@ class ModelExporter:
     ) -> Optional[Path]:
         """
         Export model to ONNX format.
-
         Args:
             input_shape: Model input shape (batch, channels, height, width)
             output_name: Output filename
@@ -94,12 +112,9 @@ class ModelExporter:
         Returns:
             Path to exported file or None if failed
         """
-        start_time = time.time()
-
+        t0 = time.perf_counter()
         try:
-            # Load model
             model = self._load_model()
-            # Create dummy input
             dummy_input = torch.randn(*input_shape)
 
             # Warm up model
@@ -107,7 +122,7 @@ class ModelExporter:
                 for _ in range(2):
                     _ = model(dummy_input)
 
-            # Get output names
+            # Determine outputs
             output_names = self._get_output_names(model, dummy_input)
 
             # Setup dynamic axes if requested
@@ -117,13 +132,12 @@ class ModelExporter:
                 for name in output_names:
                     dynamic_axes[name] = {0: "batch_size"}
 
-            # Export path
             output_path = self.output_dir / output_name
 
-            # Suppress warnings
+            # Suppress noisy tracer warnings
             warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
-            # Export to ONNX
+            # Export
             torch.onnx.export(
                 model,
                 dummy_input,
@@ -137,18 +151,21 @@ class ModelExporter:
                 verbose=False,
             )
 
-            elapsed = time.time() - start_time
-            file_size = output_path.stat().st_size / (1024 * 1024)  # MB
+            elapsed = time.perf_counter() - t0
+            size_mb = output_path.stat().st_size / (1024 * 1024)
 
-            print(f"✅ Export successful ({elapsed:.1f}s)")
-            print(f"   File: {output_path} ({file_size:.1f} MB)")
-            print(f"   Dynamic batch: {dynamic_batch}")
-
+            self.logger.info(
+                "onnx: ok (%.2fs) file=%s size=%.1fMB dynamic_batch=%s opset=%d",
+                elapsed,
+                output_path,
+                size_mb,
+                dynamic_batch,
+                opset_version,
+            )
             return output_path
 
-        except Exception as e:
-            elapsed = time.time() - start_time
-            print(f"❌ Export failed ({elapsed:.1f}s): {e}")
+        except Exception:
+            self.logger.exception("onnx: failed after %.2fs", time.perf_counter() - t0)
             return None
 
     def export_torchscript(
@@ -168,35 +185,26 @@ class ModelExporter:
         Returns:
             Path to exported file or None if failed
         """
-        start_time = time.time()
-
+        t0 = time.perf_counter()
         try:
-            # Load model
             model = self._load_model()
-            # Create dummy input
             dummy_input = torch.randn(*input_shape)
 
-            # Warm up model
             with torch.no_grad():
                 for _ in range(2):
                     _ = model(dummy_input)
 
-            # Export path
             output_path = self.output_dir / output_name
             if not output_path.suffix:
                 output_path = output_path.with_suffix(".torchscript")
 
-            print(f"Tracing model for TorchScript (optimize={optimize})...")
-
-            # Trace the model
+            self.logger.info("ts: tracing optimize=%s", optimize)
             traced_model = torch.jit.trace(model, dummy_input, strict=False)
 
-            # Create config with input shape info
             config_data = {"shape": list(dummy_input.shape)}
             extra_files = {"config.txt": json.dumps(config_data)}
 
             if optimize:
-                # Mobile optimization
                 try:
                     from torch.utils.mobile_optimizer import optimize_for_mobile
 
@@ -204,27 +212,27 @@ class ModelExporter:
                     optimized_model._save_for_lite_interpreter(
                         str(output_path), _extra_files=extra_files
                     )
-                    print("   Applied mobile optimization")
+                    self.logger.info("ts: mobile optimization applied")
                 except ImportError:
-                    print(
-                        "   Warning: Mobile optimization not available, saving standard TorchScript"
-                    )
+                    self.logger.warning("ts: mobile optimization unavailable; saving standard")
                     traced_model.save(str(output_path), _extra_files=extra_files)
             else:
                 traced_model.save(str(output_path), _extra_files=extra_files)
 
-            elapsed = time.time() - start_time
-            file_size = output_path.stat().st_size / (1024 * 1024)  # MB
+            elapsed = time.perf_counter() - t0
+            size_mb = output_path.stat().st_size / (1024 * 1024)
 
-            print(f"✅ TorchScript export successful ({elapsed:.1f}s)")
-            print(f"   File: {output_path} ({file_size:.1f} MB)")
-            print(f"   Optimized: {optimize}")
-
+            self.logger.info(
+                "ts: ok (%.2fs) file=%s size=%.1fMB optimized=%s",
+                elapsed,
+                output_path,
+                size_mb,
+                optimize,
+            )
             return output_path
 
-        except Exception as e:
-            elapsed = time.time() - start_time
-            print(f"❌ TorchScript export failed ({elapsed:.1f}s): {e}")
+        except Exception:
+            self.logger.exception("ts: failed after %.2fs", time.perf_counter() - t0)
             return None
 
     def export_openvino(
@@ -236,84 +244,70 @@ class ModelExporter:
     ) -> Optional[Path]:
         """
         Export model to OpenVINO format via ONNX.
-
-        Args:
-            input_shape: Model input shape (batch, channels, height, width)
-            output_name: Output directory name
-            fp16: Enable FP16 precision
-            dynamic_batch: Enable dynamic batch size
-
-        Returns:
-            Path to exported directory or None if failed
         """
-        start_time = time.time()
-
+        t0 = time.perf_counter()
+        temp_onnx = self.output_dir / "temp_model.onnx"
         try:
-            # First export to ONNX (required for OpenVINO)
-            temp_onnx = self.output_dir / "temp_model.onnx"
             onnx_path = self.export_onnx(
                 input_shape=input_shape,
                 output_name=temp_onnx.name,
-                dynamic_batch=dynamic_batch,  # Now respects the parameter
+                dynamic_batch=dynamic_batch,
             )
-
             if onnx_path is None:
                 raise RuntimeError("ONNX export failed")
 
-            # Import OpenVINO tools
             try:
                 from openvino.tools import mo
                 import openvino.runtime as ov
-            except ImportError:
-                raise ImportError(
-                    "OpenVINO not installed. Install with: pip install openvino"
-                )
+            except ImportError as e:
+                raise ImportError("OpenVINO not installed. pip install openvino") from e
 
-            # Setup output directory
             output_dir = self.output_dir / output_name
             output_dir.mkdir(exist_ok=True)
 
-            # Convert ONNX to OpenVINO
-            print(
-                f"Converting to OpenVINO (fp16={fp16}, dynamic_batch={dynamic_batch})..."
+            self.logger.info(
+                "ov: convert fp16=%s dynamic_batch=%s", fp16, dynamic_batch
             )
             ov_model = mo.convert_model(
                 onnx_path, framework="onnx", compress_to_fp16=fp16
             )
 
-            # Save OpenVINO model
             xml_path = output_dir / f"{output_name}.xml"
             ov.serialize(ov_model, str(xml_path))
 
-            # Clean up temporary ONNX file
+            # Clean temp
             if temp_onnx.exists():
                 temp_onnx.unlink()
 
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - t0
+            size_mb = xml_path.stat().st_size / (1024 * 1024)
 
-            print(f"✅ OpenVINO export successful ({elapsed:.1f}s)")
-            print(f"   Directory: {output_dir}")
-            print(f"   Precision: {'FP16' if fp16 else 'FP32'}")
-            print(f"   Dynamic batch: {dynamic_batch}")
-
+            self.logger.info(
+                "ov: ok (%.2fs) dir=%s xml=%s size=%.1fMB precision=%s dynamic_batch=%s",
+                elapsed,
+                output_dir,
+                xml_path.name,
+                size_mb,
+                "FP16" if fp16 else "FP32",
+                dynamic_batch,
+            )
             return output_dir
 
-        except Exception as e:
-            elapsed = time.time() - start_time
-            print(f"❌ OpenVINO export failed ({elapsed:.1f}s): {e}")
-
-            # Clean up on failure
-            temp_onnx = self.output_dir / "temp_model.onnx"
-            if temp_onnx.exists():
-                temp_onnx.unlink()
-
+        except Exception:
+            self.logger.exception("ov: failed after %.2fs", time.perf_counter() - t0)
+            # Clean temp on failure
+            try:
+                if temp_onnx.exists():
+                    temp_onnx.unlink()
+            except Exception:
+                self.logger.warning("ov: temp cleanup failed for %s", temp_onnx)
             return None
 
 
 def main():
     """Command line interface."""
     parser = argparse.ArgumentParser(
-        description="Export PaDiM models to ONNX and OpenVINO formats",
+        description="Export PaDiM models to ONNX, TorchScript, and OpenVINO",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -363,22 +357,25 @@ def main():
         action="store_true",
         help="Enable mobile optimization for TorchScript",
     )
+    parser.add_argument(
+        "--log-level",
+        dest="log_level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Logging level",
+    )
 
     args = parser.parse_args()
 
-    # Setup paths using your naming convention
+    # Setup logging & logger
+    setup_logging(args.log_level)
+    logger = get_logger(__name__)
+
+    # Paths & names
     model_path = Path(args.model_data_path) / args.model
     output_dir = Path(args.model_data_path)
-
-    # Create exporter
-    exporter = ModelExporter(model_path, output_dir)
-
-    success = True
-
-    # Generate output names based on original model name
-    model_stem = Path(args.model).stem  # Gets 'padim_model' from 'padim_model.pt'
-
-    # Use provided output_path or generate from model name
+    model_stem = Path(args.model).stem
     if args.output_path:
         onnx_name = args.output_path
         openvino_name = Path(args.output_path).stem + "_openvino"
@@ -388,41 +385,58 @@ def main():
         openvino_name = f"{model_stem}_openvino"
         torchscript_name = f"{model_stem}.torchscript"
 
-    # Determine if dynamic batch should be used
     use_dynamic_batch = not args.static_batch
 
-    # Export based on format
-    if args.format in ["onnx", "all"]:
-        result = exporter.export_onnx(
-            input_shape=tuple(args.input_shape),
-            output_name=onnx_name,
-            opset_version=args.opset,
-            dynamic_batch=use_dynamic_batch,
-        )
-        if result is None:
-            success = False
+    # Run header (compact)
+    logger.info(
+        "=== export start === model=%s fmt=%s in_shape=%s dyn_batch=%s opset=%d fp16=%s opt=%s",
+        model_path,
+        args.format,
+        tuple(args.input_shape),
+        use_dynamic_batch,
+        args.opset,
+        (not args.fp32),
+        args.optimize,
+    )
 
-    if args.format in ["openvino", "all"]:
-        result = exporter.export_openvino(
-            input_shape=tuple(args.input_shape),
-            output_name=openvino_name,
-            fp16=not args.fp32,
-            dynamic_batch=use_dynamic_batch,  # Now properly passed
-        )
-        if result is None:
-            success = False
+    exporter = ModelExporter(model_path, output_dir, logger)
+    started = time.perf_counter()
+    success = True
 
-    if args.format in ["torchscript", "all"]:
-        result = exporter.export_torchscript(
-            input_shape=tuple(args.input_shape),
-            output_name=torchscript_name,
-            optimize=args.optimize,
-        )
-        if result is None:
-            success = False
+    try:
+        if args.format in ["onnx", "all"]:
+            success &= exporter.export_onnx(
+                input_shape=tuple(args.input_shape),
+                output_name=onnx_name,
+                opset_version=args.opset,
+                dynamic_batch=use_dynamic_batch,
+            ) is not None
 
-    if not success:
-        exit(1)
+        if args.format in ["openvino", "all"]:
+            success &= exporter.export_openvino(
+                input_shape=tuple(args.input_shape),
+                output_name=openvino_name,
+                fp16=not args.fp32,
+                dynamic_batch=use_dynamic_batch,
+            ) is not None
+
+        if args.format in ["torchscript", "all"]:
+            success &= exporter.export_torchscript(
+                input_shape=tuple(args.input_shape),
+                output_name=torchscript_name,
+                optimize=args.optimize,
+            ) is not None
+
+        elapsed = time.perf_counter() - started
+        if success:
+            logger.info("=== export done in %.2fs ===", elapsed)
+        else:
+            logger.error("=== export completed with failures (%.2fs) ===", elapsed)
+            sys.exit(1)
+
+    except Exception:
+        logger.exception("fatal: unhandled error")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
