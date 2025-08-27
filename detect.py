@@ -23,7 +23,8 @@ from datetime import datetime
 from anodet.inference.model.wrapper import ModelWrapper
 from anodet.inference.modelType import ModelType
 from anodet.utils import setup_logging, get_logger
-
+from anodet.general import (determine_device, save_visualization, increment_path)
+from pathlib import Path
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -39,13 +40,13 @@ def parse_args():
     parser.add_argument(
         "--model_data_path",
         type=str,
-        default="./distributions/",
+        default="./distributions/anomav_exp",
         help="Directory containing model files.",
     )
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model_openvino",
+        default="padim_model.pt",
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
@@ -84,7 +85,7 @@ def parse_args():
     )
     parser.add_argument(
         "--save_visualizations",
-        action="store_true",
+        action="store_false",
         help="Save visualization images to disk.",
     )
     parser.add_argument(
@@ -93,6 +94,20 @@ def parse_args():
         default="./visualizations/",
         help="Directory to save visualization images.",
     )
+
+    parser.add_argument(
+        "--run_name",
+        default="detect_exp",
+        help="experiment name for this training run"
+    )
+
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="overwrite existing run directory without auto-incrementing",
+    )
+
+
     parser.add_argument(
         "--show_first_batch_only",
         action="store_true",
@@ -130,31 +145,6 @@ def parse_args():
     )
 
     return parser.parse_args()
-
-
-def save_visualization(images, filename, output_dir):
-    """Save visualization images to disk"""
-    os.makedirs(output_dir, exist_ok=True)
-    filepath = os.path.join(output_dir, filename)
-
-    if len(images.shape) == 4:  # Batch of images
-        for i, img in enumerate(images):
-            individual_filepath = os.path.join(
-                output_dir, f"{filename.split('.')[0]}_batch_{i}.png"
-            )
-            plt.imsave(individual_filepath, img)
-    else:  # Single image
-        plt.imsave(filepath, images)
-
-
-def determine_device(device_arg):
-    """Determine the best device to use for inference"""
-    if device_arg == "auto":
-        if torch.cuda.is_available():
-            return "cuda"
-        else:
-            return "cpu"
-    return device_arg
 
 
 def main(args):
@@ -233,7 +223,7 @@ def main(args):
 
     # Create output directory for visualizations if needed
     if args.save_visualizations:
-        os.makedirs(args.viz_output_dir, exist_ok=True)
+        RESULTS_PATH = increment_path(Path(args.viz_output_dir) / args.run_name, exist_ok=args.overwrite, mkdir=True)
         logger.info(f"Visualization output directory: {args.viz_output_dir}")
 
     # DataLoader
@@ -303,14 +293,6 @@ def main(args):
             # Postprocessing
             postprocess_start = time.time()
             try:
-                # # Convert to torch tensors for classification if needed
-                # if isinstance(image_scores, np.ndarray):
-                #     image_scores_tensor = torch.from_numpy(image_scores)
-                #     score_maps_tensor = torch.from_numpy(score_maps)
-                # else:
-                #     image_scores_tensor = image_scores
-                #     score_maps_tensor = score_maps
-
                 # Apply threshold classification
                 score_map_classifications = anodet.classification(
                     score_maps, args.thresh
@@ -388,9 +370,9 @@ def main(args):
                     # Save visualizations if requested
                     if args.save_visualizations:
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        # save_visualization(boundary_images, f"boundary_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
-                        # save_visualization(heatmap_images, f"heatmap_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
-                        # save_visualization(highlighted_images, f"highlighted_batch_{batch_idx}_{timestamp}.png", args.viz_output_dir)
+                        # save_visualization(boundary_images, f"boundary_batch_{batch_idx}_{timestamp}.png", RESULTS_PATH)
+                        # save_visualization(heatmap_images, f"heatmap_batch_{batch_idx}_{timestamp}.png", RESULTS_PATH)
+                        # save_visualization(highlighted_images, f"highlighted_batch_{batch_idx}_{timestamp}.png", RESULTS_PATH)
                         # logger.debug(f"Visualizations saved for batch {batch_idx}")
 
                     # Show first batch only (if requested)
@@ -424,7 +406,7 @@ def main(args):
 
                             if args.save_visualizations:
                                 combined_filepath = os.path.join(
-                                    args.viz_output_dir,
+                                    RESULTS_PATH,
                                     f"combined_batch_{batch_idx}_{timestamp}.png",
                                 )
                                 plt.savefig(

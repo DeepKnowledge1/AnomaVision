@@ -7,9 +7,12 @@ import numpy as np
 import torch
 import cv2
 from torch.utils.data import DataLoader
+from pathlib import Path
 
 import anodet
 from anodet.utils import get_logger, save_args_to_yaml, setup_logging
+from anodet.general import increment_path
+
 # pre-commit run trailing-whitespace --files .\anodet\utils.py
 
 def parse_args():
@@ -30,6 +33,18 @@ def parse_args():
         type=str,
         default="./distributions/",
         help="Directory to save model distributions and PT file.",
+    )
+
+    parser.add_argument(
+        "--run_name",
+        default="anomav_exp",
+        help="experiment name for this training run"
+    )
+
+    parser.add_argument(
+        "--overwrite",
+        action="store_false",
+        help="overwrite existing run directory without auto-incrementing",
     )
 
     parser.add_argument(
@@ -88,8 +103,7 @@ def main(args):
     try:
         # Resolve paths
         DATASET_PATH = os.path.realpath(args.dataset_path)
-        MODEL_DATA_PATH = os.path.realpath(args.model_data_path)
-        os.makedirs(MODEL_DATA_PATH, exist_ok=True)
+        MODEL_DATA_PATH = increment_path(Path(args.model_data_path) / args.run_name, exist_ok=args.overwrite, mkdir=True)
 
         # Minimal, high-signal run header
         logger.info("=== PaDiM training started ===")
