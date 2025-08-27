@@ -10,7 +10,7 @@ from PIL import Image
 import os
 import logging
 from datetime import datetime
-
+import yaml
 
 standard_image_transform = T.Compose(
     [
@@ -280,3 +280,8 @@ def get_logger(name=None):
         setup_logging()  # Auto-configure if not done yet
 
     return logging.getLogger(name)
+
+
+def save_args_to_yaml(args, filename="config.yml"):
+    with open(filename, "w") as f:
+        yaml.dump(vars(args), f, default_flow_style=False)

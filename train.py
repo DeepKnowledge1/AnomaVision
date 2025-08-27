@@ -1,12 +1,16 @@
 import os
-import anodet
+import sys
+import time
+import argparse
+
 import numpy as np
 import torch
 import cv2
 from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
-import argparse
 
+import anodet
+from anodet.utils import get_logger, save_args_to_yaml, setup_logging
+# pre-commit run trailing-whitespace --files .\anodet\utils.py
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -25,7 +29,7 @@ def parse_args():
         "--model_data_path",
         type=str,
         default="./distributions/",
-        help="Directory to save model distributions and ONNX file.",
+        help="Directory to save model distributions and PT file.",
     )
 
     parser.add_argument(
@@ -64,36 +68,84 @@ def parse_args():
         default=50,
         help="Number of random feature dimensions to keep.",
     )
+    parser.add_argument(
+        "--log-level",
+        dest="log_level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Logging level (default: INFO).",
+    )
 
     return parser.parse_args()
 
 
 def main(args):
-    # Set up paths
-    DATASET_PATH = os.path.realpath(args.dataset_path)
-    MODEL_DATA_PATH = os.path.realpath(args.model_data_path)
-    os.makedirs(MODEL_DATA_PATH, exist_ok=True)
+    setup_logging(args.log_level)
+    logger = get_logger(__name__)
 
-    # Load dataset
-    dataset = anodet.AnodetDataset(os.path.join(DATASET_PATH, "train/good"))
-    dataloader = DataLoader(dataset, batch_size=args.batch_size)
-    print("Number of images in dataset:", len(dataloader.dataset))
+    t0 = time.perf_counter()
+    try:
+        # Resolve paths
+        DATASET_PATH = os.path.realpath(args.dataset_path)
+        MODEL_DATA_PATH = os.path.realpath(args.model_data_path)
+        os.makedirs(MODEL_DATA_PATH, exist_ok=True)
 
-    # Initialize device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Minimal, high-signal run header
+        logger.info("=== PaDiM training started ===")
+        logger.info(
+            "cfg: backbone=%s | layers=%s | feat_dim=%d | batch_size=%d | out=%s",
+            args.backbone,
+            args.layer_indices,
+            args.feat_dim,
+            args.batch_size,
+            os.path.join(MODEL_DATA_PATH, args.output_model),
+        )
+        logger.info("data: %s", DATASET_PATH)
 
-    # Initialize model with args
-    padim = anodet.Padim(
-        backbone=args.backbone,
-        device=device,
-        layer_indices=args.layer_indices,
-        feat_dim=args.feat_dim,
-    )
+        # Dataset
+        dataset_root = os.path.join(DATASET_PATH, "train", "good")
+        if not os.path.isdir(dataset_root):
+            logger.error('Expected folder "%s" does not exist.', dataset_root)
+            sys.exit(1)
 
-    # Train model
-    padim.fit(dataloader)
+        dataset = anodet.AnodetDataset(dataset_root)
+        if len(dataset) == 0:
+            logger.error("No training images found in %s", dataset_root)
+            sys.exit(1)
 
-    torch.save(padim, os.path.join(MODEL_DATA_PATH, args.output_model))
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
+        logger.info("dataset: %d images", len(dataset))
+
+        # Device
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info("device: %s (cuda_available=%s)", device.type, torch.cuda.is_available())
+
+        # Model
+        padim = anodet.Padim(
+            backbone=args.backbone,
+            device=device,
+            layer_indices=args.layer_indices,
+            feat_dim=args.feat_dim,
+        )
+
+        # Train
+        t_fit = time.perf_counter()
+        padim.fit(dataloader)
+        logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
+
+        # Save artifacts
+        model_path = os.path.join(MODEL_DATA_PATH, args.output_model)
+        torch.save(padim, model_path)
+        save_args_to_yaml(args, os.path.join(MODEL_DATA_PATH, "config.yml"))
+        logger.info("saved: model=%s, config=%s",
+                    model_path, os.path.join(MODEL_DATA_PATH, "config.yml"))
+
+        logger.info("=== Training is done in %.2fs ===", time.perf_counter() - t0)
+
+    except Exception:
+        logger.exception("Fatal error during training.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
