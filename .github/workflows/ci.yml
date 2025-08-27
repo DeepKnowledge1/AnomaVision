@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+# cancel redundant runs on the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'poetry'            # caches deps using poetry.lock
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true   # creates .venv in repo
+          installer-parallel: true
+
+      - name: Install dependencies
+        run: |
+          poetry --version
+          poetry install --no-interaction
+
+      - name: Run tests
+        run: poetry run pytest -q
+
+      # (Optional) save test results / coverage if you add them later
+      # - name: Upload pytest cache
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: pytest-cache-${{ matrix.python-version }}
+      #     path: .pytest_cache
+      #
+      # - name: Upload coverage XML
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: coverage-${{ matrix.python-version }}
+      #     path: coverage.xml
+
+  # Example: only run extra checks on main (optional)
+  # main-only:
+  #   if: github.ref == 'refs/heads/main'
+  #   needs: tests
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: echo "Do deployment or tagging here"
