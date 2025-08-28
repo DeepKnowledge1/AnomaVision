@@ -86,9 +86,9 @@ class ModelWrapper:
         Run inference on the given batch using the selected backend.
         Returns (scores, maps) as numpy arrays.
         """
-        logger.info(f"Running prediction via {self.backend.__class__.__name__}")
+        logger.debug(f"Running prediction via {self.backend.__class__.__name__}")
         result = self.backend.predict(batch)
-        logger.info("Prediction completed successfully")
+        logger.debug("Prediction completed successfully")
         return result
 
     def close(self) -> None:

@@ -23,7 +23,7 @@ from datetime import datetime
 from anodet.inference.model.wrapper import ModelWrapper
 from anodet.inference.modelType import ModelType
 from anodet.utils import setup_logging, get_logger
-from anodet.general import (determine_device, save_visualization, increment_path)
+from anodet.general import (determine_device, save_visualization, increment_path,Profiler)
 from pathlib import Path
 
 def parse_args():
@@ -46,7 +46,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.pt",
+        default="padim_model.onnx",
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
@@ -80,7 +80,7 @@ def parse_args():
     # Visualization parameters
     parser.add_argument(
         "--enable_visualization",
-        action="store_false",
+        action="store_true",
         help="Enable visualization of results.",
     )
     parser.add_argument(
@@ -158,315 +158,232 @@ def main(args):
         if len(viz_color) != 3:
             raise ValueError
     except ValueError:
-        logger.warning(
-            f"Invalid color format '{args.viz_color}'. Using default (128,0,128)"
-        )
+        logger.warning(f"Invalid color format '{args.viz_color}'. Using default (128,0,128)")
         viz_color = (128, 0, 128)
-
-    # Setup timing
-    total_start_time = time.time()
-    timing_stats = {
-        "setup": 0,
-        "model_loading": 0,
-        "data_loading": 0,
-        "preprocessing": 0,
-        "inference": 0,
-        "postprocessing": 0,
-        "visualization": 0,
-        "total": 0,
+    # Initialize AnomaVision profilers for different pipeline stages
+    anomavision_profilers = {
+        'setup': Profiler(),
+        'model_loading': Profiler(),
+        'data_loading': Profiler(),
+        'inference': Profiler(),           # Core anomaly detection timing
+        'postprocessing': Profiler(),      # Classification and scoring timing
+        'visualization': Profiler()        # Anomaly visualization timing
     }
-
-    logger.info("Starting anomaly detection inference process")
+    logger.info("Starting AnomaVision anomaly detection inference process")
     logger.info(f"Arguments: {vars(args)}")
 
-    # Setup
-    setup_start = time.time()
-    DATASET_PATH = os.path.realpath(args.dataset_path)
-    MODEL_DATA_PATH = os.path.realpath(args.model_data_path)
+    total_start_time = time.time()
 
-    # Determine device
-    device_str = determine_device(args.device)
-    logger.info(f"Selected device: {device_str}")
+    # AnomaVision setup phase
+    with anomavision_profilers['setup']:
+        DATASET_PATH = os.path.realpath(args.dataset_path)
+        MODEL_DATA_PATH = os.path.realpath(args.model_data_path)
+        device_str = determine_device(args.device)
+        logger.info(f"AnomaVision selected device: {device_str}")
+        logger.info(f"AnomaVision dataset path: {DATASET_PATH}")
+        logger.info(f"AnomaVision model data path: {MODEL_DATA_PATH}")
 
-    logger.info(f"Dataset path: {DATASET_PATH}")
-    logger.info(f"Model data path: {MODEL_DATA_PATH}")
+        if device_str == "cuda" and torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = True
+            logger.info("AnomaVision CUDA available, enabled cuDNN benchmark")
+            logger.info(f"AnomaVision CUDA device: {torch.cuda.get_device_name()}")
+            logger.info(f"AnomaVision CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
-    if device_str == "cuda" and torch.cuda.is_available():
-        torch.backends.cudnn.benchmark = True
-        logger.info("CUDA available, enabled cuDNN benchmark")
-        logger.info(f"CUDA device: {torch.cuda.get_device_name()}")
-        logger.info(
-            f"CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB"
-        )
+    # AnomaVision model loading phase
+    with anomavision_profilers['model_loading']:
+        model_path = os.path.join(MODEL_DATA_PATH, args.model)
+        logger.info(f"Loading AnomaVision model from: {model_path}")
 
-    timing_stats["setup"] = time.time() - setup_start
+        if not os.path.exists(model_path):
+            logger.error(f"AnomaVision model file not found: {model_path}")
+            raise FileNotFoundError(f"AnomaVision model file not found: {model_path}")
 
-    # Load model using the inference wrapper
-    model_load_start = time.time()
-    model_path = os.path.join(MODEL_DATA_PATH, args.model)
-    logger.info(f"Loading model from: {model_path}")
+        try:
+            model = ModelWrapper(model_path, device_str)
+            model_type = ModelType.from_extension(model_path)
+            logger.info(f"AnomaVision model loaded successfully. Type: {model_type.value.upper()}")
+        except Exception as e:
+            logger.error(f"Failed to load AnomaVision model: {e}")
+            raise
 
-    if not os.path.exists(model_path):
-        logger.error(f"Model file not found: {model_path}")
-        raise FileNotFoundError(f"Model file not found: {model_path}")
-
-    try:
-        # Use the inference ModelWrapper
-        model = ModelWrapper(model_path, device_str)
-        model_type = ModelType.from_extension(model_path)
-        logger.info(f"Model loaded successfully. Type: {model_type.value.upper()}")
-    except Exception as e:
-        logger.error(f"Failed to load model: {e}")
-        raise
-
-    timing_stats["model_loading"] = time.time() - model_load_start
-
-    # Create output directory for visualizations if needed
+    # Create output directory for AnomaVision visualizations if needed
     if args.save_visualizations:
         RESULTS_PATH = increment_path(Path(args.viz_output_dir) / args.run_name, exist_ok=args.overwrite, mkdir=True)
-        logger.info(f"Visualization output directory: {args.viz_output_dir}")
+        logger.info(f"AnomaVision visualization output directory: {args.viz_output_dir}")
 
-    # DataLoader
-    data_load_start = time.time()
-    logger.info("Creating dataset and dataloader")
+    # AnomaVision data loading phase
+    with anomavision_profilers['data_loading']:
+        logger.info("Creating AnomaVision dataset and dataloader")
+        try:
+            test_dataset = anodet.AnodetDataset(DATASET_PATH)
+            test_dataloader = DataLoader(
+                test_dataset,
+                batch_size=args.batch_size,
+                num_workers=args.num_workers,
+                pin_memory=args.pin_memory and device_str == "cuda",
+                persistent_workers=args.num_workers > 0,
+            )
+            logger.info(f"AnomaVision dataset created successfully. Total images: {len(test_dataset)}")
+            logger.info(f"AnomaVision batch size: {args.batch_size}, Number of batches: {len(test_dataloader)}")
+        except Exception as e:
+            logger.error(f"Failed to create AnomaVision dataset/dataloader: {e}")
+            raise
 
-    try:
-        test_dataset = anodet.AnodetDataset(DATASET_PATH)
-        test_dataloader = DataLoader(
-            test_dataset,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            pin_memory=args.pin_memory and device_str == "cuda",
-            persistent_workers=args.num_workers > 0,
-        )
-        logger.info(f"Dataset created successfully. Total images: {len(test_dataset)}")
-        logger.info(
-            f"Batch size: {args.batch_size}, Number of batches: {len(test_dataloader)}"
-        )
-    except Exception as e:
-        logger.error(f"Failed to create dataset/dataloader: {e}")
-        raise
+    logger.info(f"Processing {len(test_dataset)} images using AnomaVision {model_type.value.upper()}")
 
-    timing_stats["data_loading"] = time.time() - data_load_start
-
-    logger.info(
-        f"Processing {len(test_dataset)} images using {model_type.value.upper()}"
-    )
-
-    # Process batches
-    total_inference_time = 0
-    total_preprocessing_time = 0
-    total_postprocessing_time = 0
-    total_visualization_time = 0
-
+    # AnomaVision batch processing pipeline
+    batch_count = 0
     try:
         for batch_idx, (batch, images, _, _) in enumerate(test_dataloader):
-            batch_start_time = time.time()
             batch = batch.to(device_str)
-            logger.debug(f"Processing batch {batch_idx + 1}/{len(test_dataloader)}")
+            batch_count += 1
+            logger.debug(f"Processing AnomaVision batch {batch_idx + 1}/{len(test_dataloader)}")
 
-            # Log batch info
-            if isinstance(batch, torch.Tensor):
-                logger.debug(f"Batch shape: {batch.shape}, dtype: {batch.dtype}")
-            else:
-                logger.debug(f"Batch type: {type(batch)}")
-
-            # Inference using the inference wrapper
-            inference_start = time.time()
-            try:
-                # The ModelWrapper.predict() returns (scores, maps) as numpy arrays
-                image_scores, score_maps = model.predict(batch)
-                inference_time = time.time() - inference_start
-                total_inference_time += inference_time
-
-                logger.debug(
-                    f"Batch {batch_idx}: Inference completed in {inference_time:.4f}s"
-                )
-                logger.debug(
-                    f"Image scores shape: {image_scores.shape}, Score maps shape: {score_maps.shape}"
-                )
-
-            except Exception as e:
-                logger.error(f"Inference failed for batch {batch_idx}: {e}")
-                continue
-
-            # Postprocessing
-            postprocess_start = time.time()
-            try:
-                # Apply threshold classification
-                score_map_classifications = anodet.classification(
-                    score_maps, args.thresh
-                )
-                image_classifications = anodet.classification(image_scores, args.thresh)
-
-                postprocess_time = time.time() - postprocess_start
-                total_postprocessing_time += postprocess_time
-
-                # Convert back to numpy for logging if needed
-                if isinstance(image_scores, np.ndarray):
-                    image_scores_list = image_scores.tolist()
-                    image_classifications_list = (
-                        image_classifications.numpy().tolist()
-                        if hasattr(image_classifications, "numpy")
-                        else image_classifications.tolist()
-                    )
-                else:
-                    image_scores_list = image_scores.tolist()
-                    image_classifications_list = image_classifications.tolist()
-
-                logger.info(
-                    f"Batch {batch_idx + 1}: Scores: {image_scores_list}, Classifications: {image_classifications_list}"
-                )
-                logger.debug(f"Postprocessing completed in {postprocess_time:.4f}s")
-
-            except Exception as e:
-                logger.error(f"Postprocessing failed for batch {batch_idx}: {e}")
-                continue
-
-            # Visualization
-            if args.enable_visualization:
-                viz_start = time.time()
+            # AnomaVision core inference phase
+            with anomavision_profilers['inference'] as inference_prof:
                 try:
-                    test_images = np.array(images)
-
-                    # Convert classifications to numpy if needed for visualization
-                    score_map_classifications_np = (
-                        score_map_classifications.numpy()
-                        if hasattr(score_map_classifications, "numpy")
-                        else score_map_classifications
-                    )
-                    image_classifications_np = (
-                        image_classifications.numpy()
-                        if hasattr(image_classifications, "numpy")
-                        else image_classifications
-                    )
-                    score_maps_np = (
-                        score_maps
-                        if isinstance(score_maps, np.ndarray)
-                        else score_maps.numpy()
-                    )
-
-                    boundary_images = anodet.visualization.framed_boundary_images(
-                        test_images,
-                        score_map_classifications_np,
-                        image_classifications_np,
-                        padding=args.viz_padding,
-                    )
-                    heatmap_images = anodet.visualization.heatmap_images(
-                        test_images, score_maps_np, alpha=args.viz_alpha
-                    )
-                    highlighted_images = anodet.visualization.highlighted_images(
-                        [images[i] for i in range(len(images))],
-                        score_map_classifications_np,
-                        color=viz_color,
-                    )
-
-                    viz_time = time.time() - viz_start
-                    total_visualization_time += viz_time
-                    logger.debug(
-                        f"Visualization processing completed in {viz_time:.4f}s"
-                    )
-
-                    # Save visualizations if requested
-                    if args.save_visualizations:
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        # save_visualization(boundary_images, f"boundary_batch_{batch_idx}_{timestamp}.png", RESULTS_PATH)
-                        # save_visualization(heatmap_images, f"heatmap_batch_{batch_idx}_{timestamp}.png", RESULTS_PATH)
-                        # save_visualization(highlighted_images, f"highlighted_batch_{batch_idx}_{timestamp}.png", RESULTS_PATH)
-                        # logger.debug(f"Visualizations saved for batch {batch_idx}")
-
-                    # Show first batch only (if requested)
-                    if batch_idx == 0 and (
-                        not args.show_first_batch_only or batch_idx == 0
-                    ):
-                        try:
-                            fig, axs = plt.subplots(1, 4, figsize=(16, 8))
-                            fig.suptitle(
-                                f"Anomaly Detection Results - Batch {batch_idx + 1}",
-                                fontsize=14,
-                            )
-
-                            axs[0].imshow(images[0])
-                            axs[0].set_title("Original Image")
-                            axs[0].axis("off")
-
-                            axs[1].imshow(boundary_images[0])
-                            axs[1].set_title("Boundary Detection")
-                            axs[1].axis("off")
-
-                            axs[2].imshow(heatmap_images[0])
-                            axs[2].set_title("Anomaly Heatmap")
-                            axs[2].axis("off")
-
-                            axs[3].imshow(highlighted_images[0])
-                            axs[3].set_title("Highlighted Anomalies")
-                            axs[3].axis("off")
-
-                            plt.tight_layout()
-
-                            if args.save_visualizations:
-                                combined_filepath = os.path.join(
-                                    RESULTS_PATH,
-                                    f"combined_batch_{batch_idx}_{timestamp}.png",
-                                )
-                                plt.savefig(
-                                    combined_filepath, dpi=300, bbox_inches="tight"
-                                )
-                                logger.info(
-                                    f"Combined visualization saved: {combined_filepath}"
-                                )
-
-                            plt.show()
-
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to display visualization for batch {batch_idx}: {e}"
-                            )
-
+                    image_scores, score_maps = model.predict(batch)
+                    logger.info(f"AnomaVision batch shape: {batch.shape}, Inference completed in {inference_prof.elapsed_time * 1000:.2f} ms")
+                    logger.debug(f"AnomaVision image scores shape: {image_scores.shape}, Score maps shape: {score_maps.shape}")
                 except Exception as e:
-                    logger.error(f"Visualization failed for batch {batch_idx}: {e}")
+                    logger.error(f"AnomaVision inference failed for batch {batch_idx}: {e}")
+                    continue
 
-            batch_time = time.time() - batch_start_time
-            logger.debug(f"Batch {batch_idx + 1} completed in {batch_time:.4f}s")
+            # AnomaVision postprocessing phase - anomaly classification
+            with anomavision_profilers['postprocessing']:
+                try:
+                    score_map_classifications = anodet.classification(score_maps, args.thresh)
+                    image_classifications = anodet.classification(image_scores, args.thresh)
+
+                    # Convert for AnomaVision logging
+                    if isinstance(image_scores, np.ndarray):
+                        image_scores_list = image_scores.tolist()
+                        image_classifications_list = (
+                            image_classifications.numpy().tolist()
+                            if hasattr(image_classifications, "numpy")
+                            else image_classifications.tolist()
+                        )
+                    else:
+                        image_scores_list = image_scores.tolist()
+                        image_classifications_list = image_classifications.tolist()
+
+                    logger.debug(f"AnomaVision batch {batch_idx + 1}: Scores: {image_scores_list}, Classifications: {image_classifications_list}")
+                except Exception as e:
+                    logger.error(f"AnomaVision postprocessing failed for batch {batch_idx}: {e}")
+                    continue
+
+            # AnomaVision visualization phase
+            if args.enable_visualization:
+                with anomavision_profilers['visualization']:
+                    try:
+                        test_images = np.array(images)
+
+                        # Convert classifications to numpy for AnomaVision visualization
+                        score_map_classifications_np = (
+                            score_map_classifications.numpy()
+                            if hasattr(score_map_classifications, "numpy")
+                            else score_map_classifications
+                        )
+                        image_classifications_np = (
+                            image_classifications.numpy()
+                            if hasattr(image_classifications, "numpy")
+                            else image_classifications
+                        )
+                        score_maps_np = (
+                            score_maps if isinstance(score_maps, np.ndarray) else score_maps.numpy()
+                        )
+
+                        # Generate AnomaVision visualization outputs
+                        boundary_images = anodet.visualization.framed_boundary_images(
+                            test_images, score_map_classifications_np, image_classifications_np, padding=args.viz_padding
+                        )
+                        heatmap_images = anodet.visualization.heatmap_images(test_images, score_maps_np, alpha=args.viz_alpha)
+                        highlighted_images = anodet.visualization.highlighted_images(
+                            [images[i] for i in range(len(images))], score_map_classifications_np, color=viz_color
+                        )
+
+                        # Save AnomaVision visualizations if requested
+                        if args.save_visualizations:
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                        # Display AnomaVision results for first batch only (if requested)
+                        if batch_idx == 0 and (not args.show_first_batch_only or batch_idx == 0):
+                            try:
+                                fig, axs = plt.subplots(1, 4, figsize=(16, 8))
+                                fig.suptitle(f"AnomaVision Detection Results - Batch {batch_idx + 1}", fontsize=14)
+
+                                axs[0].imshow(images[0])
+                                axs[0].set_title("Original Image")
+                                axs[0].axis("off")
+
+                                axs[1].imshow(boundary_images[0])
+                                axs[1].set_title("AnomaVision Boundary Detection")
+                                axs[1].axis("off")
+
+                                axs[2].imshow(heatmap_images[0])
+                                axs[2].set_title("AnomaVision Anomaly Heatmap")
+                                axs[2].axis("off")
+
+                                axs[3].imshow(highlighted_images[0])
+                                axs[3].set_title("AnomaVision Highlighted Anomalies")
+                                axs[3].axis("off")
+
+                                plt.tight_layout()
+
+                                if args.save_visualizations:
+                                    combined_filepath = os.path.join(RESULTS_PATH, f"anomavision_batch_{batch_idx}_{timestamp}.png")
+                                    plt.savefig(combined_filepath, dpi=300, bbox_inches="tight")
+                                    logger.info(f"AnomaVision visualization saved: {combined_filepath}")
+
+                                plt.show()
+
+                            except Exception as e:
+                                logger.warning(f"Failed to display AnomaVision visualization for batch {batch_idx}: {e}")
+
+                    except Exception as e:
+                        logger.error(f"AnomaVision visualization failed for batch {batch_idx}: {e}")
 
     finally:
-        # Always close the model to free resources
-        logger.info("Closing model and freeing resources")
+        logger.info("Closing AnomaVision model and freeing resources")
         model.close()
 
-    # Calculate final timing statistics
-    total_time = time.time() - total_start_time
-    timing_stats["preprocessing"] = total_preprocessing_time
-    timing_stats["inference"] = total_inference_time
-    timing_stats["postprocessing"] = total_postprocessing_time
-    timing_stats["visualization"] = total_visualization_time
-    timing_stats["total"] = total_time
+    # Calculate total AnomaVision pipeline time
+    total_pipeline_time = time.time() - total_start_time
 
-    # Log timing summary
-    logger.info("=" * 50)
-    logger.info("TIMING SUMMARY")
-    logger.info("=" * 50)
-    logger.info(f"Setup time:           {timing_stats['setup']:.4f}s")
-    logger.info(f"Model loading time:   {timing_stats['model_loading']:.4f}s")
-    logger.info(f"Data loading time:    {timing_stats['data_loading']:.4f}s")
-    logger.info(f"Preprocessing time:   {timing_stats['preprocessing']:.4f}s")
-    logger.info(f"Inference time:       {timing_stats['inference']:.4f}s")
-    logger.info(f"Postprocessing time:  {timing_stats['postprocessing']:.4f}s")
-    logger.info(f"Visualization time:   {timing_stats['visualization']:.4f}s")
-    logger.info(f"Total time:           {timing_stats['total']:.4f}s")
-    logger.info("=" * 50)
+    # Log AnomaVision timing summary
+    logger.info("=" * 60)
+    logger.info("ANOMAVISION PERFORMANCE SUMMARY")
+    logger.info("=" * 60)
+    logger.info(f"Setup time:                {anomavision_profilers['setup'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Model loading time:        {anomavision_profilers['model_loading'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Data loading time:         {anomavision_profilers['data_loading'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Inference time:            {anomavision_profilers['inference'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Postprocessing time:       {anomavision_profilers['postprocessing'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Visualization time:        {anomavision_profilers['visualization'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Total pipeline time:       {total_pipeline_time * 1000:.2f} ms")
+    logger.info("=" * 60)
 
-    # Performance metrics
+    # AnomaVision performance metrics (focusing on meaningful metrics)
     total_images = len(test_dataset)
-    if timing_stats["inference"] > 0:
-        fps = total_images / timing_stats["inference"]
-        logger.info(f"Average inference FPS: {fps:.2f}")
+    inference_fps = anomavision_profilers['inference'].get_fps(total_images)
+    avg_inference_time = anomavision_profilers['inference'].get_avg_time_ms(batch_count)
 
-    if timing_stats["total"] > 0:
-        total_fps = total_images / timing_stats["total"]
-        logger.info(f"Overall processing FPS: {total_fps:.2f}")
+    logger.info("=" * 60)
+    logger.info("ANOMAVISION INFERENCE PERFORMANCE")
+    logger.info("=" * 60)
+    if inference_fps > 0:
+        logger.info(f"Pure inference FPS:        {inference_fps:.2f} images/sec")
 
-    logger.info("Anomaly detection inference process completed successfully")
+    if avg_inference_time > 0:
+        logger.info(f"Average inference time:    {avg_inference_time:.2f} ms/batch")
+
+    # Additional useful metrics
+    if batch_count > 0:
+        images_per_batch = total_images / batch_count
+        logger.info(f"Throughput:                {inference_fps * images_per_batch:.1f} images/sec (batch size: {args.batch_size})")
+
+    logger.info("=" * 60)
+    logger.info("AnomaVision anomaly detection inference process completed successfully")
 
 
 if __name__ == "__main__":
