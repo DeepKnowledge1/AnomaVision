@@ -46,7 +46,7 @@ class TorchBackend(InferenceBackend):
 
     def predict(self, batch: Batch) -> ScoresMaps:
         """Run inference using PyTorch."""
-        logger.info("Running inference via TorchBackend")
+        logger.debug("Running inference via TorchBackend")
 
         if not isinstance(batch, torch.Tensor):
             batch = torch.as_tensor(batch)
