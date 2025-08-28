@@ -314,7 +314,7 @@ def main():
     parser.add_argument(
         "--model_data_path",
         type=str,
-        default="./distributions/",
+        default="./distributions/anomav_exp",
         help="Directory containing model and output location",
     )
     parser.add_argument(
