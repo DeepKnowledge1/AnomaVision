@@ -14,7 +14,10 @@ import anodet
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+import matplotlib
+matplotlib.use("Agg")  # non-interactive, faster PNG writing
 import matplotlib.pyplot as plt
+
 import argparse
 import time
 from datetime import datetime
@@ -46,7 +49,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.onnx",
+        default="padim_model.pt",
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
@@ -85,7 +88,7 @@ def parse_args():
     )
     parser.add_argument(
         "--save_visualizations",
-        action="store_false",
+        action="store_true",
         help="Save visualization images to disk.",
     )
     parser.add_argument(
@@ -108,12 +111,6 @@ def parse_args():
     )
 
 
-    parser.add_argument(
-        "--show_first_batch_only",
-        action="store_true",
-        default=True,
-        help="Show visualization only for the first batch.",
-    )
     parser.add_argument(
         "--viz_alpha", type=float, default=0.5, help="Alpha value for heatmap overlay."
     )
@@ -231,6 +228,22 @@ def main(args):
 
     logger.info(f"Processing {len(test_dataset)} images using AnomaVision {model_type.value.upper()}")
 
+    # ---- Warm-up
+    try:
+        first = next(iter(test_dataloader))  # (batch, images, _, _)
+        first_batch = first[0].to(device_str)
+        model.warmup(batch=first_batch, runs=2)
+        logger.info("AnomaVision warm-up done with first batch %s.", tuple(first_batch.shape))
+    except StopIteration:
+        logger.warning("Dataset empty; skipping warm-up.")
+    except Exception as e:
+        logger.warning(f"Warm-up skipped due to error: {e}")
+
+    # ---- End warm-up
+
+
+
+
     # AnomaVision batch processing pipeline
     batch_count = 0
     try:
@@ -306,36 +319,37 @@ def main(args):
                         if args.save_visualizations:
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-                        # Display AnomaVision results for first batch only (if requested)
-                        if batch_idx == 0 and (not args.show_first_batch_only or batch_idx == 0):
+                        # Display AnomaVision results
+                        for img_id in range(len(images)):
                             try:
                                 fig, axs = plt.subplots(1, 4, figsize=(16, 8))
-                                fig.suptitle(f"AnomaVision Detection Results - Batch {batch_idx + 1}", fontsize=14)
+                                fig.suptitle(f"AnomaVision Detection Results - Batch {img_id + 1}", fontsize=14)
 
-                                axs[0].imshow(images[0])
+                                axs[0].imshow(images[img_id])
                                 axs[0].set_title("Original Image")
                                 axs[0].axis("off")
 
-                                axs[1].imshow(boundary_images[0])
+                                axs[1].imshow(boundary_images[img_id])
                                 axs[1].set_title("AnomaVision Boundary Detection")
                                 axs[1].axis("off")
 
-                                axs[2].imshow(heatmap_images[0])
+                                axs[2].imshow(heatmap_images[img_id])
                                 axs[2].set_title("AnomaVision Anomaly Heatmap")
                                 axs[2].axis("off")
 
-                                axs[3].imshow(highlighted_images[0])
+                                axs[3].imshow(highlighted_images[img_id])
                                 axs[3].set_title("AnomaVision Highlighted Anomalies")
                                 axs[3].axis("off")
 
-                                plt.tight_layout()
+                                # plt.tight_layout()
 
                                 if args.save_visualizations:
                                     combined_filepath = os.path.join(RESULTS_PATH, f"anomavision_batch_{batch_idx}_{timestamp}.png")
-                                    plt.savefig(combined_filepath, dpi=300, bbox_inches="tight")
+                                    plt.savefig(combined_filepath, dpi=100, bbox_inches="tight")
                                     logger.info(f"AnomaVision visualization saved: {combined_filepath}")
 
-                                plt.show()
+                                # plt.show()
+                                plt.close(fig)
 
                             except Exception as e:
                                 logger.warning(f"Failed to display AnomaVision visualization for batch {batch_idx}: {e}")

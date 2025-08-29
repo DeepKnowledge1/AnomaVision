@@ -91,3 +91,23 @@ class OpenVinoBackend(InferenceBackend):
         self.compiled_model = None
         self.model = None
         self.core = None
+
+    def warmup(self, batch=None, runs: int = 2) -> None:
+        """
+        Warm up OpenVINO by creating an infer request and calling infer repeatedly.
+        Args:
+            batch: input batch to use for warm-up.
+            runs: Number of warm-up runs to perform.
+        """
+
+        if isinstance(batch, np.ndarray):
+            input_arr = batch
+        else:
+            input_arr = batch.detach().cpu().numpy()
+
+        infer_request = self.compiled_model.create_infer_request()
+
+        for _ in range(max(1, runs)):
+            _ = infer_request.infer({self.input_layer.any_name: input_arr})
+
+        logger.info("OpenVinoBackend warm-up completed (runs=%d, shape=%s).", runs, tuple(input_arr.shape))

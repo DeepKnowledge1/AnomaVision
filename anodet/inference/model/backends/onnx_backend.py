@@ -70,3 +70,22 @@ class OnnxBackend(InferenceBackend):
     def close(self) -> None:
         """Release the ONNX session."""
         self.session = None
+
+
+    def warmup(self, batch, runs: int = 2) -> None:
+        """
+        Warm up ONNX Runtime by running the session a few times.
+        Args:
+            batch: input batch to use for warm-up.
+            runs: Number of warm-up runs to perform.
+        """
+        if isinstance(batch, np.ndarray):
+            input_arr = batch
+        else:
+            input_arr = batch.detach().cpu().numpy()
+
+        feeds = {self.input_names[0]: input_arr}
+        for _ in range(max(1, runs)):
+            _ = self.session.run(self.output_names, feeds)
+
+        logger.info("OnnxBackend warm-up completed (runs=%d, shape=%s).", runs, tuple(input_arr.shape))
