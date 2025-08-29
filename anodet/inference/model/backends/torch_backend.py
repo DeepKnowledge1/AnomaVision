@@ -13,6 +13,7 @@ import torch
 from .base import Batch, ScoresMaps, InferenceBackend
 from anodet.utils import get_logger
 
+
 logger = get_logger(__name__)
 
 
@@ -77,3 +78,34 @@ class TorchBackend(InferenceBackend):
     def close(self) -> None:
         """Release PyTorch model."""
         self.model = None
+
+    def warmup(self, batch, runs: int = 2) -> None:
+        """
+        Warm up PyTorch/TorchScript-on-PyTorch backend.
+        Uses AMP on CUDA if enabled, and executes the model a few times.
+        Args:
+            batch: input batch to use for warm-up.
+            runs: Number of warm-up runs to perform.
+
+        """
+        import torch
+        from contextlib import nullcontext
+
+        if not isinstance(batch, torch.Tensor):
+            batch = torch.as_tensor(batch, dtype=torch.float32, device=self.device)
+        else:
+            batch = batch.to(self.device, non_blocking=True)
+
+        # Avoid autograd + use AMP if configured
+        autocast_ctx = (
+            torch.autocast(device_type=self.device.type, dtype=torch.float16)
+            if self.use_amp and self.device.type == "cuda"
+            else nullcontext()
+        )
+
+        with torch.inference_mode(), autocast_ctx:
+            for _ in range(max(1, runs)):
+                # Prefer model.predict to match your runtime path
+                _ = self.model.predict(batch)
+
+        logger.info("TorchBackend warm-up completed (runs=%d, shape=%s).", runs, tuple(batch.shape))

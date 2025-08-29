@@ -71,3 +71,23 @@ class TorchScriptBackend(InferenceBackend):
         self.model = None
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
+
+    def warmup(self, batch=None, runs: int = 2) -> None:
+        """
+        Warm up TorchScript backend by forwarding a few times on-device.
+        Args:
+            batch: input batch to use for warm-up.
+            runs: Number of warm-up runs to perform.
+
+        """
+
+        if isinstance(batch, torch.Tensor):
+            batch = batch.to(self.device, non_blocking=True)
+        else:
+            batch = torch.as_tensor(batch, dtype=torch.float32, device=self.device)
+
+        with torch.no_grad():
+            for _ in range(max(1, runs)):
+                _ = self.model(batch)
+
+        logger.info("TorchScriptBackend warm-up completed (runs=%d, shape=%s).", runs, tuple(batch.shape))
