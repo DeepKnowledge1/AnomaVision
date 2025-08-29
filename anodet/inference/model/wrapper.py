@@ -95,3 +95,9 @@ class ModelWrapper:
         """Release resources associated with the backend."""
         logger.info("Closing ModelWrapper and releasing resources")
         self.backend.close()
+
+    def warmup(self, batch=None, runs: int = 2) -> None:
+        if hasattr(self.backend, "warmup"):
+            return self.backend.warmup(batch=batch, runs=runs)
+        else:
+            logger.info(f"{self.backend.__class__.__name__} does not support warm-up. Skipping.")

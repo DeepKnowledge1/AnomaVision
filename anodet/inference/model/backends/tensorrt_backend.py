@@ -24,3 +24,7 @@ class TensorRTBackend(InferenceBackend):
 
     def close(self) -> None:
         pass
+
+    def warmup(self, batch=None, runs: int = 2) -> None:
+        logger.warning("TensorRT backend is not implemented; warm-up skipped.")
+        raise NotImplementedError("TensorRT warm-up not implemented yet.")
