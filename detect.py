@@ -83,12 +83,12 @@ def parse_args():
     # Visualization parameters
     parser.add_argument(
         "--enable_visualization",
-        action="store_true",
+        action="store_false",
         help="Enable visualization of results.",
     )
     parser.add_argument(
         "--save_visualizations",
-        action="store_true",
+        action="store_false",
         help="Save visualization images to disk.",
     )
     parser.add_argument(
