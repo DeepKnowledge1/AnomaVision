@@ -2,6 +2,8 @@ from pathlib import Path
 import os
 import matplotlib.pyplot as plt
 import torch
+import subprocess
+import sys
 
 
 
@@ -149,3 +151,66 @@ class Profiler(contextlib.ContextDecorator):
         if num_operations > 0:
             return (self.accumulated_time / num_operations) * 1000
         return 0.0
+
+
+class GitStatusChecker:
+    def __init__(self, branch: str = "HEAD"):
+        self.branch = branch
+
+    def _run(self, cmd: list[str]) -> str:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+
+    def is_repo(self) -> bool:
+        try:
+            out = self._run(["git", "rev-parse", "--is-inside-work-tree"])
+            return out == "true"
+        except subprocess.CalledProcessError:
+            return False
+
+    def get_current_branch(self) -> str:
+        try:
+            return self._run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        except subprocess.CalledProcessError:
+            return "UNKNOWN"
+
+    def check_branch_status(self, branch_name: str) -> None:
+        print(f"\n🌿 Checking branch: {branch_name}")
+
+        # Make sure branch exists locally
+        try:
+            self._run(["git", "rev-parse", "--verify", branch_name])
+        except subprocess.CalledProcessError:
+            print(f"⚠️ Branch '{branch_name}' does not exist locally.")
+            return
+
+        # Fetch latest changes from remote
+        self._run(["git", "fetch"])
+
+        # Compare with upstream
+        try:
+            counts = self._run(["git", "rev-list", "--left-right", "--count", f"{branch_name}...{branch_name}@{{u}}"])
+            ahead, behind = map(int, counts.split())
+        except subprocess.CalledProcessError:
+            print(f"⚠️ No upstream set for '{branch_name}'. Use:")
+            print(f"   git branch --set-upstream-to origin/{branch_name} {branch_name}")
+            return
+
+        if behind > 0:
+            print(f"⬇️ Branch '{branch_name}' is behind by {behind} commit(s). Run `git pull`.")
+        elif ahead > 0:
+            print(f"⬆️ Branch '{branch_name}' is ahead by {ahead} commit(s). Run `git push`.")
+        else:
+            print(f"✅ Branch '{branch_name}' is up-to-date with the remote.")
+
+    def check_status(self) -> None:
+        if not self.is_repo():
+            print("❌ Not a git repository. Navigate to a repo and try again.")
+            sys.exit(1)
+
+        current_branch = self.get_current_branch()
+        self.check_branch_status(current_branch)
+
+        # If not on main, also check main
+        if current_branch != "main":
+            self.check_branch_status("main")

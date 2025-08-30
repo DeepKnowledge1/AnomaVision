@@ -11,9 +11,12 @@ from pathlib import Path
 
 import anodet
 from anodet.utils import get_logger, save_args_to_yaml, setup_logging
-from anodet.general import increment_path
+from anodet.general import increment_path, GitStatusChecker
 
 # pre-commit run trailing-whitespace --files .\anodet\utils.py
+
+checker = GitStatusChecker()
+checker.check_status()
 
 def parse_args():
     parser = argparse.ArgumentParser(
