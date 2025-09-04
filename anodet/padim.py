@@ -118,13 +118,13 @@ class Padim(torch.nn.Module):
 
         # Reshape to square patches - use a more ONNX-friendly approach
         batch_size = x.shape[0]
-        num_patches = embedding_vectors.shape[1]
-        patch_width = int(
-            torch.sqrt(torch.tensor(num_patches, dtype=torch.float32)).item()
-        )
-        # patch_width = int(torch.sqrt(num_patches.float()).item())
+        # num_patches = embedding_vectors.shape[1]
+        # patch_width = int(
+        #     torch.sqrt(torch.tensor(num_patches, dtype=torch.float32)).item()
+        # )
+        # # patch_width = int(torch.sqrt(num_patches.float()).item())
 
-        patch_scores = patch_scores.view(batch_size, patch_width, patch_width)
+        # patch_scores = patch_scores.view(batch_size, patch_width, patch_width)
 
         # Interpolate to original image size
         score_map = F.interpolate(

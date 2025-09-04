@@ -12,14 +12,23 @@ from datetime import datetime
 # Updated imports to use the inference modules (same as detect.py)
 from anodet.inference.model.wrapper import ModelWrapper
 from anodet.inference.modelType import ModelType
-from anodet.utils import setup_logging, get_logger
+from anodet.utils import setup_logging, get_logger, merge_config
 
-from anodet.general import (determine_device, Profiler)
+from anodet.general import determine_device, Profiler
+
+from anodet.config import load_config
+from pathlib import Path
+from easydict import EasyDict as edict
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Evaluate AnomaVision anomaly detection model performance using trained models."
+    )
+
+    # Config file
+    parser.add_argument(
+        "--config", type=str, default=None, help="Path to config.yml/.json"
     )
 
     # Dataset parameters
@@ -47,20 +56,23 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.pt",
+        default="padim_model.onnx",
         help="AnomaVision model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
         "--device",
         type=str,
-        default="auto",
+        default=None,
         choices=["auto", "cpu", "cuda"],
         help="Device to run AnomaVision evaluation on (auto will choose cuda if available)",
     )
 
     # Evaluation parameters
     parser.add_argument(
-        "--batch_size", type=int, default=2, help="Batch size for AnomaVision evaluation"
+        "--batch_size",
+        type=int,
+        default=1,
+        help="Batch size for AnomaVision evaluation",
     )
     parser.add_argument(
         "--num_workers",
@@ -115,7 +127,6 @@ def parse_args():
     return parser.parse_args()
 
 
-
 def evaluate_model_with_wrapper(
     model_wrapper, test_dataloader, logger, evaluation_profiler, detailed_timing=False
 ):
@@ -131,7 +142,9 @@ def evaluate_model_with_wrapper(
 
     batch_count = 0
     device_str = determine_device("cpu")
-    logger.info(f"Starting AnomaVision evaluation on {len(test_dataloader.dataset)} images")
+    logger.info(
+        f"Starting AnomaVision evaluation on {len(test_dataloader.dataset)} images"
+    )
 
     try:
         for batch_idx, (batch, images, image_targets, mask_targets) in enumerate(
@@ -154,7 +167,9 @@ def evaluate_model_with_wrapper(
                         )
 
                 except Exception as e:
-                    logger.error(f"AnomaVision inference failed for batch {batch_idx}: {e}")
+                    logger.error(
+                        f"AnomaVision inference failed for batch {batch_idx}: {e}"
+                    )
                     continue
 
             # Collect AnomaVision evaluation results
@@ -193,7 +208,7 @@ def evaluate_model_with_wrapper(
     # Convert lists back to appropriate formats for AnomaVision analysis
     all_images = np.array(all_images)
     all_image_classifications_target = np.array(all_image_classifications_target)
-    all_masks_target = np.array(all_masks_target)
+    all_masks_target = np.squeeze(np.array(all_masks_target), axis=1)
     all_image_scores = np.array(all_image_scores)
     all_score_maps = np.array(all_score_maps)
 
@@ -201,7 +216,9 @@ def evaluate_model_with_wrapper(
     evaluation_fps = evaluation_profiler.get_fps(len(test_dataloader.dataset))
     if evaluation_fps > 0:
         logger.info(f"AnomaVision evaluation inference FPS: {evaluation_fps:.2f}")
-        logger.info(f"AnomaVision total evaluation time: {evaluation_profiler.accumulated_time:.4f}s")
+        logger.info(
+            f"AnomaVision total evaluation time: {evaluation_profiler.accumulated_time:.4f}s"
+        )
 
     logger.info("AnomaVision evaluation completed successfully")
 
@@ -216,31 +233,50 @@ def evaluate_model_with_wrapper(
 
 def main(args):
     # Setup logging first
-    setup_logging(args.log_level)
+
+    if args.config is not None:
+        cfg = load_config(str(args.config))
+    else:
+        cfg = load_config(str(Path(args.model_data_path) / "config.yml"))
+
+    # Merge config with CLI args
+    config = edict(merge_config(args, cfg))
+
+    setup_logging(config.log_level)
     logger = get_logger(__name__)
+
+    # Log image processing configuration
+    logger.info(
+        "Image processing config: resize=%s, crop_size=%s, normalize=%s",
+        config.resize,
+        config.crop_size,
+        config.normalize,
+    )
+    if config.normalize:
+        logger.info("Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std)
 
     # Initialize AnomaVision profilers for different evaluation phases
     anomavision_profilers = {
-        'setup': Profiler(),
-        'model_loading': Profiler(),
-        'data_loading': Profiler(),
-        'evaluation': Profiler(),           # Core evaluation timing
-        'visualization': Profiler()         # Evaluation visualization timing
+        "setup": Profiler(),
+        "model_loading": Profiler(),
+        "data_loading": Profiler(),
+        "evaluation": Profiler(),  # Core evaluation timing
+        "visualization": Profiler(),  # Evaluation visualization timing
     }
 
     logger.info("Starting AnomaVision anomaly detection model evaluation")
     logger.info(f"Arguments: {vars(args)}")
 
     # AnomaVision evaluation setup phase
-    with anomavision_profilers['setup']:
-        DATASET_PATH = os.path.realpath(args.dataset_path)
-        MODEL_DATA_PATH = os.path.realpath(args.model_data_path)
-        device_str = determine_device(args.device)
+    with anomavision_profilers["setup"]:
+        DATASET_PATH = os.path.realpath(config.dataset_path)
+        MODEL_DATA_PATH = os.path.realpath(config.model_data_path)
+        device_str = determine_device(config.device)
 
         logger.info(f"AnomaVision selected device: {device_str}")
         logger.info(f"AnomaVision dataset path: {DATASET_PATH}")
         logger.info(f"AnomaVision model data path: {MODEL_DATA_PATH}")
-        logger.info(f"AnomaVision class name: {args.class_name}")
+        logger.info(f"AnomaVision class name: {config.class_name}")
 
         if device_str == "cuda" and torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True
@@ -251,8 +287,8 @@ def main(args):
             )
 
     # AnomaVision model loading phase
-    with anomavision_profilers['model_loading']:
-        model_path = os.path.join(MODEL_DATA_PATH, args.model)
+    with anomavision_profilers["model_loading"]:
+        model_path = os.path.join(MODEL_DATA_PATH, config.model)
         logger.info(f"Loading AnomaVision model from: {model_path}")
 
         if not os.path.exists(model_path):
@@ -263,41 +299,52 @@ def main(args):
             # Use the inference ModelWrapper for AnomaVision
             model = ModelWrapper(model_path, device_str)
             model_type = ModelType.from_extension(model_path)
-            logger.info(f"AnomaVision model loaded successfully. Type: {model_type.value.upper()}")
+            logger.info(
+                f"AnomaVision model loaded successfully. Type: {model_type.value.upper()}"
+            )
         except Exception as e:
             logger.error(f"Failed to load AnomaVision model: {e}")
             raise
 
     # AnomaVision test dataset creation
-    with anomavision_profilers['data_loading']:
+    with anomavision_profilers["data_loading"]:
         logger.info("Creating AnomaVision test dataset and dataloader")
 
         try:
-            # Use MVTecDataset for AnomaVision evaluation
+            # Use MVTecDataset for AnomaVision evaluation with configurable image processing
             test_dataset = anodet.MVTecDataset(
-                DATASET_PATH, args.class_name, is_train=False
+                DATASET_PATH,
+                config.class_name,
+                is_train=False,
+                resize=config.resize,
+                crop_size=config.crop_size,
+                normalize=config.normalize,
+                mean=config.norm_mean,
+                std=config.norm_std,
             )
             test_dataloader = DataLoader(
                 test_dataset,
-                batch_size=args.batch_size,
-                num_workers=args.num_workers,
-                pin_memory=args.pin_memory and device_str == "cuda",
-                persistent_workers=args.num_workers > 0,
+                batch_size=config.batch_size,
+                num_workers=config.num_workers,
+                pin_memory=config.pin_memory and device_str == "cuda",
+                persistent_workers=config.num_workers > 0,
             )
             logger.info(
                 f"AnomaVision test dataset created successfully. Total images: {len(test_dataset)}"
             )
             logger.info(
-                f"AnomaVision batch size: {args.batch_size}, Number of batches: {len(test_dataloader)}"
+                f"AnomaVision batch size: {config.batch_size}, Number of batches: {len(test_dataloader)}"
             )
         except Exception as e:
             logger.error(f"Failed to create AnomaVision test dataset/dataloader: {e}")
             raise
 
     # Create output directory for AnomaVision visualizations if needed
-    if args.save_visualizations:
-        os.makedirs(args.viz_output_dir, exist_ok=True)
-        logger.info(f"AnomaVision evaluation visualization output directory: {args.viz_output_dir}")
+    if config.save_visualizations:
+        os.makedirs(config.viz_output_dir, exist_ok=True)
+        logger.info(
+            f"AnomaVision evaluation visualization output directory: {config.viz_output_dir}"
+        )
 
     # Run AnomaVision evaluation
     logger.info(
@@ -308,11 +355,17 @@ def main(args):
         # Run AnomaVision evaluation using ModelWrapper
         images, image_classifications_target, masks_target, image_scores, score_maps = (
             evaluate_model_with_wrapper(
-                model, test_dataloader, logger, anomavision_profilers['evaluation'], args.detailed_timing
+                model,
+                test_dataloader,
+                logger,
+                anomavision_profilers["evaluation"],
+                config.detailed_timing,
             )
         )
 
-        logger.info(f"AnomaVision evaluation completed in {anomavision_profilers['evaluation'].accumulated_time:.4f}s")
+        logger.info(
+            f"AnomaVision evaluation completed in {anomavision_profilers['evaluation'].accumulated_time:.4f}s"
+        )
 
     except Exception as e:
         logger.error(f"AnomaVision evaluation failed: {e}")
@@ -323,27 +376,33 @@ def main(args):
         model.close()
 
     # AnomaVision evaluation visualization
-    if args.enable_visualization:
-        with anomavision_profilers['visualization']:
+    if config.enable_visualization:
+        with anomavision_profilers["visualization"]:
             logger.info("Generating AnomaVision evaluation visualizations")
 
             try:
                 # Use the anodet visualization function for AnomaVision results
                 anodet.visualize_eval_data(
-                    image_classifications_target, masks_target, image_scores, score_maps
+                    # image_classifications_target, masks_target, image_scores, score_maps
+                    image_classifications_target,
+                    masks_target.astype(np.uint8).flatten(),
+                    image_scores,
+                    score_maps.flatten(),
                 )
 
                 # Save AnomaVision visualizations if requested
-                if args.save_visualizations:
+                if config.save_visualizations:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
                     # Save the current AnomaVision evaluation figure
                     viz_filepath = os.path.join(
-                        args.viz_output_dir,
-                        f"anomavision_evaluation_{args.class_name}_{timestamp}.png",
+                        config.viz_output_dir,
+                        f"anomavision_evaluation_{config.class_name}_{timestamp}.png",
                     )
                     plt.savefig(viz_filepath, dpi=300, bbox_inches="tight")
-                    logger.info(f"AnomaVision evaluation visualization saved: {viz_filepath}")
+                    logger.info(
+                        f"AnomaVision evaluation visualization saved: {viz_filepath}"
+                    )
 
                 plt.show()
 
@@ -354,17 +413,29 @@ def main(args):
     logger.info("=" * 60)
     logger.info("ANOMAVISION EVALUATION PERFORMANCE SUMMARY")
     logger.info("=" * 60)
-    logger.info(f"Setup time:                {anomavision_profilers['setup'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Model loading time:        {anomavision_profilers['model_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Data loading time:         {anomavision_profilers['data_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Evaluation time:           {anomavision_profilers['evaluation'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Visualization time:        {anomavision_profilers['visualization'].accumulated_time * 1000:.2f} ms")
+    logger.info(
+        f"Setup time:                {anomavision_profilers['setup'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Model loading time:        {anomavision_profilers['model_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Data loading time:         {anomavision_profilers['data_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Evaluation time:           {anomavision_profilers['evaluation'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Visualization time:        {anomavision_profilers['visualization'].accumulated_time * 1000:.2f} ms"
+    )
     logger.info("=" * 60)
 
     # AnomaVision evaluation performance metrics (focusing on meaningful metrics)
     total_images = len(test_dataset)
-    evaluation_fps = anomavision_profilers['evaluation'].get_fps(total_images)
-    avg_evaluation_time = anomavision_profilers['evaluation'].get_avg_time_ms(len(test_dataloader))
+    evaluation_fps = anomavision_profilers["evaluation"].get_fps(total_images)
+    avg_evaluation_time = anomavision_profilers["evaluation"].get_avg_time_ms(
+        len(test_dataloader)
+    )
 
     logger.info("=" * 60)
     logger.info("ANOMAVISION EVALUATION PERFORMANCE")
@@ -378,7 +449,9 @@ def main(args):
     # Additional useful AnomaVision metrics
     if len(test_dataloader) > 0:
         images_per_batch = total_images / len(test_dataloader)
-        logger.info(f"Evaluation throughput:     {evaluation_fps * images_per_batch:.1f} images/sec (batch size: {args.batch_size})")
+        logger.info(
+            f"Evaluation throughput:     {evaluation_fps * images_per_batch:.1f} images/sec (batch size: {config.batch_size})"
+        )
 
     logger.info("=" * 60)
 
@@ -386,10 +459,13 @@ def main(args):
     logger.info("=" * 60)
     logger.info("ANOMAVISION EVALUATION SUMMARY")
     logger.info("=" * 60)
-    logger.info(f"Dataset: {args.class_name}")
+    logger.info(f"Dataset: {config.class_name}")
     logger.info(f"Total images evaluated: {total_images}")
     logger.info(f"Model type: {model_type.value.upper()}")
     logger.info(f"Device: {device_str}")
+    logger.info(
+        f"Image processing: resize={config.resize}, crop_size={config.crop_size}, normalize={config.normalize}"
+    )
     logger.info("=" * 60)
 
     logger.info("AnomaVision anomaly detection model evaluation completed successfully")
@@ -404,4 +480,6 @@ if __name__ == "__main__":
         logger.info("AnomaVision evaluation process interrupted by user")
     except Exception as e:
         logger = get_logger(__name__)
-        logger.error(f"AnomaVision evaluation process failed with error: {e}", exc_info=True)
+        logger.error(
+            f"AnomaVision evaluation process failed with error: {e}", exc_info=True
+        )

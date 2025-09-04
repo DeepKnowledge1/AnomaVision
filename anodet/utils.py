@@ -4,14 +4,17 @@ Provides utility functions for anomaly detection.
 
 import numpy as np
 import torch
-from typing import List, Optional, Callable, Union
+from typing import List, Optional, Callable, Union, Tuple
 from torchvision import transforms as T
 from PIL import Image
 import os
 import logging
 from datetime import datetime
 import yaml
+import argparse
 
+
+# Default standard transforms - kept for backward compatibility
 standard_image_transform = T.Compose(
     [
         T.Resize(224),
@@ -22,21 +25,141 @@ standard_image_transform = T.Compose(
 )
 
 standard_mask_transform = T.Compose([T.Resize(224), T.CenterCrop(224), T.ToTensor()])
+"""
+Examples:
+# Create transforms for 512x384 images
+transform = create_image_transform(resize=(512, 384), crop_size=None)
+
+# Create transforms with 640x480 resize and 512x512 center crop
+transform = create_image_transform(resize=(640, 480), crop_size=(512, 512))
+
+# Create transforms with proportional resize to 400px shortest edge, no crop
+transform = create_image_transform(resize=400, crop_size=None)
+"""
+
+
+def create_image_transform(
+    resize: Union[int, Tuple[int, int]] = 224,
+    crop_size: Optional[Union[int, Tuple[int, int]]] = None,
+    normalize: bool = True,
+    mean: List[float] = [0.485, 0.456, 0.406],
+    std: List[float] = [0.229, 0.224, 0.225],
+) -> T.Compose:
+    """
+    Create a configurable image transform pipeline.
+
+    Args:
+        resize: Size to resize to. If int, resize shortest edge. If tuple (h, w), resize to exact dimensions.
+        crop_size: Size to crop to. If None, no cropping. If int, center crop to square. If tuple (h, w), crop to exact dimensions.
+        normalize: Whether to apply ImageNet normalization.
+        mean: Mean values for normalization.
+        std: Standard deviation values for normalization.
+
+    Returns:
+        Composed transform pipeline.
+    """
+    transforms = []
+
+    # Handle resize - support both single int and tuple
+    if isinstance(resize, int):
+        transforms.append(T.Resize(resize))
+    else:
+        # For tuple (h, w), resize to exact dimensions
+        transforms.append(T.Resize(resize))
+
+    # Handle cropping - support both single int and tuple, or no cropping
+    if crop_size is not None:
+        if isinstance(crop_size, int):
+            transforms.append(T.CenterCrop(crop_size))
+        else:
+            # For tuple (h, w), crop to exact dimensions
+            transforms.append(T.CenterCrop(crop_size))
+
+    # Always convert to tensor
+    transforms.append(T.ToTensor())
+
+    # Optional normalization
+    if normalize:
+        transforms.append(T.Normalize(mean=mean, std=std))
+
+    return T.Compose(transforms)
+
+
+def create_mask_transform(
+    resize: Union[int, Tuple[int, int]] = 224,
+    crop_size: Optional[Union[int, Tuple[int, int]]] = None,
+) -> T.Compose:
+    """
+    Create a configurable mask transform pipeline.
+
+    Args:
+        resize: Size to resize to. If int, resize shortest edge. If tuple (h, w), resize to exact dimensions.
+        crop_size: Size to crop to. If None, no cropping. If int, center crop to square. If tuple (h, w), crop to exact dimensions.
+
+    Returns:
+        Composed transform pipeline.
+    """
+    transforms = []
+
+    # Handle resize
+    if isinstance(resize, int):
+        transforms.append(T.Resize(resize))
+    else:
+        transforms.append(T.Resize(resize))
+
+    # Handle cropping
+    if crop_size is not None:
+        if isinstance(crop_size, int):
+            transforms.append(T.CenterCrop(crop_size))
+        else:
+            transforms.append(T.CenterCrop(crop_size))
+
+    # Convert to tensor
+    transforms.append(T.ToTensor())
+
+    return T.Compose(transforms)
 
 
 def to_batch(
-    images: List[np.ndarray], transforms: T.Compose, device: torch.device
+    images: List[np.ndarray],
+    transforms: Optional[T.Compose] = None,
+    device: torch.device = torch.device("cpu"),
+    resize: Union[int, Tuple[int, int]] = 224,
+    crop_size: Optional[Union[int, Tuple[int, int]]] = None,
+    normalize: bool = True,
 ) -> torch.Tensor:
-    """Convert a list of numpy array images to a pytorch tensor batch with given transforms."""
+    """Convert a list of numpy array images to a pytorch tensor batch with given transforms.
+
+    Args:
+        images: List of numpy array images.
+        transforms: Optional pre-built transforms. If None, will create transforms using other parameters.
+        device: Device to move tensor to.
+        resize: Size to resize to if transforms is None.
+        crop_size: Size to crop to if transforms is None.
+        normalize: Whether to apply normalization if transforms is None.
+
+    Returns:
+        Batch tensor of processed images.
+    """
     assert len(images) > 0
+
+    # Use provided transforms or create new ones
+    if transforms is None:
+        transforms = create_image_transform(
+            resize=resize, crop_size=crop_size, normalize=normalize
+        )
 
     transformed_images = []
     for i, image in enumerate(images):
         image = Image.fromarray(image).convert("RGB")
         transformed_images.append(transforms(image))
 
-    height, width = transformed_images[0].shape[1:3]
-    batch = torch.zeros((len(images), 3, height, width))
+    # Get dimensions from first transformed image
+    first_shape = transformed_images[0].shape
+    channels, height, width = first_shape
+
+    # Create batch tensor
+    batch = torch.zeros((len(images), channels, height, width))
 
     for i, transformed_image in enumerate(transformed_images):
         batch[i] = transformed_image
@@ -173,7 +296,6 @@ def classification(image_scores, thresh: float):
     return image_classifications
 
 
-
 def rename_files(source_path: str, destination_path: Optional[str] = None) -> None:
     """Rename all files in a directory path with increasing integer name.
     Ex. 0001.png, 0002.png ...
@@ -282,6 +404,216 @@ def get_logger(name=None):
     return logging.getLogger(name)
 
 
-def save_args_to_yaml(args, filename="config.yml"):
+def save_args_to_yaml__(args, filename="config.yml"):
     with open(filename, "w") as f:
         yaml.dump(vars(args), f, default_flow_style=False)
+
+
+def save_args_to_yaml(args, path, organize_structure=False):
+    """
+    Save a configuration to YAML.
+
+    - Accepts argparse.Namespace, dict, dataclass, EasyDict, or any object with __dict__.
+    - If organize_structure=True, writes a *sectioned* config with:
+        common, training, inference, export  (inference/export derived from training/preprocess)
+
+    Args:
+        args: Configuration to save (effective training config recommended)
+        path: Output file path
+        organize_structure: If True, reorganize flat config into structured sections
+    """
+    import yaml
+    import numpy as np
+    from dataclasses import is_dataclass, asdict
+
+    try:
+        from easydict import EasyDict  # optional
+    except Exception:
+        EasyDict = None
+
+    def make_yaml_serializable(obj):
+        """Recursively convert obj to YAML-serializable types."""
+        if isinstance(obj, (np.generic,)):  # numpy scalar
+            return obj.item()
+        if isinstance(obj, np.ndarray):  # numpy array
+            return obj.tolist()
+        if isinstance(obj, (str, int, float, bool)) or obj is None:
+            return obj
+        try:
+            from pathlib import Path
+
+            if isinstance(obj, Path):
+                return str(obj)
+        except Exception:
+            pass
+        if isinstance(obj, tuple):
+            return [make_yaml_serializable(x) for x in obj]
+        if isinstance(obj, list):
+            return [make_yaml_serializable(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: make_yaml_serializable(v) for k, v in obj.items()}
+        if is_dataclass(obj):
+            return make_yaml_serializable(asdict(obj))
+        if hasattr(obj, "__dict__"):  # argparse.Namespace / any object
+            return make_yaml_serializable(vars(obj))
+        return obj
+
+    def organize_config(flat_config: dict) -> dict:
+        """Split a flat training config into sections and add inference/export defaults."""
+        flat_config = dict(flat_config)  # shallow copy
+
+        # keys we mirror into inference/export
+        preprocess_keys = ["resize", "crop_size", "normalize", "norm_mean", "norm_std"]
+
+        common_keys = {
+            "dataset_path",
+            "class_name",
+            "resize",
+            "crop_size",
+            "normalize",
+            "norm_mean",
+            "norm_std",
+            "backbone",
+            "feat_dim",
+            "layer_indices",
+            "model",
+            "model_data_path",
+            "device",
+            "log_level",
+            "enable_visualization",
+            "save_visualizations",
+            "viz_alpha",
+            "viz_padding",
+            "viz_color",
+        }
+
+        training_keys = {
+            "batch_size",
+            "output_model",
+            "run_name",
+            "epochs",
+            "learning_rate",
+            "weight_decay",
+            "momentum",
+        }
+
+        organized = {"common": {}, "training": {}}
+
+        # distribute keys
+        for key, value in flat_config.items():
+            if key in common_keys:
+                organized["common"][key] = value
+            elif key in training_keys:
+                organized["training"][key] = value
+            else:
+                # default unknown-but-useful keys to common
+                organized["common"][key] = value
+
+        # build inference section (derived from preprocess + sensible runtime defaults)
+        base_pre = {
+            k: organized["common"].get(k, flat_config.get(k)) for k in preprocess_keys
+        }
+        inference = {
+            "batch_size": flat_config.get("infer_batch_size", 1),
+            "num_workers": flat_config.get("num_workers", 0),
+            "pin_memory": flat_config.get("pin_memory", False),
+            "enable_visualization": organized["common"].get(
+                "enable_visualization", True
+            ),
+            "save_visualizations": organized["common"].get(
+                "save_visualizations", False
+            ),
+            "viz_alpha": organized["common"].get("viz_alpha", 0.6),
+            "viz_padding": organized["common"].get("viz_padding", 2),
+            "viz_color": organized["common"].get("viz_color", [255, 0, 0]),
+            "thresh": flat_config.get("thresh", None),
+        }
+        inference.update({k: v for k, v in base_pre.items() if v is not None})
+        organized["inference"] = inference
+
+        # build export section (shares preprocess, adds export knobs)
+        export = {
+            "format": flat_config.get(
+                "export_format", "onnx"
+            ),  # or 'torchscript', 'openvino', ...
+            "opset": flat_config.get("opset", 17),
+            "dynamic_batch": flat_config.get("dynamic_batch", False),
+        }
+        export.update({k: v for k, v in base_pre.items() if v is not None})
+        organized["export"] = export
+
+        # optional evaluation stub
+        if "evaluation" not in organized:
+            organized["evaluation"] = {
+                "metrics": flat_config.get("metrics", ["auroc", "pixel_auroc"]),
+                "val_batch_size": flat_config.get(
+                    "val_batch_size", organized["training"].get("batch_size", 8)
+                ),
+            }
+
+        return organized
+
+    # Normalize input → dict
+    if isinstance(args, dict):
+        data = args
+    elif EasyDict is not None and isinstance(args, EasyDict):
+        data = dict(args)
+    else:
+        if is_dataclass(args):
+            data = asdict(args)
+        elif hasattr(args, "__dict__"):
+            data = vars(args)
+        else:
+            raise TypeError(
+                "save_args_to_yaml expects a dict, EasyDict, argparse.Namespace, dataclass, "
+                "or an object with __dict__"
+            )
+
+    data = make_yaml_serializable(data)
+
+    if organize_structure:
+        data = organize_config(data)
+
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def merge_config(args: argparse.Namespace, config: dict) -> dict:
+    """
+    Merge command-line arguments with YAML config.
+    Args override config values if they are not None.
+    """
+
+    merged = config.copy()
+    for key, value in vars(args).items():
+        if (
+            value is not None and key != "config"
+        ):  # only override if user provided value
+            merged[key] = value
+    return merged
+
+
+def easydict_to_dict(d):
+    from easydict import EasyDict
+
+    if isinstance(d, EasyDict):
+        d = {k: easydict_to_dict(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        d = [easydict_to_dict(v) for v in d]
+    return d
+
+
+def yaml_save(file="data.yaml", data={}):
+    config_dict = easydict_to_dict(data)
+
+    # Save to YAML
+    with open(file, "w") as yaml_file:
+        yaml.dump(config_dict, yaml_file, default_flow_style=False)
+
+
+def save_args_to_yaml(config: dict, output_path: str):
+    """Save dictionary as YAML file."""
+    config = easydict_to_dict(config)
+
+    with open(output_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)

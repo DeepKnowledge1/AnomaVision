@@ -1,10 +1,15 @@
 import os
 import torch
-from typing import Optional
+from typing import Optional, Union, Tuple, List
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
-from ..utils import standard_image_transform, standard_mask_transform
+from ..utils import (
+    standard_image_transform,
+    standard_mask_transform,
+    create_image_transform,
+    create_mask_transform,
+)
 import numpy as np
 import cv2 as cv
 
@@ -23,12 +28,45 @@ class AnodetDataset(Dataset):
         self,
         image_directory_path: str,
         mask_directory_path: Optional[str] = None,
-        image_transforms: T.Compose = standard_image_transform,
-        mask_transforms: T.Compose = standard_mask_transform,
+        image_transforms: Optional[T.Compose] = None,
+        mask_transforms: Optional[T.Compose] = None,
+        resize: Union[int, Tuple[int, int]] = 224,
+        crop_size: Optional[Union[int, Tuple[int, int]]] = 224,
+        normalize: bool = True,
+        mean: List[float] = [0.485, 0.456, 0.406],
+        std: List[float] = [0.229, 0.224, 0.225],
     ) -> None:
+        """
+        Args:
+            image_directory_path: Path to directory containing images
+            mask_directory_path: Optional path to directory containing masks
+            image_transforms: Optional pre-built image transforms. If None, creates from other parameters.
+            mask_transforms: Optional pre-built mask transforms. If None, creates from other parameters.
+            resize: Size to resize to. If int, resize shortest edge. If tuple (h, w), resize to exact dimensions.
+            crop_size: Size to crop to. If None, no cropping. If int, center crop to square. If tuple (h, w), crop to exact dimensions.
+            normalize: Whether to apply ImageNet normalization to images.
+            mean: Mean values for normalization.
+            std: Standard deviation values for normalization.
+        """
 
-        self.image_transforms = image_transforms
-        self.mask_transforms = mask_transforms
+        # Use provided transforms or create new ones with configurable parameters
+        if image_transforms is not None:
+            self.image_transforms = image_transforms
+        else:
+            self.image_transforms = create_image_transform(
+                resize=resize,
+                crop_size=crop_size,
+                normalize=normalize,
+                mean=mean,
+                std=std,
+            )
+
+        if mask_transforms is not None:
+            self.mask_transforms = mask_transforms
+        else:
+            self.mask_transforms = create_mask_transform(
+                resize=resize, crop_size=crop_size
+            )
 
         # Load image paths
         self.image_directory_path = image_directory_path
