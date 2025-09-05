@@ -202,7 +202,7 @@ class Padim(torch.nn.Module):
         self.mahalanobisDistance = MahalanobisDistance(mean, cov_inv)
 
     def predict(
-        self, batch: torch.Tensor, gaussian_blur: bool = True
+        self, batch: torch.Tensor, gaussian_blur: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Make a prediction on test images."""
         assert (

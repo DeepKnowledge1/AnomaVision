@@ -16,7 +16,7 @@ norm_std:  [0.229, 0.224, 0.225]         # Standard deviation for normalization 
 backbone: "resnet18"                     # Backbone CNN architecture (resnet18 | wide_resnet50)
 feat_dim: 50                             # Feature dimension size for embedding
 layer_indices: [0]                       # Which backbone layers to extract features from (0,1,2,3)
-model_data_path: "./distributions/anomav_exp"  # Path to store/load model-related data
+model_data_path: "./distributions"  # Path to store/load model-related data
 model: "padim_model.pt"                  # File name for saved model (used by detect/eval/export)
 output_model: "padim_model.pt"           # File name for saving trained model (train.py expects this)
 batch_size: 2                            # Training/evaluation/inference batch size

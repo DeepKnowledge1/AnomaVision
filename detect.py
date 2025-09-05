@@ -283,15 +283,15 @@ def main():
                 resize=resize,
                 crop_size=crop_size,
                 normalize=normalize,
-                mean=config.get("norm_mean"),
-                std=config.get("norm_std"),
+                mean=config.norm_mean,
+                std=config.norm_std,
             )
             test_dataloader = DataLoader(
                 test_dataset,
-                batch_size=config.get("batch_size", 1),
-                num_workers=config.get("num_workers", 1),
-                pin_memory=config.get("pin_memory", False) and device_str == "cuda",
-                persistent_workers=config.get("num_workers", 1) > 0,
+                batch_size=config.batch_size,
+                num_workers=config.num_workers,
+                pin_memory=config.pin_memory,
+                persistent_workers=config.num_workers > 0,
             )
             logger.info(
                 f"AnomaVision dataset created successfully. Total images: {len(test_dataset)}"
@@ -336,6 +336,16 @@ def main():
             with anomavision_profilers["inference"] as inference_prof:
                 try:
                     image_scores, score_maps = model.predict(batch)
+                    from scipy.ndimage import gaussian_filter
+
+                    # The truncate parameter controls the kernel size
+                    # truncate=4.0 means the kernel extends 4*sigma in each direction
+                    # score_maps = gaussian_filter(score_maps, sigma=4, truncate=4.0)
+                    import torchvision.transforms as T
+
+                    score_maps = T.GaussianBlur(33, sigma=4)(torch.from_numpy(score_maps))
+
+
                     logger.info(
                         f"AnomaVision batch shape: {batch.shape}, Inference completed in {inference_prof.elapsed_time * 1000:.2f} ms"
                     )
@@ -520,7 +530,7 @@ def main():
     if batch_count > 0:
         images_per_batch = total_images / batch_count
         logger.info(
-            f"Throughput:                {inference_fps * images_per_batch:.1f} images/sec (batch size: {config.get('batch_size', 1)})"
+            f"Throughput:                {inference_fps * images_per_batch:.1f} images/sec (batch size: {config.batch_size})"
         )
 
     logger.info("=" * 60)

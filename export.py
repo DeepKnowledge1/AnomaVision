@@ -398,9 +398,9 @@ def main():
     openvino_name = f"{model_stem}_openvino"
     torchscript_name = f"{model_stem}.torchscript"
 
-    use_dynamic_batch = False  # not config.static_batch
+    use_dynamic_batch = True  # not config.static_batch
 
-    h, w = config.crop if config.crop is not None else config.resize
+    h, w = config.crop_size if config.crop_size is not None else config.resize
     input_shape = [1, 3, h, w]
 
     # Run header (compact)
@@ -426,7 +426,7 @@ def main():
                     input_shape=tuple(input_shape),
                     output_name=onnx_name,
                     opset_version=config.opset,
-                    dynamic_batch=use_dynamic_batch,
+                    dynamic_batch=config.dynamic_batch,
                 )
                 is not None
             )
