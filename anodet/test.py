@@ -21,6 +21,7 @@ def visualize_eval_data(
     print("Image level")
     visualize_eval_pair(image_classifications_target, image_scores)
     print("Pixel level")
+
     visualize_eval_pair(masks_target, score_maps)
 
 

@@ -43,10 +43,14 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
 
         super().__init__()
 
-        logger.info(f"Initializing ResnetEmbeddingsExtractor with backbone: {backbone_name}, device: {device}")
+        logger.info(
+            f"Initializing ResnetEmbeddingsExtractor with backbone: {backbone_name}, device: {device}"
+        )
 
         if backbone_name not in BACKBONES:
-            logger.error(f"Unsupported backbone: {backbone_name}. Available backbones: {list(BACKBONES.keys())}")
+            logger.error(
+                f"Unsupported backbone: {backbone_name}. Available backbones: {list(BACKBONES.keys())}"
+            )
             raise ValueError(f"Unsupported backbone: {backbone_name}")
 
         model_func, weights = BACKBONES[backbone_name]
@@ -150,7 +154,9 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
     ) -> torch.Tensor:
         """Same as self.forward but take a dataloader instead of a tensor as argument."""
 
-        logger.info(f"Starting feature extraction from dataloader with {len(dataloader)} batches")
+        logger.info(
+            f"Starting feature extraction from dataloader with {len(dataloader)} batches"
+        )
 
         # Pre-allocate list to store embedding vectors
         embedding_vectors_list: List[torch.Tensor] = []
@@ -162,15 +168,20 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
             if channel_indices is not None:
                 channel_indices = channel_indices.to(self.device)
 
-            # Validate input shape
+            # Validate input shape (B, C, H, W)
             if len(batch.shape) != 4:
-                logger.error(f"Invalid batch shape: expected 4D tensor (B,C,H,W), got {batch.shape}")
+                logger.error(
+                    f"Invalid batch shape: expected 4D tensor (B,C,H,W), got {batch.shape}"
+                )
                 raise ValueError(f"Expected 4D tensor (B,C,H,W), got {batch.shape}")
 
             if batch.shape[1] != 3:
-                logger.error(f"Invalid number of channels: expected 3 channels (RGB), got {batch.shape[1]}")
+                logger.error(
+                    f"Invalid number of channels: expected 3 channels (RGB), got {batch.shape[1]}"
+                )
                 raise ValueError(f"Expected 3 channels (RGB), got {batch.shape[1]}")
 
+            logger.debug(f"Processing batch {batch_idx + 1}: input shape {batch.shape}")
             batch_embedding_vectors, width, height = self(
                 batch,
                 channel_indices=channel_indices,
@@ -189,7 +200,9 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         # Concatenate all tensors at once (more memory efficient than incremental concat)
         embedding_vectors = torch.cat(embedding_vectors_list, dim=0)
 
-        logger.info(f"Feature extraction completed. Final shape: {embedding_vectors.shape}")
+        logger.info(
+            f"Feature extraction completed. Final shape: {embedding_vectors.shape}"
+        )
 
         return embedding_vectors
 
@@ -216,11 +229,16 @@ def concatenate_layers(layers: List[torch.Tensor]) -> torch.Tensor:
             logger.error(f"Layer at index {i} is not a torch.Tensor: {type(layer)}")
             raise TypeError(f"Layer at index {i} is not a torch.Tensor: {type(layer)}")
         if layer.dim() < 2:
-            logger.error(f"Layer at index {i} has fewer than 2 dimensions: {layer.dim()}")
-            raise ValueError(f"Layer at index {i} has fewer than 2 dimensions: {layer.dim()}")
+            logger.error(
+                f"Layer at index {i} has fewer than 2 dimensions: {layer.dim()}"
+            )
+            raise ValueError(
+                f"Layer at index {i} has fewer than 2 dimensions: {layer.dim()}"
+            )
 
     # Get target spatial size from the first layer
     target_size = layers[0].shape[-2:]
+    logger.debug(f"Target size for layer concatenation: {target_size}")
 
     # Resize all layers to match the target size
     resized_layers = [
@@ -229,5 +247,6 @@ def concatenate_layers(layers: List[torch.Tensor]) -> torch.Tensor:
 
     # Concatenate once along the channel dimension
     embedding = torch.cat(resized_layers, dim=1)
+    logger.debug(f"Concatenated embedding shape: {embedding.shape}")
 
     return embedding

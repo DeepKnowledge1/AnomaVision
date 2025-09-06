@@ -1,8 +1,14 @@
 import os
 import torch
+from typing import Optional, Union, Tuple, List
 from PIL import Image
 from torch.utils.data import Dataset
-from ..utils import standard_image_transform, standard_mask_transform
+from ..utils import (
+    standard_image_transform,
+    standard_mask_transform,
+    create_image_transform,
+    create_mask_transform,
+)
 import numpy as np
 import cv2 as cv
 
@@ -33,9 +39,27 @@ class MVTecDataset(Dataset):
         dataset_path,
         class_name,
         is_train=True,
-        image_transforms=standard_image_transform,
-        mask_transforms=standard_mask_transform,
+        image_transforms=None,
+        mask_transforms=None,
+        resize: Union[int, Tuple[int, int]] = 224,
+        crop_size: Optional[Union[int, Tuple[int, int]]] = 224,
+        normalize: bool = True,
+        mean: List[float] = [0.485, 0.456, 0.406],
+        std: List[float] = [0.229, 0.224, 0.225],
     ):
+        """
+        Args:
+            dataset_path: Path to MVTec dataset root
+            class_name: Name of the class (must be in CLASS_NAMES)
+            is_train: Whether to load training or test data
+            image_transforms: Optional pre-built image transforms. If None, creates from other parameters.
+            mask_transforms: Optional pre-built mask transforms. If None, creates from other parameters.
+            resize: Size to resize to. If int, resize shortest edge. If tuple (h, w), resize to exact dimensions.
+            crop_size: Size to crop to. If None, no cropping. If int, center crop to square. If tuple (h, w), crop to exact dimensions.
+            normalize: Whether to apply ImageNet normalization to images.
+            mean: Mean values for normalization.
+            std: Standard deviation values for normalization.
+        """
 
         assert class_name in CLASS_NAMES, "class_name: {}, should be in {}".format(
             class_name, CLASS_NAMES
@@ -47,8 +71,24 @@ class MVTecDataset(Dataset):
         # load dataset
         self.x, self.y, self.mask = self.load_dataset_folder()
 
-        self.image_transforms = image_transforms
-        self.mask_transforms = mask_transforms
+        # Use provided transforms or create new ones with configurable parameters
+        if image_transforms is not None:
+            self.image_transforms = image_transforms
+        else:
+            self.image_transforms = create_image_transform(
+                resize=resize,
+                crop_size=crop_size,
+                normalize=normalize,
+                mean=mean,
+                std=std,
+            )
+
+        if mask_transforms is not None:
+            self.mask_transforms = mask_transforms
+        else:
+            self.mask_transforms = create_mask_transform(
+                resize=resize, crop_size=crop_size
+            )
 
     def __getitem__(self, idx):
         batch, image_classification, mask = self.x[idx], self.y[idx], self.mask[idx]
