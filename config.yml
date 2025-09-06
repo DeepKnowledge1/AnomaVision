@@ -1,0 +1,67 @@
+# =========================
+# Dataset / preprocessing (shared by train, detect, eval)
+# =========================
+dataset_path: "D:/01-DATA"               # Root dataset folder (MVTec-style: contains train/test subfolders)
+class_name: "bottle"                     # Class name for MVTec dataset
+resize: [224, 224]                       # Resize dimensions before processing [width, height]
+crop_size:                               # Final crop size [width, height]
+normalize: true                          # Whether to normalize images
+no_normalize: false                      # Inverse flag (used by CLI) – keep in sync with "normalize"
+norm_mean: [0.485, 0.456, 0.406]         # Mean values for normalization (ImageNet default)
+norm_std:  [0.229, 0.224, 0.225]         # Standard deviation for normalization (ImageNet default)
+
+# =========================
+# Model / training
+# =========================
+backbone: "resnet18"                     # Backbone CNN architecture (resnet18 | wide_resnet50)
+feat_dim: 50                             # Feature dimension size for embedding
+layer_indices: [0]                       # Which backbone layers to extract features from (0,1,2,3)
+model_data_path: "./distributions"  # Path to store/load model-related data
+model: "padim_model.pt"                  # File name for saved model (used by detect/eval/export)
+output_model: "padim_model.pt"           # File name for saving trained model (train.py expects this)
+batch_size: 2                            # Training/evaluation/inference batch size
+device: "auto"                           # Device to run on: "cpu", "cuda", or "auto"
+
+# =========================
+# Logging / run metadata
+# =========================
+log_level: "INFO"                        # Logging level: DEBUG, INFO, WARNING, ERROR
+run_name: "anomav_exp"                   # Name of experiment run (used for organizing results)
+detailed_timing: false                   # Enable detailed timing measurements
+
+# =========================
+# Visualization (shared by detect & eval)
+# =========================
+enable_visualization: true               # Enable visualization during inference/evaluation
+save_visualizations: true                # Save visualization results to disk
+viz_output_dir: "./visualizations/"      # Directory to save visualization results
+viz_alpha: 0.5                           # Transparency factor for overlay heatmaps
+viz_padding: 40                          # Padding added around visualization
+viz_color: "128,0,128"                   # RGB color for visualization overlays
+
+# =========================
+# Inference (detect.py)
+# =========================
+img_path: "D:/01-DATA/bottle/test/broken_large"  # Path to test images for inference
+thresh: 13.0                            # Threshold for anomaly detection
+num_workers: 1                          # Number of workers for dataloader
+pin_memory: false                       # Use pinned memory for faster GPU transfers
+overwrite: false                        # Overwrite existing run directory without auto-incrementing
+
+# =========================
+# Evaluation (eval.py)
+# =========================
+memory_efficient: true                  # Use memory efficient evaluation mode
+
+# =========================
+# Export (export.py)
+# =========================
+format: "all"                           # Export format: onnx, torchscript, openvino, all
+opset: 17                               # ONNX opset version
+dynamic_batch: true                     # Allow dynamic batch size in exported model
+static_batch: false                     # Disable dynamic batch size (if true)
+optimize: false                         # Enable mobile optimization for TorchScript
+fp32: false                             # Export in FP32 precision (false => FP16 in OpenVINO)
+output_path: null                       # Optional explicit output filename
+half: false                             # Reserved (not actively used)
+int8: false                             # Reserved (not actively used)

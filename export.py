@@ -11,30 +11,22 @@ import sys
 import time
 import warnings
 from pathlib import Path
-from typing import Tuple, List, Optional
+from typing import List, Optional, Tuple
 
 import torch
+from easydict import EasyDict as edict
 
+from anodet.config import load_config
+from anodet.utils import get_logger, merge_config, setup_logging
 
 # Suppress "To copy construct from a tensor..." warnings
-warnings.filterwarnings(
-    "ignore",
-    message="To copy construct from a tensor"
-)
+warnings.filterwarnings("ignore", message="To copy construct from a tensor")
 
 # Suppress ONNX shape inference + constant folding warnings
 warnings.filterwarnings(
-    "ignore",
-    message="The shape inference of prim::Constant type is missing"
+    "ignore", message="The shape inference of prim::Constant type is missing"
 )
-warnings.filterwarnings(
-    "ignore",
-    message="Constant folding"
-)
-
-
-# If these utils live in your project (as in your training script):
-from anodet.utils import get_logger, setup_logging
+warnings.filterwarnings("ignore", message="Constant folding")
 
 
 # during export
@@ -214,7 +206,9 @@ class ModelExporter:
                     )
                     self.logger.info("ts: mobile optimization applied")
                 except ImportError:
-                    self.logger.warning("ts: mobile optimization unavailable; saving standard")
+                    self.logger.warning(
+                        "ts: mobile optimization unavailable; saving standard"
+                    )
                     traced_model.save(str(output_path), _extra_files=extra_files)
             else:
                 traced_model.save(str(output_path), _extra_files=extra_files)
@@ -257,8 +251,8 @@ class ModelExporter:
                 raise RuntimeError("ONNX export failed")
 
             try:
-                from openvino.tools import mo
                 import openvino.runtime as ov
+                from openvino.tools import mo
             except ImportError as e:
                 raise ImportError("OpenVINO not installed. pip install openvino") from e
 
@@ -304,99 +298,119 @@ class ModelExporter:
             return None
 
 
-def main():
+def parse_args():
     """Command line interface."""
     parser = argparse.ArgumentParser(
         description="Export PaDiM models to ONNX, TorchScript, and OpenVINO",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
+    # Config file
+    parser.add_argument(
+        "--config", type=str, default=None, help="Path to config.yml/.json"
+    )
+
+    # Model & data paths
     parser.add_argument(
         "--model_data_path",
         type=str,
         default="./distributions/anomav_exp",
         help="Directory containing model and output location",
     )
+
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.pt",
+        default=None,
         help="Model file (.pt for PyTorch)",
     )
+
     parser.add_argument(
         "--output_path",
         type=str,
         default=None,
         help="Output filename (if None, uses model name)",
     )
+
     parser.add_argument(
         "--format",
         choices=["onnx", "openvino", "torchscript", "all"],
-        default="all",
         help="Export format",
     )
-    parser.add_argument(
-        "--input-shape",
-        type=int,
-        nargs=4,
-        default=[1, 3, 224, 224],
-        metavar=("BATCH", "CHANNELS", "HEIGHT", "WIDTH"),
-        help="Input shape for the dummy tensor",
-    )
+
     parser.add_argument("--opset", type=int, default=17, help="ONNX opset version")
     parser.add_argument(
         "--static-batch", action="store_true", help="Disable dynamic batch size"
     )
+
     parser.add_argument(
         "--fp32",
         action="store_true",
         help="Use FP32 precision for OpenVINO (default: FP16)",
     )
+
     parser.add_argument(
         "--optimize",
         action="store_true",
         help="Enable mobile optimization for TorchScript",
     )
+
     parser.add_argument(
         "--log-level",
         dest="log_level",
         type=str,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default="INFO",
+        default=None,
         help="Logging level",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    if args.config is not None:
+        cfg = load_config(str(args.config))
+    else:
+        cfg = load_config(str(Path(args.model_data_path) / "config.yml"))
+
+    config = edict(merge_config(args, cfg))
 
     # Setup logging & logger
-    setup_logging(args.log_level)
+    setup_logging(config.log_level)
     logger = get_logger(__name__)
 
-    # Paths & names
-    model_path = Path(args.model_data_path) / args.model
-    output_dir = Path(args.model_data_path)
-    model_stem = Path(args.model).stem
-    if args.output_path:
-        onnx_name = args.output_path
-        openvino_name = Path(args.output_path).stem + "_openvino"
-        torchscript_name = Path(args.output_path).stem + ".torchscript"
-    else:
-        onnx_name = f"{model_stem}.onnx"
-        openvino_name = f"{model_stem}_openvino"
-        torchscript_name = f"{model_stem}.torchscript"
+    model_path = Path(config.model_data_path) / config.model
 
-    use_dynamic_batch = not args.static_batch
+    # Paths & names
+    if model_path.suffix != ".pt":
+        model_path = model_path.with_suffix(".pt")
+
+    output_dir = Path(config.model_data_path)
+    model_stem = Path(config.model).stem
+    # if config.output_path:
+    #     onnx_name = config.output_path
+    #     openvino_name = Path(config.output_path).stem + "_openvino"
+    #     torchscript_name = Path(config.output_path).stem + ".torchscript"
+    # else:
+    onnx_name = f"{model_stem}.onnx"
+    openvino_name = f"{model_stem}_openvino"
+    torchscript_name = f"{model_stem}.torchscript"
+
+    h, w = config.crop_size if config.crop_size is not None else config.resize
+    input_shape = [1, 3, h, w]
 
     # Run header (compact)
     logger.info(
         "=== export start === model=%s fmt=%s in_shape=%s dyn_batch=%s opset=%d fp16=%s opt=%s",
         model_path,
-        args.format,
-        tuple(args.input_shape),
-        use_dynamic_batch,
-        args.opset,
-        (not args.fp32),
-        args.optimize,
+        config.format,
+        tuple(input_shape),
+        config.dynamic_batch,
+        config.opset,
+        (not config.fp32),
+        config.optimize,
     )
 
     exporter = ModelExporter(model_path, output_dir, logger)
@@ -404,28 +418,37 @@ def main():
     success = True
 
     try:
-        if args.format in ["onnx", "all"]:
-            success &= exporter.export_onnx(
-                input_shape=tuple(args.input_shape),
-                output_name=onnx_name,
-                opset_version=args.opset,
-                dynamic_batch=use_dynamic_batch,
-            ) is not None
+        if config.format in ["onnx", "all"]:
+            success &= (
+                exporter.export_onnx(
+                    input_shape=tuple(input_shape),
+                    output_name=onnx_name,
+                    opset_version=config.opset,
+                    dynamic_batch=config.dynamic_batch,
+                )
+                is not None
+            )
 
-        if args.format in ["openvino", "all"]:
-            success &= exporter.export_openvino(
-                input_shape=tuple(args.input_shape),
-                output_name=openvino_name,
-                fp16=not args.fp32,
-                dynamic_batch=use_dynamic_batch,
-            ) is not None
+        if config.format in ["openvino", "all"]:
+            success &= (
+                exporter.export_openvino(
+                    input_shape=tuple(input_shape),
+                    output_name=openvino_name,
+                    fp16=not config.fp32,
+                    dynamic_batch=config.dynamic_batch,
+                )
+                is not None
+            )
 
-        if args.format in ["torchscript", "all"]:
-            success &= exporter.export_torchscript(
-                input_shape=tuple(args.input_shape),
-                output_name=torchscript_name,
-                optimize=args.optimize,
-            ) is not None
+        if config.format in ["torchscript", "all"]:
+            success &= (
+                exporter.export_torchscript(
+                    input_shape=tuple(input_shape),
+                    output_name=torchscript_name,
+                    optimize=config.optimize,
+                )
+                is not None
+            )
 
         elapsed = time.perf_counter() - started
         if success:
