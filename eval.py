@@ -1,24 +1,24 @@
+import argparse
+import contextlib
 import os
-import anodet
+import time
+from datetime import datetime
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
-import argparse
-import time
-import contextlib
-from datetime import datetime
+
+import anodet
+from anodet.config import load_config
+from anodet.general import Profiler, determine_device
 
 # Updated imports to use the inference modules (same as detect.py)
 from anodet.inference.model.wrapper import ModelWrapper
 from anodet.inference.modelType import ModelType
-from anodet.utils import setup_logging, get_logger, merge_config
-
-from anodet.general import determine_device, Profiler
-
-from anodet.config import load_config
-from pathlib import Path
-from easydict import EasyDict as edict
+from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup_logging
 
 
 def parse_args():
@@ -71,7 +71,7 @@ def parse_args():
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=1,
+        default=None,
         help="Batch size for AnomaVision evaluation",
     )
     parser.add_argument(
@@ -362,6 +362,7 @@ def main(args):
                 config.detailed_timing,
             )
         )
+        score_maps = adaptive_gaussian_blur(score_maps, kernel_size=33, sigma=4)
 
         logger.info(
             f"AnomaVision evaluation completed in {anomavision_profilers['evaluation'].accumulated_time:.4f}s"
@@ -383,7 +384,6 @@ def main(args):
             try:
                 # Use the anodet visualization function for AnomaVision results
                 anodet.visualize_eval_data(
-                    # image_classifications_target, masks_target, image_scores, score_maps
                     image_classifications_target,
                     masks_target.astype(np.uint8).flatten(),
                     image_scores,

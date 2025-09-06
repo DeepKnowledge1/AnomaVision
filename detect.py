@@ -10,27 +10,30 @@ Usage - formats:
 """
 
 import os
-import anodet
+
+import matplotlib
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-import matplotlib
+
+import anodet
 
 matplotlib.use("Agg")  # non-interactive, faster PNG writing
-import matplotlib.pyplot as plt
-
 import argparse
 import time
 from datetime import datetime
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+from easydict import EasyDict as edict
+
+from anodet.config import _shape, load_config
+from anodet.general import Profiler, determine_device, increment_path
 
 # Updated imports to use the inference modules
 from anodet.inference.model.wrapper import ModelWrapper
 from anodet.inference.modelType import ModelType
-from anodet.utils import setup_logging, get_logger, merge_config
-from anodet.general import determine_device, increment_path, Profiler
-from anodet.config import load_config, _shape
-from pathlib import Path
-from easydict import EasyDict as edict
+from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup_logging
 
 
 def parse_args():
@@ -72,7 +75,7 @@ def parse_args():
         help="Device to run inference on (auto will choose cuda if available)",
     )
     parser.add_argument(
-        "--batch_size", type=int, default=1, help="Batch size for inference"
+        "--batch_size", type=int, default=None, help="Batch size for inference"
     )
     parser.add_argument(
         "--thresh",
@@ -264,7 +267,7 @@ def main():
     # Create output directory for AnomaVision visualizations if needed
     RESULTS_PATH = None
     if config.get("save_visualizations", False):
-        run_name = config.get("run_name", "detect_exp")
+        run_name = model_type.value.upper()
         viz_output_dir = config.get("viz_output_dir", "./visualizations/")
         RESULTS_PATH = increment_path(
             Path(viz_output_dir) / run_name,
@@ -336,15 +339,6 @@ def main():
             with anomavision_profilers["inference"] as inference_prof:
                 try:
                     image_scores, score_maps = model.predict(batch)
-                    from scipy.ndimage import gaussian_filter
-
-                    # The truncate parameter controls the kernel size
-                    # truncate=4.0 means the kernel extends 4*sigma in each direction
-                    # score_maps = gaussian_filter(score_maps, sigma=4, truncate=4.0)
-                    import torchvision.transforms as T
-
-                    score_maps = T.GaussianBlur(33, sigma=4)(torch.from_numpy(score_maps))
-
 
                     logger.info(
                         f"AnomaVision batch shape: {batch.shape}, Inference completed in {inference_prof.elapsed_time * 1000:.2f} ms"
@@ -361,6 +355,10 @@ def main():
             # AnomaVision postprocessing phase - anomaly classification
             with anomavision_profilers["postprocessing"]:
                 try:
+                    score_maps = adaptive_gaussian_blur(
+                        score_maps, kernel_size=33, sigma=4
+                    )
+
                     score_map_classifications = anodet.classification(
                         score_maps, config.thresh
                     )
@@ -456,7 +454,7 @@ def main():
                                 axs[3].axis("off")
 
                                 if config.save_visualizations and RESULTS_PATH:
-                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                    timestamp = img_id  # datetime.now().strftime("%Y%m%d_%H%M%S")
                                     combined_filepath = os.path.join(
                                         RESULTS_PATH,
                                         f"anomavision_batch_{batch_idx}_{timestamp}.png",

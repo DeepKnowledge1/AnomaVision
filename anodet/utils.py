@@ -2,17 +2,17 @@
 Provides utility functions for anomaly detection.
 """
 
+import argparse
+import logging
+import os
+from datetime import datetime
+from typing import Callable, List, Optional, Tuple, Union
+
 import numpy as np
 import torch
-from typing import List, Optional, Callable, Union, Tuple
-from torchvision import transforms as T
-from PIL import Image
-import os
-import logging
-from datetime import datetime
 import yaml
-import argparse
-
+from PIL import Image
+from torchvision import transforms as T
 
 # Default standard transforms - kept for backward compatibility
 standard_image_transform = T.Compose(
@@ -422,9 +422,10 @@ def save_args_to_yaml(args, path, organize_structure=False):
         path: Output file path
         organize_structure: If True, reorganize flat config into structured sections
     """
-    import yaml
+    from dataclasses import asdict, is_dataclass
+
     import numpy as np
-    from dataclasses import is_dataclass, asdict
+    import yaml
 
     try:
         from easydict import EasyDict  # optional
@@ -617,3 +618,82 @@ def save_args_to_yaml(config: dict, output_path: str):
 
     with open(output_path, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+
+def adaptive_gaussian_blur(input_array, kernel_size=33, sigma=4):
+    """
+    Apply Gaussian blur using PyTorch if available, otherwise fallback to NumPy/SciPy
+    Input should be either numpy array or torch tensor
+    Handles batched inputs correctly: (B, H, W) or (B, C, H, W)
+    """
+    # Check if input is a torch tensor
+    try:
+        import torch
+        import torchvision.transforms as T
+
+        if torch.is_tensor(input_array):
+            # Handle different input shapes
+            if input_array.dim() == 2:
+                # Single image (H, W) - add batch and channel dims
+                input_reshaped = input_array.unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
+                blurred = T.GaussianBlur(kernel_size, sigma=sigma)(input_reshaped)
+                return blurred.squeeze(0).squeeze(0)  # Back to (H, W)
+
+            elif input_array.dim() == 3:
+                # Batch of images (B, H, W) - add channel dim
+                input_reshaped = input_array.unsqueeze(1)  # (B, 1, H, W)
+                blurred = T.GaussianBlur(kernel_size, sigma=sigma)(input_reshaped)
+                return blurred.squeeze(1)  # Back to (B, H, W)
+
+            elif input_array.dim() == 4:
+                # Already in correct format (B, C, H, W) or (1, C, H, W)
+                return T.GaussianBlur(kernel_size, sigma=sigma)(input_array)
+            else:
+                raise ValueError(f"Unsupported tensor dimensions: {input_array.dim()}")
+
+    except ImportError:
+        pass
+
+    # Input is numpy array or PyTorch not available
+    # Convert torch tensor to numpy if needed
+    if hasattr(input_array, "detach"):
+        input_array = input_array.detach().cpu().numpy()
+
+    # Use NumPy/SciPy implementation
+    try:
+        from scipy.ndimage import gaussian_filter
+
+        truncate = (kernel_size - 1) / (2 * sigma)
+
+        # Handle different numpy array shapes
+        if input_array.ndim == 2:
+            # Single image (H, W)
+            return gaussian_filter(input_array, sigma=sigma, truncate=truncate)
+
+        elif input_array.ndim == 3:
+            # Batch of images (B, H, W) - process each image separately
+            blurred_batch = []
+            for i in range(input_array.shape[0]):
+                blurred_img = gaussian_filter(
+                    input_array[i], sigma=sigma, truncate=truncate
+                )
+                blurred_batch.append(blurred_img)
+            return np.stack(blurred_batch, axis=0)
+
+        elif input_array.ndim == 4:
+            # Batch with channels (B, C, H, W) - process each image and channel
+            blurred_batch = []
+            for b in range(input_array.shape[0]):
+                blurred_channels = []
+                for c in range(input_array.shape[1]):
+                    blurred_channel = gaussian_filter(
+                        input_array[b, c], sigma=sigma, truncate=truncate
+                    )
+                    blurred_channels.append(blurred_channel)
+                blurred_batch.append(np.stack(blurred_channels, axis=0))
+            return np.stack(blurred_batch, axis=0)
+        else:
+            raise ValueError(f"Unsupported numpy array dimensions: {input_array.ndim}")
+
+    except ImportError:
+        raise ImportError("SciPy is required when PyTorch is not available")

@@ -11,13 +11,13 @@ import sys
 import time
 import warnings
 from pathlib import Path
-from typing import Tuple, List, Optional
+from typing import List, Optional, Tuple
 
 import torch
-from anodet.config import load_config
-from anodet.utils import setup_logging, get_logger, merge_config
 from easydict import EasyDict as edict
 
+from anodet.config import load_config
+from anodet.utils import get_logger, merge_config, setup_logging
 
 # Suppress "To copy construct from a tensor..." warnings
 warnings.filterwarnings("ignore", message="To copy construct from a tensor")
@@ -251,8 +251,8 @@ class ModelExporter:
                 raise RuntimeError("ONNX export failed")
 
             try:
-                from openvino.tools import mo
                 import openvino.runtime as ov
+                from openvino.tools import mo
             except ImportError as e:
                 raise ImportError("OpenVINO not installed. pip install openvino") from e
 
@@ -398,8 +398,6 @@ def main():
     openvino_name = f"{model_stem}_openvino"
     torchscript_name = f"{model_stem}.torchscript"
 
-    use_dynamic_batch = True  # not config.static_batch
-
     h, w = config.crop_size if config.crop_size is not None else config.resize
     input_shape = [1, 3, h, w]
 
@@ -437,7 +435,7 @@ def main():
                     input_shape=tuple(input_shape),
                     output_name=openvino_name,
                     fp16=not config.fp32,
-                    dynamic_batch=use_dynamic_batch,
+                    dynamic_batch=config.dynamic_batch,
                 )
                 is not None
             )
