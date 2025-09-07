@@ -2,20 +2,18 @@
 Provides classes and functions for working with PaDiM.
 """
 
-import math
 import random
+from collections import OrderedDict
+from typing import Callable, List, Optional, Tuple
+
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
-from torchvision import transforms as T
 from tqdm import tqdm
-from typing import Optional, Callable, List, Tuple
+
 from .feature_extraction import ResnetEmbeddingsExtractor
-from .utils import pytorch_cov, mahalanobis, split_tensor_and_run_function
-from collections import OrderedDict
-
 from .mahalanobis import MahalanobisDistance
-
+from .utils import pytorch_cov, split_tensor_and_run_function
 
 BACKBONE_FEATURE_SIZES = {
     "resnet18": OrderedDict([(0, [64]), (1, [128]), (2, [256]), (3, [512])]),
@@ -137,10 +135,10 @@ class Padim(torch.nn.Module):
         # Remove the channel dimension
         score_map = score_map.squeeze(1)
 
-        # Apply gaussian blur - create the blur operation inline for ONNX
-        # Using a simpler approach that's more ONNX-friendly
-        if gaussian_blur:
-            score_map = T.GaussianBlur(33, sigma=4)(score_map)
+        # # Apply gaussian blur - create the blur operation inline for ONNX
+        # # Using a simpler approach that's more ONNX-friendly
+        # if gaussian_blur:
+        #     score_map = T.GaussianBlur(33, sigma=4)(score_map)
 
         # Calculate image-level scores
         image_scores = torch.max(score_map.view(batch_size, -1), dim=1)[0]
@@ -380,6 +378,37 @@ class Padim(torch.nn.Module):
             image_scores,
             score_maps,
         )
+
+    def save_statistics(self, path: str) -> None:
+        if (
+            self.mahalanobisDistance._mean_flat is None
+            or self.mahalanobisDistance._cov_inv_flat is None
+        ):
+            raise RuntimeError("Model is not trained. Call fit() first.")
+
+        stats = {
+            # move to CPU first, then cast to fp16 for smaller files
+            "mean": self.mahalanobisDistance._mean_flat.detach()
+            .cpu()
+            .to(torch.float16),
+            "cov_inv": self.mahalanobisDistance._cov_inv_flat.detach()
+            .cpu()
+            .to(torch.float16),
+            "channel_indices": self.channel_indices.detach().cpu().to(torch.int32),
+            "layer_indices": list(self.layer_indices),
+            "backbone": self.embeddings_extractor.backbone_name,  # e.g. "resnet18"
+            "model_version": "1.0",
+        }
+        torch.save(stats, path)
+
+    @staticmethod
+    def load_statistics(path: str, device: str = "cpu"):
+        """Load stats dict and cast back to fp32 for use."""
+        stats = torch.load(path, map_location="cpu")
+        stats["mean"] = stats["mean"].float().to(device)
+        stats["cov_inv"] = stats["cov_inv"].float().to(device)
+        stats["channel_indices"] = stats["channel_indices"].to(torch.int64).to(device)
+        return stats
 
 
 def get_dims_indices(layers, feature_dim, net_feature_size):
