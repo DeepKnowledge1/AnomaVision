@@ -2,17 +2,19 @@
 Provides classes and functions for extracting embedding vectors from neural networks.
 """
 
+from typing import Callable, List, Optional, Tuple
+
 import torch
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
 from torchvision.models import (
-    resnet18,
     ResNet18_Weights,
-    wide_resnet50_2,
     Wide_ResNet50_2_Weights,
+    resnet18,
+    wide_resnet50_2,
 )
 from tqdm import tqdm
-from typing import List, Optional, Callable, Tuple
-from torch.utils.data import DataLoader
+
 from anodet.utils import get_logger
 
 logger = get_logger(__name__)
@@ -55,6 +57,7 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
 
         model_func, weights = BACKBONES[backbone_name]
         logger.info(f"Loading {backbone_name} with weights: {weights}")
+        self.backbone_name = backbone_name
 
         self.backbone = model_func(weights=weights, progress=True)
         self.device = device
@@ -242,7 +245,7 @@ def concatenate_layers(layers: List[torch.Tensor]) -> torch.Tensor:
 
     # Resize all layers to match the target size
     resized_layers = [
-        F.interpolate(l, size=target_size, mode="nearest") for l in layers
+        F.interpolate(lyr, size=target_size, mode="nearest") for lyr in layers
     ]
 
     # Concatenate once along the channel dimension

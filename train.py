@@ -1,14 +1,18 @@
 # train.py
-import os, sys, time, argparse
+import argparse
+import os
+import sys
+import time
 from pathlib import Path
+
 import torch
+from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
 
 import anodet
-from anodet.utils import get_logger, save_args_to_yaml, setup_logging, merge_config
-from anodet.general import increment_path, GitStatusChecker
 from anodet.config import load_config
-from easydict import EasyDict as edict
+from anodet.general import GitStatusChecker, increment_path
+from anodet.utils import get_logger, merge_config, save_args_to_yaml, setup_logging
 
 checker = GitStatusChecker()
 checker.check_status()
@@ -214,8 +218,16 @@ def main():
         logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
 
         # === Save ===
-        model_path = str(Path(run_dir) / config.output_model)
-        torch.save(padim, model_path)
+        model_path = Path(run_dir) / config.output_model
+        torch.save(padim, str(model_path))
+
+        # also save a compact stats-only artifact (anomalib-style) -> ".pth"
+        stats_path = model_path.with_suffix(".pth")
+        try:
+            padim.save_statistics(str(stats_path))
+            logger.info("saved: slim statistics=%s", stats_path)
+        except Exception as e:
+            logger.warning("saving slim statistics failed: %s", e)
 
         # snapshot the effective configuration
         # save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
