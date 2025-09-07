@@ -88,16 +88,6 @@ class TorchBackend(InferenceBackend):
         # AMP only makes sense on CUDA
         self.use_amp = bool(use_amp and self.device.type == "cuda")
 
-        # Optional: tiny warmup to surface issues early (safe on CPU)
-        try:
-            with torch.inference_mode():
-                if hasattr(self.model, "predict"):
-                    _x = torch.zeros(1, 3, 64, 64, device=self.device)
-                    _ = self.model.predict(_x)
-                    logger.info("Warmup predict() executed on %s.", self.device.type)
-        except Exception as ew:
-            logger.info("Warmup skipped: %s", str(ew))
-
     def predict(self, batch: Batch) -> ScoresMaps:
         """Run inference using PyTorch."""
         logger.debug("Running inference via TorchBackend")

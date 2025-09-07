@@ -104,21 +104,33 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
 
         """
         with torch.no_grad():
-            features = []
             x = batch
-            # Initial convolution layers
             x = self.backbone.conv1(x)
             x = self.backbone.bn1(x)
             x = self.backbone.relu(x)
             x = self.backbone.maxpool(x)
 
-            # ResNet layers
-            features.append(self.backbone.layer1(x))
-            features.append(self.backbone.layer2(features[-1]))
-            features.append(self.backbone.layer3(features[-1]))
-            features.append(self.backbone.layer4(features[-1]))
+            want = set(layer_indices or [0, 1, 2, 3])
+            max_l = max(want)
 
-            layers = features
+            layers = []
+            out1 = self.backbone.layer1(x)
+            if 0 in want:
+                layers.append(out1)
+            if max_l >= 1:
+                out2 = self.backbone.layer2(out1)
+                if 1 in want:
+                    layers.append(out2)
+            if max_l >= 2:
+                out3 = self.backbone.layer3(out2 if max_l >= 1 else out1)
+                if 2 in want:
+                    layers.append(out3)
+            if max_l >= 3:
+                out4 = self.backbone.layer4(
+                    out3 if max_l >= 2 else (out2 if max_l >= 1 else out1)
+                )
+                if 3 in want:
+                    layers.append(out4)
 
             if layer_indices is not None:
                 layers = [layers[i] for i in layer_indices]
@@ -135,16 +147,12 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
                 )
 
             batch_size, length, width, height = embedding_vectors.shape
-            embedding_vectors = embedding_vectors.reshape(
-                batch_size, length, width * height
-            )
-            embedding_vectors = embedding_vectors.permute(0, 2, 1)
 
-            # embedding_vectors = (
-            #     embedding_vectors.half()
-            #     if embedding_vectors.device.type != "cpu"
-            #     else embedding_vectors
-            # )
+            embedding_vectors = (
+                embedding_vectors.reshape(batch_size, length, width * height)
+                .permute(0, 2, 1)
+                .contiguous()
+            )
 
             return embedding_vectors, width, height
 
