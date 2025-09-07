@@ -9,31 +9,29 @@ Usage - formats:
                                    padim_model.engine             # TensorRT
 """
 
+import argparse
 import os
+import time
+from pathlib import Path
 
 import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
 
 import anodet
-
-matplotlib.use("Agg")  # non-interactive, faster PNG writing
-import argparse
-import time
-from datetime import datetime
-from pathlib import Path
-
-import matplotlib.pyplot as plt
-from easydict import EasyDict as edict
-
 from anodet.config import _shape, load_config
 from anodet.general import Profiler, determine_device, increment_path
-
-# Updated imports to use the inference modules
 from anodet.inference.model.wrapper import ModelWrapper
 from anodet.inference.modelType import ModelType
 from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup_logging
+
+matplotlib.use("Agg")  # non-interactive, faster PNG writing
+
+
+# Updated imports to use the inference modules
 
 
 def parse_args():
@@ -64,7 +62,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.pt",
+        default="padim_model.pth",
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
@@ -267,10 +265,10 @@ def main():
     # Create output directory for AnomaVision visualizations if needed
     RESULTS_PATH = None
     if config.get("save_visualizations", False):
-        run_name = model_type.value.upper()
+        run_name = config.run_name
         viz_output_dir = config.get("viz_output_dir", "./visualizations/")
         RESULTS_PATH = increment_path(
-            Path(viz_output_dir) / run_name,
+            Path(viz_output_dir) / model_type.value.upper() / run_name,
             exist_ok=config.get("overwrite", False),
             mkdir=True,
         )

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Model Export Utility
 Export PyTorch models to ONNX, TorchScript, and OpenVINO with dynamic batch support.
@@ -17,6 +16,7 @@ import torch
 from easydict import EasyDict as edict
 
 from anodet.config import load_config
+from anodet.padim_lite import build_padim_from_stats  # stats-only .pth → runtime module
 from anodet.utils import get_logger, merge_config, setup_logging
 
 # Suppress "To copy construct from a tensor..." warnings
@@ -61,16 +61,54 @@ class ModelExporter:
         self.logger = logger
 
     def _load_model(self) -> torch.nn.Module:
-        """Load and prepare model for export."""
+        """Load and prepare model for export (supports .pt and stats-only .pth)."""
         self.logger.info("load: %s", self.model_path)
-        model = _ExportWrapper(torch.load(self.model_path, map_location="cpu"))
 
-        # Handle DataParallel wrapper
-        if hasattr(model, "module"):
-            model = model.module
+        obj = torch.load(self.model_path, map_location="cpu")
 
-        model.eval()
-        return model
+        # Debug: Print what we actually loaded
+        self.logger.info(f"Loaded object type: {type(obj)}")
+
+        if isinstance(obj, dict):
+            self.logger.info(f"Dictionary keys: {list(obj.keys())}")
+            required_keys = {
+                "mean",
+                "cov_inv",
+                "channel_indices",
+                "layer_indices",
+                "backbone",
+            }
+            self.logger.info(f"Required keys: {required_keys}")
+            self.logger.info(f"Has required keys: {required_keys.issubset(obj.keys())}")
+
+        # If it's a stats-only dict, build a runtime module that exposes .predict(...)
+        if isinstance(obj, dict) and {
+            "mean",
+            "cov_inv",
+            "channel_indices",
+            "layer_indices",
+            "backbone",
+        }.issubset(obj.keys()):
+            self.logger.info("GOING INTO STATS PATH - building PadimLite")
+            base = build_padim_from_stats(obj, device="cpu")
+            self.logger.info("Export: built PadimLite from statistics (.pth).")
+        else:
+            self.logger.info("GOING INTO FULL MODEL PATH")
+            base = obj
+        return _ExportWrapper(base)
+
+    # # Original: assume full model in .pt
+    # def _load_model(self) -> torch.nn.Module:
+    #     """Load and prepare model for export."""
+    #     self.logger.info("load: %s", self.model_path)
+    #     model = _ExportWrapper(torch.load(self.model_path, map_location="cpu"))
+
+    #     # Handle DataParallel wrapper
+    #     if hasattr(model, "module"):
+    #         model = model.module
+
+    #     model.eval()
+    #     return model
 
     def _get_output_names(
         self, model: torch.nn.Module, dummy_input: torch.Tensor
@@ -383,9 +421,9 @@ def main():
 
     model_path = Path(config.model_data_path) / config.model
 
-    # Paths & names
-    if model_path.suffix != ".pt":
-        model_path = model_path.with_suffix(".pt")
+    # # Paths & names
+    # if model_path.suffix != ".pt":
+    #     model_path = model_path.with_suffix(".pt")
 
     output_dir = Path(config.model_data_path)
     model_stem = Path(config.model).stem
