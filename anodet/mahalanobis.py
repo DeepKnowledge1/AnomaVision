@@ -63,10 +63,18 @@ class MahalanobisDistance(nn.Module):
         Returns:
             torch.Tensor: Mahalanobis distances of shape (B, width, height).
         """
-        if not isinstance(features, torch.Tensor) or features.ndim != 3:
+        if not isinstance(features, torch.Tensor):
+            raise TypeError(f"Expected torch.Tensor, got {type(features)}")
+
+        if features.ndim != 3:
             raise ValueError(
-                f"Expected 3D tensor (B,N,D), got {type(features)} with shape {getattr(features,'shape',None)}"
+                f"Expected 3D tensor (B,N,D), got tensor with shape {features.shape}"
             )
+
+        # if not isinstance(features, torch.Tensor) or features.ndim != 3:
+        #     raise ValueError(
+        #         f"Expected 3D tensor (B,N,D), got {type(features)} with shape {getattr(features,'shape',None)}"
+        #     )
 
         # Move buffers to the correct device
         device = features.device
