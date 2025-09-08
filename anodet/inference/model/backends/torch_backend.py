@@ -53,7 +53,9 @@ class TorchBackend(InferenceBackend):
         # 2) Fallback: raw torch.load (may be nn.Module or a stats dict)
         if loaded_obj is None:
             logger.info("Trying torch.load: %s", model_path)
-            loaded_obj = torch.load(model_path, map_location=self.device)
+            loaded_obj = torch.load(
+                model_path, map_location=self.device, weights_only=False
+            )
             logger.info("Loaded object type: %s", type(loaded_obj).__name__)
 
         # 3) If it's a stats-only dict, build a PadimLite runtime module on CPU

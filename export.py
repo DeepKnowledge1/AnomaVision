@@ -64,7 +64,7 @@ class ModelExporter:
         """Load and prepare model for export (supports .pt and stats-only .pth)."""
         self.logger.info("load: %s", self.model_path)
 
-        obj = torch.load(self.model_path, map_location="cpu")
+        obj = torch.load(self.model_path, map_location="cpu", weights_only=False)
 
         # Debug: Print what we actually loaded
         self.logger.info(f"Loaded object type: {type(obj)}")

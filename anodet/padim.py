@@ -210,7 +210,7 @@ class Padim(torch.nn.Module):
 
         # assert self.mean is not None and self.cov_inv is not None, \
         #     "The model must be trained or provided with mean and cov_inv"
-        return self(batch, export)  # (B), (B,H,W)
+        return self(batch, export=export)  # (B), (B,H,W)
 
     # Optimized version with memory management
     def evaluate(
@@ -404,7 +404,7 @@ class Padim(torch.nn.Module):
     @staticmethod
     def load_statistics(path: str, device: str = "cpu"):
         """Load stats dict and cast back to fp32 for use."""
-        stats = torch.load(path, map_location="cpu")
+        stats = torch.load(path, map_location="cpu", weights_only=False)
         stats["mean"] = stats["mean"].float().to(device)
         stats["cov_inv"] = stats["cov_inv"].float().to(device)
         stats["channel_indices"] = stats["channel_indices"].to(torch.int64).to(device)
