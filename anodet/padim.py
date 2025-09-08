@@ -85,7 +85,7 @@ class Padim(torch.nn.Module):
         return self._cov_inv
 
     def forward(
-        self, x: torch.Tensor, return_map: bool = True
+        self, x: torch.Tensor, return_map: bool = True, export: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         This method extracts feature embeddings from the input images using a pre-trained model,
@@ -127,7 +127,9 @@ class Padim(torch.nn.Module):
             layer_hook=self.layer_hook,
             layer_indices=self.layer_indices,
         )
-        patch_scores = self.mahalanobisDistance(embedding_vectors, w, h)  # (B, w, h)
+        patch_scores = self.mahalanobisDistance(
+            embedding_vectors, w, h, export
+        )  # (B, w, h)
 
         # fast image score directly from patch grid (no upsample needed)
         image_scores = patch_scores.flatten(1).amax(1)
@@ -198,7 +200,7 @@ class Padim(torch.nn.Module):
         self.mahalanobisDistance = MahalanobisDistance(mean, cov_inv)
 
     def predict(
-        self, batch: torch.Tensor, gaussian_blur: bool = False
+        self, batch: torch.Tensor, export: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Make a prediction on test images."""
         assert (
@@ -208,7 +210,7 @@ class Padim(torch.nn.Module):
 
         # assert self.mean is not None and self.cov_inv is not None, \
         #     "The model must be trained or provided with mean and cov_inv"
-        return self(batch)
+        return self(batch, export)  # (B), (B,H,W)
 
     # Optimized version with memory management
     def evaluate(

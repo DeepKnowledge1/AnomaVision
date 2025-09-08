@@ -47,7 +47,7 @@ class _ExportWrapper(torch.nn.Module):
                 self.device = torch.device("cpu")
 
     def forward(self, x):
-        scores, maps = self.m.predict(x)
+        scores, maps = self.m.predict(x, export=True)
         return scores, maps
 
 

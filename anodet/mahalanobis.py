@@ -43,19 +43,25 @@ class MahalanobisDistance(nn.Module):
         features: torch.Tensor,  # (B, N, D)
         width: int,
         height: int,
-        chunk: int = 0,  # 0 or <=0 => no chunking (keeps old behavior)
+        chunk: int = 1024,  # 0 or <=0 => no chunking (keeps old behavior)
+        export=False,
     ) -> torch.Tensor:
         """
-        Compute Mahalanobis distances between features and stored Gaussian stats.
+        Compute Mahalanobis distances between feature vectors and stored statistics.
 
         Args:
-            features: (B, N, D)  where N = width * height
-            width: patch map width
-            height: patch map height
-            chunk: number of patches to process per chunk (set >0 to cap memory)
+            features (torch.Tensor): Input tensor of shape (B, N, D),
+                where B = batch size, N = width * height, and D = embedding dimension.
+            width (int): Spatial width of the patch map.
+            height (int): Spatial height of the patch map.
+            chunk (int, optional): Number of patches to process per step in
+                memory-efficient mode. If 0 (default) or >= N, uses fully
+                vectorized computation. Ignored when ``export=True``.
+            export (bool, optional): If True, always use the vectorized path
+                (export-friendly, avoids Python loops for ONNX export).
 
         Returns:
-            (B, width, height) distances
+            torch.Tensor: Mahalanobis distances of shape (B, width, height).
         """
         if not isinstance(features, torch.Tensor) or features.ndim != 3:
             raise ValueError(
@@ -73,8 +79,8 @@ class MahalanobisDistance(nn.Module):
                 f"Number of patches N ({N}) does not match width*height ({width*height})"
             )
 
-        # === Fast vectorized path (keeps original behavior; good for ONNX tracing) ===
-        if not chunk or chunk <= 0 or chunk >= N:
+        # Always use vectorized path during ONNX export (to keep graph small)
+        if export or not chunk or chunk <= 0 or chunk >= N:
             delta = features - self._mean_flat.unsqueeze(0)  # (B, N, D)
             # (B,N,1,D) @ (1,N,D,D) -> (B,N,1,D)
             left = torch.matmul(delta.unsqueeze(2), self._cov_inv_flat.unsqueeze(0))
@@ -83,26 +89,26 @@ class MahalanobisDistance(nn.Module):
             distances = dist2.clamp_min_(0).sqrt_().view(B, width, height)
             return distances
 
-        # # === Chunked path (low peak RAM; fixes broadcasting by expanding over B) ===
-        # out = features.new_empty(B, N)  # will hold squared distances per patch
-        # mean = self._mean_flat
-        # pinv = self._cov_inv_flat
+        # === Chunked path (low peak RAM; fixes broadcasting by expanding over B) ===
+        out = features.new_empty(B, N)  # will hold squared distances per patch
+        mean = self._mean_flat
+        pinv = self._cov_inv_flat
 
-        # for s in range(0, N, chunk):
-        #     e = min(s + chunk, N)
-        #     # f: (B, c, D)   m: (1, c, D)
-        #     f = features[:, s:e, :].contiguous()
-        #     m = mean[s:e, :].unsqueeze(0)
-        #     d = f - m                                          # (B, c, D)
+        for s in range(0, N, chunk):
+            e = min(s + chunk, N)
+            # f: (B, c, D)   m: (1, c, D)
+            f = features[:, s:e, :].contiguous()
+            m = mean[s:e, :].unsqueeze(0)
+            d = f - m  # (B, c, D)
 
-        #     # Broadcast inverse cov over batch: (1,c,D,D) -> (B,c,D,D)
-        #     pinv_chunk = pinv[s:e].unsqueeze(0).expand(B, -1, -1, -1).contiguous()
+            # Broadcast inverse cov over batch: (1,c,D,D) -> (B,c,D,D)
+            pinv_chunk = pinv[s:e].unsqueeze(0).expand(B, -1, -1, -1).contiguous()
 
-        #     # (B,c,1,D) @ (B,c,D,D) -> (B,c,1,D) -> (B,c,D)
-        #     y = torch.matmul(d.unsqueeze(2), pinv_chunk).squeeze(2)
+            # (B,c,1,D) @ (B,c,D,D) -> (B,c,1,D) -> (B,c,D)
+            y = torch.matmul(d.unsqueeze(2), pinv_chunk).squeeze(2)
 
-        #     # quadratic form per patch: d^T * Sigma^{-1} * d  -> (B,c)
-        #     out[:, s:e] = (y * d).sum(-1)
+            # quadratic form per patch: d^T * Sigma^{-1} * d  -> (B,c)
+            out[:, s:e] = (y * d).sum(-1)
 
-        # distances = out.clamp_min_(0).sqrt_().view(B, width, height)
-        # return distances
+        distances = out.clamp_min_(0).sqrt_().view(B, width, height)
+        return distances
