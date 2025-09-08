@@ -34,6 +34,8 @@
 | **Intel Hardware** | **OpenVINO** | CPUs, iGPUs, and VPUs |
 | **NVIDIA GPUs** | **TensorRT** | Maximum GPU performance (coming soon) |
 
+
+
 [⚡ Quick Start](#-quick-start) • [📚 Documentation](#-complete-api-reference) • [🎯 Examples](#-real-world-examples) • [🔧 Installation](#-installation)
 
 ---
@@ -43,6 +45,18 @@
 **🎯 Unmatched Performance** • **🔄 Multi-Format Support** • **📦 Production Ready** • **🎨 Rich Visualizations** • **📐 Flexible Image Dimensions**
 
 </div>
+
+## 🆕 What’s New (Sept 2025)
+
+- **Slim artifacts (`.pth`)**: save only PaDiM *statistics* (mean, cov\_inv, channel indices, layer indices, backbone) for **2–4× smaller files** vs. full `.pt` checkpoints.
+
+- **Plug-and-play loading**: `.pth` loads seamlessly through `TorchBackend` and the exporter via a lightweight runtime (`PadimLite`) that exposes the same `.predict(...)` interface.
+
+- **CPU-first pipeline**: everything works on machines **without a GPU**. FP16 is used **only for storage**; compute happens in FP32 on CPU.
+- **Export from `.pth`**: ONNX/TorchScript/OpenVINO export now accepts a stats-only `.pth` directly.
+- **Test coverage**: new pytest cases validate saving stats, loading via `PadimLite`, CPU inference through the backend, and exporter compatibility.
+
+
 
 <details open>
 <summary>✨ What Makes AnomaVision Special?</summary>
@@ -73,6 +87,8 @@ AnomaVision transforms the cutting-edge **PaDiM (Patch Distribution Modeling)** 
 - **Python**: 3.9+
 - **CUDA**: 11.7+ for GPU acceleration
 - **PyTorch**: 2.0+ (automatically installed)
+
+
 
 ### 🎯 Method 1: Poetry (Recommended)
 ```bash

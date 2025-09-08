@@ -53,7 +53,9 @@ class TorchBackend(InferenceBackend):
         # 2) Fallback: raw torch.load (may be nn.Module or a stats dict)
         if loaded_obj is None:
             logger.info("Trying torch.load: %s", model_path)
-            loaded_obj = torch.load(model_path, map_location=self.device)
+            loaded_obj = torch.load(
+                model_path, map_location=self.device, weights_only=False
+            )
             logger.info("Loaded object type: %s", type(loaded_obj).__name__)
 
         # 3) If it's a stats-only dict, build a PadimLite runtime module on CPU
@@ -87,16 +89,6 @@ class TorchBackend(InferenceBackend):
         self.model = model
         # AMP only makes sense on CUDA
         self.use_amp = bool(use_amp and self.device.type == "cuda")
-
-        # Optional: tiny warmup to surface issues early (safe on CPU)
-        try:
-            with torch.inference_mode():
-                if hasattr(self.model, "predict"):
-                    _x = torch.zeros(1, 3, 64, 64, device=self.device)
-                    _ = self.model.predict(_x)
-                    logger.info("Warmup predict() executed on %s.", self.device.type)
-        except Exception as ew:
-            logger.info("Warmup skipped: %s", str(ew))
 
     def predict(self, batch: Batch) -> ScoresMaps:
         """Run inference using PyTorch."""

@@ -32,6 +32,3 @@ def test_exporter_loads_stats_pth_and_wraps(tmp_path, make_stats, patch_extracto
     assert isinstance(scores, torch.Tensor) and isinstance(maps, torch.Tensor)
     assert scores.shape == (1,)
     assert maps.shape == (1, x.shape[2], x.shape[3])
-
-
-3
