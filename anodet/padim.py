@@ -128,14 +128,14 @@ class Padim(torch.nn.Module):
             layer_indices=self.layer_indices,
         )
         patch_scores = self.mahalanobisDistance(
-            embedding_vectors, w, h, export
+            features=embedding_vectors, width=w, height=h, export=export, chunk=256
         )  # (B, w, h)
 
         # fast image score directly from patch grid (no upsample needed)
         image_scores = patch_scores.flatten(1).amax(1)
 
-        if not return_map:
-            return image_scores, None  # nothing large allocated
+        # if not return_map:
+        #     return image_scores, None  # nothing large allocated
 
         score_map = F.interpolate(
             patch_scores.unsqueeze(1),
