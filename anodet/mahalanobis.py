@@ -80,7 +80,7 @@ class MahalanobisDistance(nn.Module):
             )
 
         # Always use vectorized path during ONNX export (to keep graph small)
-        if export or not chunk or chunk <= 0 or chunk >= N:
+        if True:  #   export or not chunk or chunk <= 0 or chunk >= N:
             delta = features - self._mean_flat.unsqueeze(0)  # (B, N, D)
             # (B,N,1,D) @ (1,N,D,D) -> (B,N,1,D)
             left = torch.matmul(delta.unsqueeze(2), self._cov_inv_flat.unsqueeze(0))
