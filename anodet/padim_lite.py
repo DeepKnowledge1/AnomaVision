@@ -39,7 +39,7 @@ class PadimLite(torch.nn.Module):
         self.eval()
 
     @torch.no_grad()
-    def predict(self, batch: torch.Tensor):
+    def predict(self, batch: torch.Tensor, export: bool = False):
         batch = batch.to(self.device, non_blocking=True)
         emb, w, h = self.embeddings_extractor(
             batch,
@@ -47,7 +47,7 @@ class PadimLite(torch.nn.Module):
             layer_hook=None,
             layer_indices=self.layer_indices,
         )
-        patch_scores = self.mahalanobisDistance(emb, w, h)  # (B, w, h)
+        patch_scores = self.mahalanobisDistance(emb, w, h, export)  # (B, w, h)
         score_map = F.interpolate(
             patch_scores.unsqueeze(1),
             size=batch.shape[-2:],

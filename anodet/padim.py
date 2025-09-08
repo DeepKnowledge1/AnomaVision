@@ -85,64 +85,64 @@ class Padim(torch.nn.Module):
         return self._cov_inv
 
     def forward(
-        self, x: torch.Tensor, gaussian_blur: bool = False
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass for ONNX compatibility.
+        self, x: torch.Tensor, return_map: bool = True, export: bool = False
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        This method extracts feature embeddings from the input images using a pre-trained model,
+        computes Mahalanobis distances to identify anomalous patches, and returns both per-image
+        anomaly scores and optionally a detailed anomaly score map.
 
         Args:
-            x: A batch of input images, with dimension (B, C, H, W).
+            x (torch.Tensor): Input tensor containing batch of images.
+                Expected shape: (B, C, H, W) where B=batch_size, C=channels,
+                H=height, W=width.
+            return_map (bool, optional): Whether to return the upsampled anomaly score map.
+                If True, returns detailed spatial anomaly information upsampled to input resolution.
+                If False, returns only per-image scores for memory efficiency.
+                Defaults to True.
 
         Returns:
-            image_scores: A tensor with the image level scores, with dimension (B).
-            score_map: A tensor with the patch level scores, with dimension (B, H, W)
+            Tuple[torch.Tensor, Optional[torch.Tensor]]: A tuple containing:
+                - image_scores (torch.Tensor): Per-image anomaly scores of shape (B,).
+                Higher values indicate higher anomaly likelihood. Computed as the maximum
+                anomaly score across all patches in each image.
+                - score_map (torch.Tensor or None): Detailed anomaly score map of shape (B, H, W)
+                if return_map=True, otherwise None. The score map is upsampled from patch-level
+                scores to match the input image resolution using bilinear interpolation.
+
+        Example:
+            >>> # Get both image scores and detailed anomaly map
+            >>> image_scores, score_map = model.forward(input_images, return_map=True)
+            >>>
+            >>> # Get only image scores for memory efficiency
+            >>> image_scores, _ = model.forward(input_images, return_map=False)
+
+        Note:
+            The method processes images in chunks of 1024 patches for memory efficiency
+            when computing Mahalanobis distances.
         """
-        # Extract features using the embeddings extractor
-
-        assert (
-            self.mahalanobisDistance._mean_flat is not None
-            and self.mahalanobisDistance._cov_inv_flat is not None
-        ), "Model is not trained. Please call `fit()` first."
-
-        embedding_vectors, width, height = self.embeddings_extractor(
+        embedding_vectors, w, h = self.embeddings_extractor(
             x,
             channel_indices=self.channel_indices,
             layer_hook=self.layer_hook,
             layer_indices=self.layer_indices,
         )
+        patch_scores = self.mahalanobisDistance(
+            features=embedding_vectors, width=w, height=h, export=export, chunk=256
+        )  # (B, w, h)
 
-        # Calculate Mahalanobis distance
-        # patch_scores = mahalanobis(self.mean, self.cov_inv, embedding_vectors)
-        patch_scores = self.mahalanobisDistance(embedding_vectors, width, height)
+        # fast image score directly from patch grid (no upsample needed)
+        image_scores = patch_scores.flatten(1).amax(1)
 
-        # Reshape to square patches - use a more ONNX-friendly approach
-        batch_size = x.shape[0]
-        # num_patches = embedding_vectors.shape[1]
-        # patch_width = int(
-        #     torch.sqrt(torch.tensor(num_patches, dtype=torch.float32)).item()
-        # )
-        # # patch_width = int(torch.sqrt(num_patches.float()).item())
+        # if not return_map:
+        #     return image_scores, None  # nothing large allocated
 
-        # patch_scores = patch_scores.view(batch_size, patch_width, patch_width)
-
-        # Interpolate to original image size
         score_map = F.interpolate(
             patch_scores.unsqueeze(1),
-            size=(x.shape[2], x.shape[3]),
+            size=x.shape[-2:],
             mode="bilinear",
             align_corners=False,
-        )
-
-        # Remove the channel dimension
-        score_map = score_map.squeeze(1)
-
-        # # Apply gaussian blur - create the blur operation inline for ONNX
-        # # Using a simpler approach that's more ONNX-friendly
-        # if gaussian_blur:
-        #     score_map = T.GaussianBlur(33, sigma=4)(score_map)
-
-        # Calculate image-level scores
-        image_scores = torch.max(score_map.view(batch_size, -1), dim=1)[0]
-
+        ).squeeze(1)
         return image_scores, score_map
 
     def to_device(self, device: torch.device) -> None:
@@ -200,7 +200,7 @@ class Padim(torch.nn.Module):
         self.mahalanobisDistance = MahalanobisDistance(mean, cov_inv)
 
     def predict(
-        self, batch: torch.Tensor, gaussian_blur: bool = False
+        self, batch: torch.Tensor, export: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Make a prediction on test images."""
         assert (
@@ -210,7 +210,7 @@ class Padim(torch.nn.Module):
 
         # assert self.mean is not None and self.cov_inv is not None, \
         #     "The model must be trained or provided with mean and cov_inv"
-        return self(batch, gaussian_blur=gaussian_blur)
+        return self(batch, export=export)  # (B), (B,H,W)
 
     # Optimized version with memory management
     def evaluate(
@@ -404,7 +404,7 @@ class Padim(torch.nn.Module):
     @staticmethod
     def load_statistics(path: str, device: str = "cpu"):
         """Load stats dict and cast back to fp32 for use."""
-        stats = torch.load(path, map_location="cpu")
+        stats = torch.load(path, map_location="cpu", weights_only=False)
         stats["mean"] = stats["mean"].float().to(device)
         stats["cov_inv"] = stats["cov_inv"].float().to(device)
         stats["channel_indices"] = stats["channel_indices"].to(torch.int64).to(device)

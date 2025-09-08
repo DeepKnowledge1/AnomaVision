@@ -12,3 +12,4 @@ logs/
 visualizations/
 *.onnx
 quick_benchmark.py
+benchmark_results/*
