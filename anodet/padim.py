@@ -33,16 +33,30 @@ class Padim(torch.nn.Module):
         layer_hook: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         feat_dim: Optional[int] = 50,
     ) -> None:
-        """Construct the model and initialize the attributes
+        """Initialize PaDiM anomaly detection model.
+
+        Creates a PaDiM (Patch Distribution Modeling) model for image anomaly detection.
+        The model uses ResNet backbone for feature extraction and Gaussian modeling
+        for anomaly scoring.
 
         Args:
-            backbone: The name of the desired backbone. Must be one of: [resnet18, wide_resnet50].
-            device: The device where to run the model.
-            channel_indices: A tensor with the desired channel indices to extract \
-                from the backbone, with size (D).
-            layer_indices: A list with the desired layers to extract from the backbone, \
-            allowed indices are 1, 2, 3 and 4.
-            layer_hook: A function that can modify the layers during extraction.
+            backbone (str, optional): ResNet architecture name. Must be one of
+                ["resnet18", "wide_resnet50"]. Defaults to "resnet18".
+            device (torch.device, optional): Computation device. Defaults to CPU.
+            channel_indices (Optional[torch.Tensor]): Specific channel indices to use
+                for feature selection. If None, randomly samples feat_dim channels.
+            layer_indices (Optional[List[int]]): ResNet layers to extract features from.
+                Valid indices are [0, 1, 2, 3]. Defaults to [0, 1].
+            layer_hook (Optional[Callable]): Function to apply to extracted features.
+            feat_dim (Optional[int]): Target feature dimension after channel selection.
+                Defaults to 50.
+
+        Raises:
+            ValueError: If backbone is not supported.
+
+        Example:
+            >>> model = Padim(backbone="resnet18", device=torch.device("cuda"))
+            >>> model = Padim(layer_indices=[0, 1, 2], feat_dim=100)
         """
 
         super(Padim, self).__init__()
@@ -87,40 +101,35 @@ class Padim(torch.nn.Module):
     def forward(
         self, x: torch.Tensor, return_map: bool = True, export: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """
-        This method extracts feature embeddings from the input images using a pre-trained model,
-        computes Mahalanobis distances to identify anomalous patches, and returns both per-image
-        anomaly scores and optionally a detailed anomaly score map.
+        """Perform anomaly detection inference on input images.
+
+        Extracts features from input images, computes Mahalanobis distances to identify
+        anomalous patches, and returns both per-image anomaly scores and optionally
+        detailed spatial anomaly maps.
 
         Args:
-            x (torch.Tensor): Input tensor containing batch of images.
-                Expected shape: (B, C, H, W) where B=batch_size, C=channels,
-                H=height, W=width.
-            return_map (bool, optional): Whether to return the upsampled anomaly score map.
-                If True, returns detailed spatial anomaly information upsampled to input resolution.
-                If False, returns only per-image scores for memory efficiency.
-                Defaults to True.
+            x (torch.Tensor): Input batch of images with shape (B, C, H, W).
+            return_map (bool, optional): Whether to return upsampled anomaly score map.
+                If True, returns detailed spatial anomaly information. If False,
+                returns only per-image scores for memory efficiency. Defaults to True.
+            export (bool, optional): If True, uses export-friendly computation paths
+                for ONNX compatibility. Defaults to False.
 
         Returns:
             Tuple[torch.Tensor, Optional[torch.Tensor]]: A tuple containing:
                 - image_scores (torch.Tensor): Per-image anomaly scores of shape (B,).
-                Higher values indicate higher anomaly likelihood. Computed as the maximum
-                anomaly score across all patches in each image.
-                - score_map (torch.Tensor or None): Detailed anomaly score map of shape (B, H, W)
-                if return_map=True, otherwise None. The score map is upsampled from patch-level
-                scores to match the input image resolution using bilinear interpolation.
+                Higher values indicate higher anomaly likelihood.
+                - score_map (Optional[torch.Tensor]): Spatial anomaly map of shape
+                (B, H, W) if return_map=True, otherwise None. Upsampled to match
+                input resolution using bilinear interpolation.
 
         Example:
-            >>> # Get both image scores and detailed anomaly map
-            >>> image_scores, score_map = model.forward(input_images, return_map=True)
-            >>>
-            >>> # Get only image scores for memory efficiency
-            >>> image_scores, _ = model.forward(input_images, return_map=False)
-
-        Note:
-            The method processes images in chunks of 1024 patches for memory efficiency
-            when computing Mahalanobis distances.
+            >>> images = torch.randn(4, 3, 224, 224)
+            >>> image_scores, score_map = model(images, return_map=True)
+            >>> print(f"Image scores: {image_scores.shape}")  # torch.Size([4])
+            >>> print(f"Score map: {score_map.shape}")        # torch.Size([4, 224, 224])
         """
+
         embedding_vectors, w, h = self.embeddings_extractor(
             x,
             channel_indices=self.channel_indices,
@@ -161,15 +170,28 @@ class Padim(torch.nn.Module):
     def fit(
         self, dataloader: torch.utils.data.DataLoader, extractions: int = 1
     ) -> None:
-        """Fit the model (i.e. mean and cov_inv) to data.
+        """Fit the PaDiM model to normal training data.
+
+        Extracts features from training data and computes Gaussian statistics
+        (mean and covariance) for each spatial location. These statistics are
+        used during inference for anomaly scoring.
 
         Args:
-            dataloader: A pytorch dataloader, with sample dimensions (B, D, H, W), \
-                containing normal images.
-            extractions: Number of extractions from dataloader. Could be of interest \
-                when applying random augmentations.
+            dataloader (torch.utils.data.DataLoader): DataLoader containing normal
+                (non-anomalous) training images.
+            extractions (int, optional): Number of passes through the dataloader.
+                Useful when applying random augmentations to increase data diversity.
+                Defaults to 1.
 
+        Note:
+            After fitting, the model stores mean vectors and inverse covariance
+            matrices as MahalanobisDistance module for efficient inference.
+
+        Example:
+            >>> train_loader = DataLoader(normal_dataset, batch_size=32)
+            >>> model.fit(train_loader, extractions=2)  # With augmentation
         """
+
         embedding_vectors = None
         for i in range(extractions):
             extracted_embedding_vectors = self.embeddings_extractor.from_dataloader(
@@ -202,7 +224,29 @@ class Padim(torch.nn.Module):
     def predict(
         self, batch: torch.Tensor, export: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Make a prediction on test images."""
+        """Make anomaly predictions on test images.
+
+        Performs inference on a batch of test images, returning both image-level
+        anomaly scores and pixel-level anomaly maps.
+
+        Args:
+            batch (torch.Tensor): Test images with shape (B, C, H, W).
+            export (bool, optional): Use export-friendly computation for ONNX.
+                Defaults to False.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: A tuple containing:
+                - image_scores (torch.Tensor): Per-image anomaly scores of shape (B,).
+                - score_maps (torch.Tensor): Pixel-level anomaly maps of shape (B, H, W).
+
+        Raises:
+            AssertionError: If model has not been trained (no mean/covariance available).
+
+        Example:
+            >>> test_batch = torch.randn(8, 3, 224, 224)
+            >>> img_scores, score_maps = model.predict(test_batch)
+        """
+
         assert (
             self.mahalanobisDistance._mean_flat is not None
             and self.mahalanobisDistance._cov_inv_flat is not None
@@ -380,14 +424,24 @@ class Padim(torch.nn.Module):
         )
 
     def save_statistics(self, path: str, half: bool = False) -> None:
-        """
-        Save model statistics with optional FP16 compression.
+        """Save trained model statistics to disk.
+
+        Saves the learned Gaussian parameters (mean, inverse covariance) and model
+        configuration to a file for later loading and inference.
 
         Args:
-            path: Path to save the statistics file
-            half: If True, save tensors in half precision (FP16) for smaller file size.
-                    Compatible with both CPU and GPU. Default: False (FP32)
+            path (str): File path where to save the statistics.
+            half (bool, optional): If True, saves tensors in FP16 precision for
+                smaller file size while maintaining compatibility. Defaults to False.
+
+        Raises:
+            RuntimeError: If model has not been trained yet.
+
+        Example:
+            >>> model.save_statistics("padim_stats.pth", half=True)  # Compact storage
+            >>> model.save_statistics("padim_stats_full.pth")       # Full precision
         """
+
         if (
             self.mahalanobisDistance._mean_flat is None
             or self.mahalanobisDistance._cov_inv_flat is None
@@ -426,18 +480,25 @@ class Padim(torch.nn.Module):
 
     @staticmethod
     def load_statistics(path: str, device: str = "cpu", force_fp32: bool = True):
-        """
-        Load statistics with automatic precision handling.
+        """Load model statistics from disk.
+
+        Loads previously saved Gaussian statistics and model configuration,
+        with automatic precision handling for optimal inference performance.
 
         Args:
-            path: Path to the statistics file
-            device: Target device for the loaded tensors
-            force_fp32: If True, always convert to FP32 for computation regardless
-                    of saved precision. Recommended for numerical stability.
+            path (str): Path to the saved statistics file.
+            device (str, optional): Target device for loaded tensors. Defaults to "cpu".
+            force_fp32 (bool, optional): If True, converts to FP32 regardless of
+                saved precision for numerical stability. Defaults to True.
 
         Returns:
-            dict: Statistics dictionary with tensors on specified device
+            dict: Statistics dictionary with tensors moved to specified device.
+
+        Example:
+            >>> stats = Padim.load_statistics("padim_stats.pth", device="cuda")
+            >>> # Use stats to initialize model or create PadimLite
         """
+
         stats = torch.load(path, map_location="cpu", weights_only=False)
 
         # Get saved precision info (default to fp32 for backward compatibility)
@@ -463,6 +524,36 @@ class Padim(torch.nn.Module):
 
 
 def get_dims_indices(layers, feature_dim, net_feature_size):
+    """
+    Generate random channel indices for feature dimensionality reduction.
+
+    This function implements random channel selection for PaDiM models,
+    reducing computational complexity while maintaining anomaly detection
+    performance. It ensures reproducible selection through fixed random seeds.
+
+    Args:
+        layers (List[int]): List of layer indices to extract features from
+            (e.g., [0, 1] for first two ResNet layers).
+        feature_dim (int): Target number of feature dimensions after reduction.
+            Will be clamped to total available features if larger.
+        net_feature_size (Dict[int, List[int]]): Mapping from layer index to
+            list of channel counts for that layer.
+
+    Returns:
+        torch.Tensor: Tensor of randomly selected channel indices of length
+            min(feature_dim, total_channels). Indices are in range [0, total_channels).
+
+    Example:
+        >>> # For ResNet18 layers [0,1] with feature_dim=100
+        >>> indices = get_dims_indices([0, 1], 100, BACKBONE_FEATURE_SIZES["resnet18"])
+        >>> print(indices.shape)  # torch.Size([100]) or smaller if fewer channels available
+
+    Note:
+        - Uses fixed random seed (1024) for reproducible results
+        - Automatically clamps feature_dim to available channels
+        - Sampling is without replacement (no duplicate indices)
+    """
+
     random.seed(1024)
     torch.manual_seed(1024)
 

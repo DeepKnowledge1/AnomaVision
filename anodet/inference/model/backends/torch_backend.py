@@ -25,10 +25,31 @@ class TorchBackend(InferenceBackend):
     def __init__(
         self,
         model_path: str,
-        device: str = "cpu",  # default to CPU (safe everywhere)
+        device: str = "cpu",
         *,
         use_amp: bool = True,
     ):
+        """Initialize PyTorch backend with automatic model type detection.
+
+        Supports multiple PyTorch model formats including TorchScript, standard
+        PyTorch models, and PaDiM statistics files. Automatically handles model
+        preparation and optimization for inference.
+
+        Args:
+            model_path (str): Path to PyTorch model file. Supported formats:
+                - TorchScript (.pts, .pt files)
+                - Standard PyTorch models (.pth with nn.Module)
+                - PaDiM statistics (.pth with mean/cov_inv dict)
+            device (str, optional): Target device. Automatically falls back to CPU
+                if CUDA is requested but unavailable. Defaults to "cpu".
+            use_amp (bool, optional): Enable automatic mixed precision (FP16) for
+                faster inference on supported GPUs. Defaults to True.
+
+        Example:
+            >>> backend = TorchBackend("model.pts", "cuda", use_amp=True)
+            >>> backend = TorchBackend("stats.pth", "cpu")  # PaDiM statistics
+        """
+
         # --- Device selection: CPU-first; use CUDA only if requested & available
         req = str(device or "cpu").lower()
         if req.startswith("cuda") and torch.cuda.is_available():
@@ -91,7 +112,28 @@ class TorchBackend(InferenceBackend):
         self.use_amp = bool(use_amp and self.device.type == "cuda")
 
     def predict(self, batch: Batch) -> ScoresMaps:
-        """Run inference using PyTorch."""
+        """Run PyTorch inference with automatic mixed precision support.
+
+        Executes inference using PyTorch with optional AMP acceleration. Handles
+        device placement and tensor conversion automatically.
+
+        Args:
+            batch (Batch): Input batch of images. Converted to torch.Tensor if needed.
+
+        Returns:
+            ScoresMaps: Tuple containing:
+                - scores (np.ndarray): Per-image anomaly scores
+                - maps (np.ndarray): Pixel-level anomaly maps
+
+        Note:
+            Uses model.predict() method for consistent interface across all
+            model types and export formats.
+
+        Example:
+            >>> batch = torch.randn(2, 3, 224, 224)
+            >>> scores, maps = backend.predict(batch)
+        """
+
         logger.debug("Running inference via TorchBackend")
 
         if not isinstance(batch, torch.Tensor):
@@ -116,17 +158,29 @@ class TorchBackend(InferenceBackend):
         return scores_np, maps_np
 
     def close(self) -> None:
-        """Release PyTorch model."""
+        """Release PyTorch model and clear GPU memory.
+
+        Removes model reference and triggers garbage collection. Essential for
+        preventing memory leaks in applications that load multiple models.
+        """
+
         self.model = None
 
     def warmup(self, batch, runs: int = 2) -> None:
-        """
-        Warm up PyTorch/TorchScript-on-PyTorch backend.
-        Uses AMP on CUDA if enabled, and executes the model a few times.
+        """Warm up PyTorch backend with AMP support.
+
+        Performs warmup inference runs using the same settings as production
+        inference, including automatic mixed precision if enabled.
+
         Args:
-            batch: input batch to use for warm-up.
-            runs: Number of warm-up runs to perform.
+            batch: Input batch for warmup. Converted to appropriate tensor format.
+            runs (int, optional): Number of warmup iterations. Defaults to 2.
+
+        Example:
+            >>> warmup_batch = torch.randn(1, 3, 224, 224)
+            >>> backend.warmup(warmup_batch, runs=3)
         """
+
         if not isinstance(batch, torch.Tensor):
             batch = torch.as_tensor(batch, dtype=torch.float32, device=self.device)
         else:

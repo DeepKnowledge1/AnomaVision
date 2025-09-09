@@ -11,8 +11,9 @@ from typing import List
 
 import numpy as np
 
-from .base import Batch, ScoresMaps, InferenceBackend
 from anodet.utils import get_logger
+
+from .base import Batch, InferenceBackend, ScoresMaps
 
 logger = get_logger(__name__)
 
@@ -34,6 +35,32 @@ class OpenVinoBackend(InferenceBackend):
         *,
         num_threads: int | None = None,
     ):
+        """Initialize OpenVINO backend for optimized CPU/GPU inference.
+
+        Creates an OpenVINO runtime optimized for Intel hardware. Supports both
+        directory-based models (with .xml/.bin files) and single .xml files.
+
+        Args:
+            model_path (str): Path to OpenVINO model. Can be:
+                - Directory containing .xml and .bin files
+                - Direct path to .xml file
+            device (str, optional): OpenVINO device target. Common values:
+                - "CPU" → Intel CPU optimization
+                - "GPU" → Intel GPU acceleration
+                - "AUTO" → Automatic device selection
+                Defaults to "CPU".
+            num_threads (int | None, optional): Number of CPU threads for inference.
+                Only applicable when device="CPU".
+
+        Raises:
+            ImportError: If OpenVINO is not installed.
+            FileNotFoundError: If no .xml file found in directory.
+
+        Example:
+            >>> backend = OpenVinoBackend("model.xml", "CPU", num_threads=4)
+            >>> backend = OpenVinoBackend("model_dir/", "AUTO")
+        """
+
         if not OPENVINO_AVAILABLE:
             raise ImportError(
                 "OpenVINO is not installed. Install with: pip install openvino"
@@ -68,7 +95,24 @@ class OpenVinoBackend(InferenceBackend):
         ]
 
     def predict(self, batch: Batch) -> ScoresMaps:
-        """Run OpenVINO inference on the input batch."""
+        """Run OpenVINO inference on input batch.
+
+        Executes the compiled OpenVINO model on the input batch with hardware-specific
+        optimizations. Automatically handles tensor conversion for OpenVINO runtime.
+
+        Args:
+            batch (Batch): Input batch of images. Supports torch.Tensor and numpy.ndarray.
+
+        Returns:
+            ScoresMaps: Tuple containing:
+                - scores (np.ndarray): Per-image anomaly scores
+                - maps (np.ndarray): Pixel-level anomaly maps
+
+        Example:
+            >>> batch = torch.randn(4, 3, 224, 224)
+            >>> scores, maps = backend.predict(batch)
+        """
+
         if isinstance(batch, np.ndarray):
             input_arr = batch
         else:
@@ -87,17 +131,29 @@ class OpenVinoBackend(InferenceBackend):
         return scores, maps
 
     def close(self) -> None:
-        """Release OpenVINO resources."""
+        """Release OpenVINO runtime resources.
+
+        Cleans up compiled model, core runtime, and associated resources.
+        Important for proper resource management in long-running applications.
+        """
+
         self.compiled_model = None
         self.model = None
         self.core = None
 
     def warmup(self, batch=None, runs: int = 2) -> None:
-        """
-        Warm up OpenVINO by creating an infer request and calling infer repeatedly.
+        """Warm up OpenVINO runtime for consistent performance.
+
+        Creates dedicated inference request and performs initial runs to optimize
+        runtime performance. Particularly beneficial for Intel hardware acceleration.
+
         Args:
-            batch: input batch to use for warm-up.
-            runs: Number of warm-up runs to perform.
+            batch: Input batch for warmup. Must be provided for OpenVINO warmup.
+            runs (int, optional): Number of warmup iterations. Defaults to 2.
+
+        Example:
+            >>> dummy_input = np.random.randn(1, 3, 224, 224)
+            >>> backend.warmup(dummy_input, runs=5)
         """
 
         if isinstance(batch, np.ndarray):
@@ -110,4 +166,8 @@ class OpenVinoBackend(InferenceBackend):
         for _ in range(max(1, runs)):
             _ = infer_request.infer({self.input_layer.any_name: input_arr})
 
-        logger.info("OpenVinoBackend warm-up completed (runs=%d, shape=%s).", runs, tuple(input_arr.shape))
+        logger.info(
+            "OpenVinoBackend warm-up completed (runs=%d, shape=%s).",
+            runs,
+            tuple(input_arr.shape),
+        )
