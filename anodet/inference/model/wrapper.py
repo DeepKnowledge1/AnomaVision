@@ -10,19 +10,50 @@ all inference calls to that backend.
 from __future__ import annotations
 
 import os
-from ..modelType import ModelType
-
-from ..model.backends.base import InferenceBackend, ScoresMaps
 
 from anodet.utils import get_logger
+
+from ..model.backends.base import InferenceBackend, ScoresMaps
+from ..modelType import ModelType
 
 logger = get_logger(__name__)
 
 
 def make_backend(model_path: str, device: str) -> InferenceBackend:
+    """Factory function to create appropriate inference backend based on model type.
+
+    Automatically detects the model format from file extension and instantiates
+    the corresponding backend implementation. Supports multiple inference frameworks
+    for optimal performance across different deployment scenarios.
+
+    Args:
+        model_path (str): Path to the model file. The file extension determines
+            which backend will be selected:
+            - .onnx → ONNX Runtime backend
+            - .torchscript/.pts → TorchScript backend
+            - .pth → PyTorch backend
+            - .engine → TensorRT backend (not implemented)
+            - .xml/.bin → OpenVINO backend
+
+        device (str): Target device for inference. Common values:
+            - "cpu" → CPU execution
+            - "cuda" → GPU execution (if available)
+            - Device-specific identifiers for specialized backends
+
+    Returns:
+        InferenceBackend: Initialized backend instance ready for inference.
+
+    Raises:
+        NotImplementedError: If the detected model type is not supported.
+        FileNotFoundError: If model_path does not exist.
+        ImportError: If required backend dependencies are not installed.
+
+    Example:
+        >>> backend = make_backend("model.onnx", "cuda")
+        >>> backend = make_backend("model.pth", "cpu")
+        >>> scores, maps = backend.predict(input_batch)
     """
-    Factory function to build a backend from the given model path and device.
-    """
+
     logger.info(f"Creating backend for model: {model_path}")
     model_type = ModelType.from_extension(model_path)
     logger.info(f"Detected model type: {model_type}")
@@ -100,4 +131,6 @@ class ModelWrapper:
         if hasattr(self.backend, "warmup"):
             return self.backend.warmup(batch=batch, runs=runs)
         else:
-            logger.info(f"{self.backend.__class__.__name__} does not support warm-up. Skipping.")
+            logger.info(
+                f"{self.backend.__class__.__name__} does not support warm-up. Skipping."
+            )

@@ -10,12 +10,22 @@ class MahalanobisDistance(nn.Module):
         mean: torch.Tensor,  # (N, D)
         cov_inv: torch.Tensor,  # (N, D, D)
     ):
-        """
-        A module that computes the Mahalanobis distance using precomputed mean and inverse covariance.
+        """Initialize Mahalanobis distance module with precomputed statistics.
+
+        Creates a module that computes Mahalanobis distances using precomputed mean
+        vectors and inverse covariance matrices. Registers tensors as buffers for
+        proper device management and model state handling.
 
         Args:
-            mean: Mean tensor of shape (N, D)
-            cov_inv: Inverse covariance tensor of shape (N, D, D)
+            mean (torch.Tensor): Mean vectors of shape (N, D) where N is number of
+                spatial locations and D is feature dimension.
+            cov_inv (torch.Tensor): Inverse covariance matrices of shape (N, D, D)
+                for each spatial location.
+
+        Example:
+            >>> mean = torch.randn(100, 256)  # 100 locations, 256 features
+            >>> cov_inv = torch.eye(256).unsqueeze(0).repeat(100, 1, 1)
+            >>> mahal = MahalanobisDistance(mean, cov_inv)
         """
         super().__init__()
 
@@ -25,7 +35,23 @@ class MahalanobisDistance(nn.Module):
         self._validate_initialization()
 
     def _validate_initialization(self):
-        """Validate that the model is properly initialized."""
+        """
+        Validate that the Mahalanobis distance model is properly initialized.
+
+        This internal method ensures that required statistical parameters (mean and
+        inverse covariance) are available before attempting distance calculations.
+
+        Raises:
+            RuntimeError: If mean tensor is None - indicates model needs fitting or
+                explicit mean parameter.
+            RuntimeError: If inverse covariance tensor is None - indicates model
+                needs fitting or explicit covariance parameter.
+
+        Note:
+            This is called automatically during forward pass to prevent
+            computation with uninitialized parameters.
+        """
+
         if self._mean_flat is None:
             raise RuntimeError(
                 "Model not initialized: mean tensor is None. "
@@ -43,26 +69,42 @@ class MahalanobisDistance(nn.Module):
         features: torch.Tensor,  # (B, N, D)
         width: int,
         height: int,
-        chunk: int = 1024,  # 0 or <=0 => no chunking (keeps old behavior)
+        chunk: int = 1024,
         export=False,
     ) -> torch.Tensor:
-        """
-        Compute Mahalanobis distances between feature vectors and stored statistics.
+        """Compute Mahalanobis distances for anomaly detection.
+
+        Calculates Mahalanobis distances between input features and stored Gaussian
+        statistics at each spatial location. Supports memory-efficient chunked
+        computation for large feature maps.
 
         Args:
-            features (torch.Tensor): Input tensor of shape (B, N, D),
-                where B = batch size, N = width * height, and D = embedding dimension.
+            features (torch.Tensor): Input features of shape (B, N, D) where
+                B is batch size, N is number of patches (width * height),
+                and D is feature dimension.
             width (int): Spatial width of the patch map.
             height (int): Spatial height of the patch map.
-            chunk (int, optional): Number of patches to process per step in
-                memory-efficient mode. If 0 (default) or >= N, uses fully
-                vectorized computation. Ignored when ``export=True``.
-            export (bool, optional): If True, always use the vectorized path
-                (export-friendly, avoids Python loops for ONNX export).
+            chunk (int, optional): Number of patches to process per chunk for
+                memory efficiency. If 0 or >= N, uses fully vectorized computation.
+                Defaults to 1024.
+            export (bool, optional): If True, forces vectorized computation path
+                for ONNX export compatibility. Defaults to False.
 
         Returns:
             torch.Tensor: Mahalanobis distances of shape (B, width, height).
+                Higher values indicate greater deviation from normal patterns.
+
+        Raises:
+            TypeError: If features is not a torch.Tensor.
+            ValueError: If features doesn't have expected 3D shape or if
+                N doesn't match width * height.
+
+        Example:
+            >>> features = torch.randn(4, 100, 256)  # 4 images, 100 patches, 256 dims
+            >>> distances = mahal_dist(features, width=10, height=10)
+            >>> print(distances.shape)  # torch.Size([4, 10, 10])
         """
+
         if not isinstance(features, torch.Tensor):
             raise TypeError(f"Expected torch.Tensor, got {type(features)}")
 

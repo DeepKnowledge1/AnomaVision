@@ -34,13 +34,23 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
     """
 
     def __init__(self, backbone_name: str, device: torch.device) -> None:
-        """Construct the backbone and set appropriate mode and device
+        """Initialize ResNet embeddings extractor with specified backbone and device.
+
+        Creates a ResNet-based feature extractor for anomaly detection pipelines.
+        The backbone is loaded with pre-trained weights and configured for inference
+        in evaluation mode.
 
         Args:
-            backbone_name: The name of the desired backbone. Must be
-                one of: [resnet18, wide_resnet50].
-            device: The device where to run the network.
+            backbone_name (str): Name of the ResNet architecture to use.
+                Must be one of: ["resnet18", "wide_resnet50"].
+            device (torch.device): Target device (CPU/GPU) for model computation.
 
+        Raises:
+            ValueError: If backbone_name is not supported.
+
+        Example:
+            >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            >>> extractor = ResnetEmbeddingsExtractor("resnet18", device)
         """
 
         super().__init__()
@@ -72,10 +82,17 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         logger.info("Model set to evaluation mode")
 
     def to_device(self, device: torch.device) -> None:
-        """Perform device conversion on backone
+        """Move the backbone model to specified device.
 
-        See pytorch docs for documentation on torch.Tensor.to
+        Transfers the ResNet backbone and updates internal device reference.
+        Useful for switching between CPU and GPU during different phases of
+        model training or inference.
 
+        Args:
+            device (torch.device): Target device for the backbone model.
+
+        Example:
+            >>> extractor.to_device(torch.device("cuda"))
         """
         logger.info(f"Moving backbone to device: {device}")
         self.backbone.to(device)
@@ -88,20 +105,33 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         layer_hook: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         layer_indices: Optional[List[int]] = None,
     ) -> Tuple[torch.Tensor, int, int]:
-        """Run inference on backbone and return the embedding vectors.
+        """Extract multi-scale feature embeddings from ResNet backbone.
+
+        Performs forward pass through ResNet layers, extracts features from specified
+        layers, optionally applies transformations, and concatenates them into unified
+        embedding vectors suitable for anomaly detection.
 
         Args:
-            batch: A batch of images.
-            channel_indices: A list of indices with the desired channels to include in
-                the embedding vectors.
-            layer_hook: A function that runs on each layer of the resnet before
-                concatenating them.
-            layer_indices: A list of indices with the desired layers to include in the
-                embedding vectors.
+            batch (torch.Tensor): Input batch of images with shape (B, C, H, W).
+            channel_indices (Optional[torch.Tensor]): Indices of channels to select
+                from concatenated features. If None, uses all channels.
+            layer_hook (Optional[Callable]): Function to apply to each layer's features
+                before concatenation. Useful for normalization or transformation.
+            layer_indices (Optional[List[int]]): Layer indices to extract features from.
+                Valid indices are [0, 1, 2, 3] corresponding to ResNet layers.
+                If None, defaults to [0, 1, 2, 3].
 
         Returns:
-            embedding_vectors: The embedding vectors.
+            Tuple[torch.Tensor, int, int]: A tuple containing:
+                - embedding_vectors (torch.Tensor): Extracted features of shape
+                (B, W*H, D) where D is the feature dimension.
+                - width (int): Spatial width of the feature maps.
+                - height (int): Spatial height of the feature maps.
 
+        Example:
+            >>> batch = torch.randn(4, 3, 224, 224)
+            >>> embeddings, w, h = extractor(batch, layer_indices=[0, 1])
+            >>> print(f"Shape: {embeddings.shape}, Spatial: {w}x{h}")
         """
         with torch.no_grad():
             x = batch
@@ -163,7 +193,31 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
         layer_hook: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         layer_indices: Optional[List[int]] = None,
     ) -> torch.Tensor:
-        """Same as self.forward but take a dataloader instead of a tensor as argument."""
+        """Extract features from all batches in a DataLoader.
+
+        Processes entire dataset through feature extraction pipeline with memory
+        management optimizations. Accumulates features from all batches and returns
+        concatenated result.
+
+        Args:
+            dataloader (DataLoader): PyTorch DataLoader containing image batches.
+                Each batch should have shape (B, C, H, W).
+            channel_indices (Optional[torch.Tensor]): Channel selection indices.
+            layer_hook (Optional[Callable]): Function to apply to layer features.
+            layer_indices (Optional[List[int]]): Layers to extract from.
+
+        Returns:
+            torch.Tensor: Concatenated embedding vectors from all batches with
+                shape (N, W*H, D) where N is total number of images.
+
+        Raises:
+            ValueError: If batch has invalid shape (not 4D or wrong channel count).
+
+        Example:
+            >>> train_loader = DataLoader(train_dataset, batch_size=32)
+            >>> features = extractor.from_dataloader(train_loader)
+            >>> print(f"Extracted features shape: {features.shape}")
+        """
 
         logger.info(
             f"Starting feature extraction from dataloader with {len(dataloader)} batches"
@@ -223,13 +277,38 @@ def concatenate_layers(layers: List[torch.Tensor]) -> torch.Tensor:
     Resizes all feature maps to match the spatial dimensions of the first layer,
     then concatenates them along the channel dimension.
 
+    This function is essential for multi-scale feature fusion in anomaly detection
+    pipelines. It ensures all layers have consistent spatial dimensions before
+    concatenation, enabling effective combination of features from different
+    network depths.
+
     Args:
-        layers: A list of feature tensors of shape (B, C_i, H_i, W_i)
+        layers (List[torch.Tensor]): A list of feature tensors of shape (B, C_i, H_i, W_i)
+            where B is batch size, C_i is the number of channels for layer i,
+            and H_i, W_i are the spatial dimensions for layer i.
 
     Returns:
-        embeddings: Concatenated tensor of shape (B, sum(C_i), H, W),
-                    where H and W are from the first layer.
+        torch.Tensor: Concatenated tensor of shape (B, sum(C_i), H, W),
+            where H and W are the spatial dimensions from the first layer,
+            and sum(C_i) is the total channels across all input layers.
+
+    Raises:
+        ValueError: If the input list of layers is empty or if any layer has
+            fewer than 2 dimensions.
+        TypeError: If any element in the layers list is not a torch.Tensor.
+
+    Example:
+        >>> layer1 = torch.randn(2, 64, 56, 56)   # From early ResNet layer
+        >>> layer2 = torch.randn(2, 128, 28, 28)  # From deeper ResNet layer
+        >>> combined = concatenate_layers([layer1, layer2])
+        >>> print(combined.shape)  # torch.Size([2, 192, 56, 56])
+
+    Note:
+        - All layers are resized to match the spatial dimensions of the first layer
+        - Uses nearest neighbor interpolation for resizing
+        - The order of layers in the input list determines their order in concatenation
     """
+
     if not layers:
         logger.error("Empty list of layers provided to concatenate_layers")
         raise ValueError("The input list of layers is empty.")
