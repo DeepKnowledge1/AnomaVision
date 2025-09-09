@@ -11,8 +11,9 @@ from typing import List
 import numpy as np
 import torch
 
-from .base import Batch, ScoresMaps, InferenceBackend
 from anodet.utils import get_logger
+
+from .base import Batch, InferenceBackend, ScoresMaps
 
 logger = get_logger(__name__)
 
@@ -27,6 +28,24 @@ class TorchScriptBackend(InferenceBackend):
         *,
         num_threads: int | None = None,
     ):
+        """Initialize TorchScript backend for optimized inference.
+
+        Loads pre-compiled TorchScript models for fast inference with minimal
+        Python overhead. Automatically handles device placement and threading
+        configuration.
+
+        Args:
+            model_path (str): Path to TorchScript model file (.pts, .pt extensions).
+            device (str, optional): Target device. Falls back to CPU if CUDA
+                unavailable. Defaults to "cuda".
+            num_threads (int | None, optional): Number of CPU threads for inference.
+                Only applied when using CPU device.
+
+        Example:
+            >>> backend = TorchScriptBackend("model.pts", "cuda")
+            >>> backend = TorchScriptBackend("model.pts", "cpu", num_threads=8)
+        """
+
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 
         if num_threads and device.lower() == "cpu":
@@ -38,7 +57,27 @@ class TorchScriptBackend(InferenceBackend):
         self.model.eval()
 
     def predict(self, batch: Batch) -> ScoresMaps:
-        """Run TorchScript inference on the input batch."""
+        """Run TorchScript inference on input batch.
+
+        Executes the compiled TorchScript model with minimal Python overhead.
+        Handles both single output and tuple output models automatically.
+
+        Args:
+            batch (Batch): Input batch of images. Supports numpy arrays and torch tensors.
+
+        Returns:
+            ScoresMaps: Tuple containing:
+                - scores (np.ndarray): Per-image anomaly scores
+                - maps (np.ndarray): Pixel-level anomaly maps
+
+        Note:
+            For single-output models, returns the same tensor for both scores and maps.
+
+        Example:
+            >>> batch = np.random.randn(3, 3, 224, 224)
+            >>> scores, maps = backend.predict(batch)
+        """
+
         if isinstance(batch, np.ndarray):
             input_tensor = torch.from_numpy(batch).to(self.device)
         else:
@@ -67,18 +106,29 @@ class TorchScriptBackend(InferenceBackend):
         return scores, maps
 
     def close(self) -> None:
-        """Release the TorchScript model."""
+        """Release TorchScript model and clear GPU cache.
+
+        Removes model reference and explicitly clears CUDA cache if using GPU.
+        Ensures complete cleanup of GPU resources.
+        """
+
         self.model = None
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
 
     def warmup(self, batch=None, runs: int = 2) -> None:
-        """
-        Warm up TorchScript backend by forwarding a few times on-device.
-        Args:
-            batch: input batch to use for warm-up.
-            runs: Number of warm-up runs to perform.
+        """Warm up TorchScript model for consistent performance.
 
+        Performs initial forward passes to optimize CUDA kernels and memory
+        allocation. Critical for achieving consistent inference times.
+
+        Args:
+            batch: Input batch for warmup. Must be provided for TorchScript warmup.
+            runs (int, optional): Number of warmup iterations. Defaults to 2.
+
+        Example:
+            >>> dummy_batch = torch.randn(1, 3, 224, 224)
+            >>> backend.warmup(dummy_batch, runs=4)
         """
 
         if isinstance(batch, torch.Tensor):
@@ -90,4 +140,8 @@ class TorchScriptBackend(InferenceBackend):
             for _ in range(max(1, runs)):
                 _ = self.model(batch)
 
-        logger.info("TorchScriptBackend warm-up completed (runs=%d, shape=%s).", runs, tuple(batch.shape))
+        logger.info(
+            "TorchScriptBackend warm-up completed (runs=%d, shape=%s).",
+            runs,
+            tuple(batch.shape),
+        )
