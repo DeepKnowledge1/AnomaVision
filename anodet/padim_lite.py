@@ -54,7 +54,8 @@ class PadimLite(torch.nn.Module):
             mode="bilinear",
             align_corners=False,
         ).squeeze(1)
-        image_scores = score_map.flatten(1).max(1).values
+        # # image_scores = score_map.flatten(1).max(1).values
+        image_scores = patch_scores.flatten(1).amax(1)
         return image_scores, score_map
 
 

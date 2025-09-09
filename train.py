@@ -224,7 +224,7 @@ def main():
         # also save a compact stats-only artifact (anomalib-style) -> ".pth"
         stats_path = model_path.with_suffix(".pth")
         try:
-            padim.save_statistics(str(stats_path))
+            padim.save_statistics(str(stats_path), half=True)
             logger.info("saved: slim statistics=%s", stats_path)
         except Exception as e:
             logger.warning("saving slim statistics failed: %s", e)
