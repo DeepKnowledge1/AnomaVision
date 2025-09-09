@@ -35,3 +35,11 @@ repos:
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: Run pytest
+        entry: poetry run pytest
+        language: system
+        pass_filenames: false

@@ -379,35 +379,86 @@ class Padim(torch.nn.Module):
             score_maps,
         )
 
-    def save_statistics(self, path: str) -> None:
+    def save_statistics(self, path: str, half: bool = False) -> None:
+        """
+        Save model statistics with optional FP16 compression.
+
+        Args:
+            path: Path to save the statistics file
+            half: If True, save tensors in half precision (FP16) for smaller file size.
+                    Compatible with both CPU and GPU. Default: False (FP32)
+        """
         if (
             self.mahalanobisDistance._mean_flat is None
             or self.mahalanobisDistance._cov_inv_flat is None
         ):
             raise RuntimeError("Model is not trained. Call fit() first.")
 
+        # Get tensors and move to CPU first
+        mean_tensor = self.mahalanobisDistance._mean_flat.detach().cpu()
+        cov_inv_tensor = self.mahalanobisDistance._cov_inv_flat.detach().cpu()
+        channel_indices_tensor = self.channel_indices.detach().cpu()
+
+        # Apply precision conversion if requested
+        if half:
+            # Convert to FP16 for storage (works on both CPU/GPU tensors after moving to CPU)
+            mean_tensor = mean_tensor.half()
+            cov_inv_tensor = cov_inv_tensor.half()
+            # Keep indices as int64 (no need for FP16)
+            dtype_info = "fp16"
+        else:
+            # Keep as FP32
+            mean_tensor = mean_tensor.float()
+            cov_inv_tensor = cov_inv_tensor.float()
+            dtype_info = "fp32"
+
         stats = {
-            # move to CPU first, then cast to fp16 for smaller files
-            "mean": self.mahalanobisDistance._mean_flat.detach()
-            .cpu()
-            .to(torch.float16),
-            "cov_inv": self.mahalanobisDistance._cov_inv_flat.detach()
-            .cpu()
-            .to(torch.float16),
-            "channel_indices": self.channel_indices.detach().cpu().to(torch.int32),
+            "mean": mean_tensor,
+            "cov_inv": cov_inv_tensor,
+            "channel_indices": channel_indices_tensor,
             "layer_indices": list(self.layer_indices),
-            "backbone": self.embeddings_extractor.backbone_name,  # e.g. "resnet18"
+            "backbone": self.embeddings_extractor.backbone_name,
             "model_version": "1.0",
+            "dtype": dtype_info,  # Track what precision was used
         }
+
         torch.save(stats, path)
 
     @staticmethod
-    def load_statistics(path: str, device: str = "cpu"):
-        """Load stats dict and cast back to fp32 for use."""
+    def load_statistics(path: str, device: str = "cpu", force_fp32: bool = True):
+        """
+        Load statistics with automatic precision handling.
+
+        Args:
+            path: Path to the statistics file
+            device: Target device for the loaded tensors
+            force_fp32: If True, always convert to FP32 for computation regardless
+                    of saved precision. Recommended for numerical stability.
+
+        Returns:
+            dict: Statistics dictionary with tensors on specified device
+        """
         stats = torch.load(path, map_location="cpu", weights_only=False)
-        stats["mean"] = stats["mean"].float().to(device)
-        stats["cov_inv"] = stats["cov_inv"].float().to(device)
+
+        # Get saved precision info (default to fp32 for backward compatibility)
+        saved_dtype = stats.get("dtype", "fp32")
+
+        # Always convert to computation precision (FP32 recommended for stability)
+        if force_fp32 or saved_dtype == "fp16":
+            stats["mean"] = stats["mean"].float().to(device)
+            stats["cov_inv"] = stats["cov_inv"].float().to(device)
+        else:
+            stats["mean"] = stats["mean"].to(device)
+            stats["cov_inv"] = stats["cov_inv"].to(device)
+
+        # Handle indices (always int64)
         stats["channel_indices"] = stats["channel_indices"].to(torch.int64).to(device)
+
+        print(f"Statistics loaded from {path}")
+        print(
+            f"Saved as: {saved_dtype}, loaded as: {'fp32' if force_fp32 else saved_dtype}"
+        )
+
         return stats
 
 
