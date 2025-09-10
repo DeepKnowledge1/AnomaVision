@@ -344,16 +344,14 @@ node_modules/
 package-lock.json
 yarn.lock
 
+
 # =============================================================================
 # KEEP THESE (NEGATIVE PATTERNS)
 # =============================================================================
 !.gitkeep
 !docs/assets/*.png
-!docs/assets/*.jpg
-!docs/assets/*.svg
-!examples/data/*.jpg
-!examples/data/*.png
-!tests/test_data/*
-!assets/mlruns/
-*.onnx
-quick_benchmark.py
+
+images/
+!docs/images/
+!docs/images/AnomaVision_banner.png
+!docs/images/av_al.png
