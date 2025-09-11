@@ -14,7 +14,7 @@ def test_torch_backend_loads_stats_pth_and_infers(
     torch.save(stats, pth_path)
 
     # now load through your TorchBackend (expects .predict returning (scores, maps))
-    from anodet.inference.model.backends.torch_backend import TorchBackend
+    from anomavision.inference.model.backends.torch_backend import TorchBackend
 
     be = TorchBackend(str(pth_path), device="cpu", use_amp=False)
     assert hasattr(be, "model")

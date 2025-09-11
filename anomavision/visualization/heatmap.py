@@ -1,8 +1,10 @@
+from typing import Optional, Union
+
 import cv2
-import torch
 import numpy as np
-from .utils import normalize_patch_scores, blend_image, to_numpy
-from typing import Union, Optional
+import torch
+
+from .utils import blend_image, normalize_patch_scores, to_numpy
 
 
 def heatmap_images(

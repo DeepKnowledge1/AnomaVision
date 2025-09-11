@@ -3,16 +3,18 @@ Provides classes and functions for working with PatchCore.
 """
 
 import math
-import torch
-import numpy as np
+from typing import Callable, List, Optional, Tuple
+
 import cv2
-from sklearn.random_projection import SparseRandomProjection
-from sklearn.neighbors import NearestNeighbors
+import numpy as np
+import torch
 from scipy.ndimage import gaussian_filter
-from typing import Optional, Callable, List, Tuple
+from sklearn.neighbors import NearestNeighbors
+from sklearn.random_projection import SparseRandomProjection
 from tqdm import tqdm
-from .sampling_methods.kcenter_greedy import kCenterGreedy
+
 from .feature_extraction import ResnetEmbeddingsExtractor
+from .sampling_methods.kcenter_greedy import kCenterGreedy
 
 
 class PatchCore:

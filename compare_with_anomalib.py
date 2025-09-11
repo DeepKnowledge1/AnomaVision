@@ -74,7 +74,7 @@ def evaluate_model_with_wrapper(model, test_dataloader):
     Evaluate AnomaVision model using the ModelWrapper inference interface
     Returns: (images, image_classifications_target, masks_target, image_scores, score_maps)
     """
-    from anodet.general import determine_device
+    from anomavision.general import determine_device
 
     all_images = []
     all_image_classifications_target = []
@@ -195,11 +195,11 @@ class BenchmarkRunner:
             from sklearn.metrics import roc_auc_score
 
             # Import your modules
-            import anodet
-            from anodet import MVTecDataset, Padim
-            from anodet.general import determine_device
-            from anodet.inference.model.wrapper import ModelWrapper
-            from anodet.utils import adaptive_gaussian_blur
+            import anomavision
+            from anomavision import MVTecDataset, Padim
+            from anomavision.general import determine_device
+            from anomavision.inference.model.wrapper import ModelWrapper
+            from anomavision.utils import adaptive_gaussian_blur
 
             metrics = ModelMetrics(name="Your PaDiM")
             metrics.backbone = "resnet18"

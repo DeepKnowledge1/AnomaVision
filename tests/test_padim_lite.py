@@ -7,7 +7,7 @@ def test_build_padim_from_stats_and_predict_cpu(make_stats, patch_extractor):
     # patch extractor inside anodet.padim_lite to our dummy
     patch_extractor(N, D, W, H)
 
-    from anodet.padim_lite import build_padim_from_stats
+    from anomavision.padim_lite import build_padim_from_stats
 
     # build runtime model on CPU
     model = build_padim_from_stats(stats, device="cpu")

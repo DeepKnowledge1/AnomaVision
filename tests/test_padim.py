@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import torch
 
-import anodet
+import anomavision
 
 
 class TestPadimCore:

@@ -6,7 +6,7 @@ TensorRT backend — currently not implemented.
 
 from __future__ import annotations
 
-from anodet.utils import get_logger
+from anomavision.utils import get_logger
 
 from .base import Batch, InferenceBackend, ScoresMaps
 

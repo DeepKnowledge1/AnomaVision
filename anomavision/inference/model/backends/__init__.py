@@ -6,9 +6,9 @@ Inference backend implementations.
 
 from .base import InferenceBackend, ScoresMaps
 from .onnx_backend import OnnxBackend
-from .torch_backend import TorchBackend
-from .tensorrt_backend import TensorRTBackend
 from .openvino_backend import OpenVinoBackend
+from .tensorrt_backend import TensorRTBackend
+from .torch_backend import TorchBackend
 
 __all__ = [
     "InferenceBackend",

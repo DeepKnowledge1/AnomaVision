@@ -15,7 +15,7 @@ from torchvision.models import (
 )
 from tqdm import tqdm
 
-from anodet.utils import get_logger
+from anomavision.utils import get_logger
 
 logger = get_logger(__name__)
 

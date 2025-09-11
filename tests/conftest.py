@@ -18,7 +18,7 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 
-import anodet
+import anomavision
 
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))

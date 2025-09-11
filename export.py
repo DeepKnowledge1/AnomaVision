@@ -15,9 +15,11 @@ from typing import List, Optional, Tuple
 import torch
 from easydict import EasyDict as edict
 
-from anodet.config import load_config
-from anodet.padim_lite import build_padim_from_stats  # stats-only .pth → runtime module
-from anodet.utils import get_logger, merge_config, setup_logging
+from anomavision.config import load_config
+from anomavision.padim_lite import (  # stats-only .pth → runtime module
+    build_padim_from_stats,
+)
+from anomavision.utils import get_logger, merge_config, setup_logging
 
 # Suppress "To copy construct from a tensor..." warnings
 warnings.filterwarnings("ignore", message="To copy construct from a tensor")

@@ -1,8 +1,10 @@
+from typing import Tuple, Union
+
+import cv2
 import numpy as np
 import torch
-import cv2
-from typing import Union, Tuple
-from .utils import to_numpy, frame_image
+
+from .utils import frame_image, to_numpy
 
 
 def frame_by_anomalies(

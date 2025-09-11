@@ -1,7 +1,9 @@
 # anodet/config.py
-import json, yaml
-from pathlib import Path
+import json
 from argparse import Namespace
+from pathlib import Path
+
+import yaml
 
 
 def load_config(path: str = None):

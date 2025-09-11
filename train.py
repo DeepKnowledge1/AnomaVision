@@ -9,10 +9,10 @@ import torch
 from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
 
-import anodet
-from anodet.config import load_config
-from anodet.general import GitStatusChecker, increment_path
-from anodet.utils import get_logger, merge_config, save_args_to_yaml, setup_logging
+import anomavision
+from anomavision.config import load_config
+from anomavision.general import GitStatusChecker, increment_path
+from anomavision.utils import get_logger, merge_config, save_args_to_yaml, setup_logging
 
 checker = GitStatusChecker()
 checker.check_status()

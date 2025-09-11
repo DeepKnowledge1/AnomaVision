@@ -11,7 +11,7 @@ from typing import List
 import numpy as np
 import torch
 
-from anodet.utils import get_logger
+from anomavision.utils import get_logger
 
 from .base import Batch, InferenceBackend, ScoresMaps
 

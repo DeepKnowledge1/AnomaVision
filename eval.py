@@ -11,14 +11,19 @@ import torch
 from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
 
-import anodet
-from anodet.config import load_config
-from anodet.general import Profiler, determine_device
+import anomavision
+from anomavision.config import load_config
+from anomavision.general import Profiler, determine_device
 
 # Updated imports to use the inference modules (same as detect.py)
-from anodet.inference.model.wrapper import ModelWrapper
-from anodet.inference.modelType import ModelType
-from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup_logging
+from anomavision.inference.model.wrapper import ModelWrapper
+from anomavision.inference.modelType import ModelType
+from anomavision.utils import (
+    adaptive_gaussian_blur,
+    get_logger,
+    merge_config,
+    setup_logging,
+)
 
 
 def parse_args():

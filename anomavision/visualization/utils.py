@@ -1,8 +1,9 @@
+from typing import Optional, Tuple, Union, cast
+
+import cv2
 import numpy as np
 import torch
-import cv2
 from PIL import Image
-from typing import Union, Tuple, cast, Optional
 
 
 def merge_images(

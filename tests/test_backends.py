@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 import torch
 
-from anodet.inference.model.wrapper import ModelWrapper
-from anodet.inference.modelType import ModelType
+from anomavision.inference.model.wrapper import ModelWrapper
+from anomavision.inference.modelType import ModelType
 
 
 class TestModelType:

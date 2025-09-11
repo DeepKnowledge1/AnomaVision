@@ -1,16 +1,16 @@
 import pytest
 import torch
 
+from anomavision.feature_extraction import concatenate_layers
 
-from anodet.feature_extraction import concatenate_layers
 
 def test_concatenate_layers_basic_shapes():
     # Create layers with different channels and spatial sizes
     # First layer determines target (H, W) after resize
     B = 2
-    l1 = torch.randn(B, 8, 16, 16)   # (B, C1, H, W)  -> target size (16,16)
-    l2 = torch.randn(B, 4, 8, 8)     # will be upsampled to (16,16)
-    l3 = torch.randn(B, 6, 4, 4)     # will be upsampled to (16,16)
+    l1 = torch.randn(B, 8, 16, 16)  # (B, C1, H, W)  -> target size (16,16)
+    l2 = torch.randn(B, 4, 8, 8)  # will be upsampled to (16,16)
+    l3 = torch.randn(B, 6, 4, 4)  # will be upsampled to (16,16)
 
     out = concatenate_layers([l1, l2, l3])
 
@@ -22,8 +22,7 @@ def test_concatenate_layers_uses_nearest_resize_correctly():
     # Small, easy-to-verify case
     B = 1
     # Target is 2x2
-    base = torch.tensor([[[[1.0, 2.0],
-                           [3.0, 4.0]]]])  # (1,1,2,2)
+    base = torch.tensor([[[[1.0, 2.0], [3.0, 4.0]]]])  # (1,1,2,2)
     # A 1x1 tensor that should expand to 2x2 with nearest -> constant fill
     small = torch.tensor([[[[7.0]]]])  # (1,1,1,1)
 

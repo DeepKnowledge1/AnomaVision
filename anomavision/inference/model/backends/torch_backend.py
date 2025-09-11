@@ -9,10 +9,10 @@ from contextlib import nullcontext
 
 import torch
 
-from anodet.padim_lite import (  # NEW: stats-only .pth → runtime module
+from anomavision.padim_lite import (  # NEW: stats-only .pth → runtime module
     build_padim_from_stats,
 )
-from anodet.utils import get_logger
+from anomavision.utils import get_logger
 
 from .base import Batch, InferenceBackend, ScoresMaps
 

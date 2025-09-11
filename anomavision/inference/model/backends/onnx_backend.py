@@ -10,9 +10,9 @@ import os
 from typing import List
 
 import numpy as np
-import onnxruntime as ort
 
-from anodet.utils import get_logger
+import onnxruntime as ort
+from anomavision.utils import get_logger
 
 from .base import Batch, InferenceBackend, ScoresMaps
 

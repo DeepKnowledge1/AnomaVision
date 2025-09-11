@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 
-from anodet.utils import get_logger
+from anomavision.utils import get_logger
 
 from ..model.backends.base import InferenceBackend, ScoresMaps
 from ..modelType import ModelType

@@ -1,10 +1,10 @@
-from pathlib import Path
 import os
-import matplotlib.pyplot as plt
-import torch
 import subprocess
 import sys
+from pathlib import Path
 
+import matplotlib.pyplot as plt
+import torch
 
 
 def increment_path(path, exist_ok=False, sep="", mkdir=False):
@@ -36,6 +36,7 @@ def determine_device(device_arg):
             return "cpu"
     return device_arg
 
+
 def save_visualization(images, filename, output_dir):
     """Save visualization images to disk"""
     os.makedirs(output_dir, exist_ok=True)
@@ -53,6 +54,7 @@ def save_visualization(images, filename, output_dir):
 
 import contextlib
 import time
+
 import torch
 
 
@@ -86,10 +88,14 @@ class Profiler(contextlib.ContextDecorator):
         Args:
             accumulated_time (float): Initial accumulated time in seconds
         """
-        self.accumulated_time = accumulated_time  # Total time accumulated across multiple runs
-        self.elapsed_time = 0.0                   # Time for the last measurement
-        self.cuda_available = torch.cuda.is_available()  # Check if CUDA timing sync is needed
-        self._start_time = 0.0                    # Internal start time marker
+        self.accumulated_time = (
+            accumulated_time  # Total time accumulated across multiple runs
+        )
+        self.elapsed_time = 0.0  # Time for the last measurement
+        self.cuda_available = (
+            torch.cuda.is_available()
+        )  # Check if CUDA timing sync is needed
+        self._start_time = 0.0  # Internal start time marker
 
     def __enter__(self):
         """Enter context manager - start timing for AnomaVision operation."""
@@ -102,8 +108,12 @@ class Profiler(contextlib.ContextDecorator):
 
         Calculates elapsed time and adds to accumulated total for AnomaVision metrics.
         """
-        self.elapsed_time = self._get_precise_time() - self._start_time  # delta-time for this operation
-        self.accumulated_time += self.elapsed_time                        # accumulate for total AnomaVision runtime
+        self.elapsed_time = (
+            self._get_precise_time() - self._start_time
+        )  # delta-time for this operation
+        self.accumulated_time += (
+            self.elapsed_time
+        )  # accumulate for total AnomaVision runtime
 
     def _get_precise_time(self):
         """
@@ -189,7 +199,15 @@ class GitStatusChecker:
 
         # Compare with upstream
         try:
-            counts = self._run(["git", "rev-list", "--left-right", "--count", f"{branch_name}...{branch_name}@{{u}}"])
+            counts = self._run(
+                [
+                    "git",
+                    "rev-list",
+                    "--left-right",
+                    "--count",
+                    f"{branch_name}...{branch_name}@{{u}}",
+                ]
+            )
             ahead, behind = map(int, counts.split())
         except subprocess.CalledProcessError:
             print(f"⚠️ No upstream set for '{branch_name}'. Use:")
@@ -197,9 +215,13 @@ class GitStatusChecker:
             return
 
         if behind > 0:
-            print(f"⬇️ Branch '{branch_name}' is behind by {behind} commit(s). Run `git pull`.")
+            print(
+                f"⬇️ Branch '{branch_name}' is behind by {behind} commit(s). Run `git pull`."
+            )
         elif ahead > 0:
-            print(f"⬆️ Branch '{branch_name}' is ahead by {ahead} commit(s). Run `git push`.")
+            print(
+                f"⬆️ Branch '{branch_name}' is ahead by {ahead} commit(s). Run `git push`."
+            )
         else:
             print(f"✅ Branch '{branch_name}' is up-to-date with the remote.")
 
