@@ -176,7 +176,7 @@ def main():
             logger.error('Expected folder "%s" does not exist.', root)
             sys.exit(1)
 
-        ds = anodet.AnodetDataset(
+        ds = anomavision.AnodetDataset(
             root,
             resize=config.resize,
             crop_size=config.crop_size,
@@ -206,7 +206,7 @@ def main():
             config.feat_dim,
         )
 
-        padim = anodet.Padim(
+        padim = anomavision.Padim(
             backbone=config.backbone,
             device=device,
             layer_indices=config.layer_indices,

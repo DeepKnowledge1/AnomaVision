@@ -284,7 +284,7 @@ def main():
         logger.info("Creating AnomaVision dataset and dataloader")
         try:
             # Create dataset with configurable image processing parameters
-            test_dataset = anodet.AnodetDataset(
+            test_dataset = anomavision.AnodetDataset(
                 DATASET_PATH,
                 resize=resize,
                 crop_size=crop_size,
@@ -362,10 +362,10 @@ def main():
                         score_maps, kernel_size=33, sigma=4
                     )
 
-                    score_map_classifications = anodet.classification(
+                    score_map_classifications = anomavision.classification(
                         score_maps, config.thresh
                     )
-                    image_classifications = anodet.classification(
+                    image_classifications = anomavision.classification(
                         image_scores, config.thresh
                     )
 
@@ -414,18 +414,18 @@ def main():
                         )
 
                         # Generate AnomaVision visualization outputs
-                        boundary_images = anodet.visualization.framed_boundary_images(
+                        boundary_images = anomavision.visualization.framed_boundary_images(
                             test_images,
                             score_map_classifications_np,
                             image_classifications_np,
                             padding=config.get("viz_padding", 40),
                         )
-                        heatmap_images = anodet.visualization.heatmap_images(
+                        heatmap_images = anomavision.visualization.heatmap_images(
                             test_images,
                             score_maps_np,
                             alpha=config.get("viz_alpha", 0.5),
                         )
-                        highlighted_images = anodet.visualization.highlighted_images(
+                        highlighted_images = anomavision.visualization.highlighted_images(
                             [images[i] for i in range(len(images))],
                             score_map_classifications_np,
                             color=viz_color,

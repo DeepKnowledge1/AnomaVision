@@ -92,7 +92,7 @@ pip install -r requirements.txt
 
 ### ✅ Verify Installation
 ```python
-python -c "import anodet; print('🎉 AnomaVision installed successfully!')"
+python -c "import anomavision; print('🎉 AnomaVision installed successfully!')"
 ```
 
 ### 🐳 Docker Support
@@ -112,12 +112,12 @@ docker run --gpus all -v $(pwd):/workspace anomavision:latest
 ### 🎯 Train Your First Model (2 minutes)
 
 ```python
-import anodet
+import anomavision
 import torch
 from torch.utils.data import DataLoader
 
 # 📂 Load your "good" training images
-dataset = anodet.AnodetDataset(
+dataset = anomavision.anomavisionDataset(
     "path/to/train/good",
     resize=[256, 192],          # Flexible width/height
     crop_size=[224, 224],       # Final crop size
@@ -127,7 +127,7 @@ dataloader = DataLoader(dataset, batch_size=4)
 
 # 🧠 Initialize PaDiM with optimal settings
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = anodet.Padim(
+model = anomavision.Padim(
     backbone='resnet18',           # Fast and accurate
     device=device,
     layer_indices=[0, 1],          # Multi-scale features
@@ -148,7 +148,7 @@ print("✅ Model trained and saved!")
 
 ```python
 # 📊 Load test data and detect anomalies (uses same preprocessing as training)
-test_dataset = anodet.AnodetDataset("path/to/test/images")
+test_dataset = anomavision.anomavisionDataset("path/to/test/images")
 test_dataloader = DataLoader(test_dataset, batch_size=4)
 
 for batch, images, _, _ in test_dataloader:
@@ -156,7 +156,7 @@ for batch, images, _, _ in test_dataloader:
     image_scores, score_maps = model.predict(batch)
 
     # 🏷️ Classify anomalies (threshold=13 works great for most cases)
-    predictions = anodet.classification(image_scores, threshold=13)
+    predictions = anomavision.classification(image_scores, threshold=13)
 
     print(f"🔥 Anomaly scores: {image_scores.tolist()}")
     print(f"📋 Predictions: {predictions.tolist()}")
@@ -280,7 +280,7 @@ python export.py --config config.yml
 ### 🔄 Universal Model Format Support
 
 ```python
-from anodet.inference.model.wrapper import ModelWrapper
+from anomavision.inference.model.wrapper import ModelWrapper
 
 # 🎯 Automatically detect and load ANY supported format
 pytorch_model = ModelWrapper("model.pt", device='cuda')        # PyTorch
@@ -403,9 +403,9 @@ fp32: false                             # Export precision (false = FP16 for Ope
 
 ### 🧠 Core Classes
 
-#### `anodet.Padim` - The Heart of AnomaVision
+#### `anomavision.Padim` - The Heart of AnomaVision
 ```python
-model = anodet.Padim(
+model = anomavision.Padim(
     backbone='resnet18',              # 'resnet18' | 'wide_resnet50'
     device=torch.device('cuda'),      # Target device
     layer_indices=[0, 1, 2],          # ResNet layers [0-3]
@@ -422,9 +422,9 @@ model = anodet.Padim(
 - `save_statistics(path, half=False)` - Save compact statistics
 - `load_statistics(path, device, force_fp32=True)` - Load statistics
 
-#### `anodet.AnodetDataset` - Smart Data Loading with Flexible Sizing
+#### `anomavision.anomavisionDataset` - Smart Data Loading with Flexible Sizing
 ```python
-dataset = anodet.AnodetDataset(
+dataset = anomavision.anomavisionDataset(
     "path/to/images",               # Image directory
     resize=[256, 192],              # Flexible width/height resize
     crop_size=[224, 224],           # Final crop dimensions
@@ -434,7 +434,7 @@ dataset = anodet.AnodetDataset(
 )
 
 # For MVTec format with same flexibility
-mvtec_dataset = anodet.MVTecDataset(
+mvtec_dataset = anomavision.MVTecDataset(
     "path/to/mvtec",
     class_name="bottle",
     is_train=True,
@@ -460,22 +460,22 @@ wrapper.close()  # Always clean up!
 
 ```python
 # 🏷️ Smart classification with optimal thresholds
-predictions = anodet.classification(scores, threshold=15)
+predictions = anomavision.classification(scores, threshold=15)
 
 # 📊 Comprehensive evaluation metrics
 images, targets, masks, scores, maps = model.evaluate(dataloader)
 
 # 🎨 Rich visualization functions
-boundary_images = anodet.visualization.framed_boundary_images(images, classifications)
-heatmap_images = anodet.visualization.heatmap_images(images, score_maps)
-highlighted_images = anodet.visualization.highlighted_images(images, classifications)
+boundary_images = anomavision.visualization.framed_boundary_images(images, classifications)
+heatmap_images = anomavision.visualization.heatmap_images(images, score_maps)
+highlighted_images = anomavision.visualization.highlighted_images(images, classifications)
 ```
 
 ### ⚙️ Configuration Management
 
 ```python
-from anodet.config import load_config
-from anodet.utils import merge_config
+from anomavision.config import load_config
+from anomavision.utils import merge_config
 
 # Load configuration from file
 config = load_config("config.yml")
@@ -484,7 +484,7 @@ config = load_config("config.yml")
 final_config = merge_config(args, config)
 
 # Image processing with automatic parameter application
-dataset = anodet.AnodetDataset(
+dataset = anomavision.anomavisionDataset(
     image_path,
     resize=config.resize,           # From config: [256, 224]
     crop_size=config.crop_size,     # From config: [224, 224]
@@ -504,7 +504,7 @@ dataset = anodet.AnodetDataset(
 
 ```
 AnomaVision/
-├── 🧠 anodet/                      # Core AI library
+├── 🧠 anomavision/                      # Core AI library
 │   ├── 📄 padim.py                 # PaDiM implementation
 │   ├── 📄 padim_lite.py            # Lightweight runtime module
 │   ├── 📄 feature_extraction.py    # ResNet feature extraction
@@ -668,7 +668,7 @@ AnomaVision builds upon the excellent work of:
 <details >
 <summary>✨ Related Projects</summary>
 
-- **[Anodet](https://github.com/OpenAOI/anodet)**:  anomaly detection
+- **[anomavision](https://github.com/OpenAOI/anomavision)**:  anomaly detection
 
 </details>
 

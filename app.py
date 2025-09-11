@@ -86,7 +86,7 @@ async def process_image(file: UploadFile = File(...)):
     np_image = np.array(image)
 
     # Preprocess and run inference
-    batch = to_batch([np_image], anodet.standard_image_transform, torch.device("cpu"))
+    batch = to_batch([np_image], anomavision.standard_image_transform, torch.device("cpu"))
     image_scores, score_maps = model.predict(batch)
 
     # Postprocess

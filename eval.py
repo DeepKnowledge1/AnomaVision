@@ -317,7 +317,7 @@ def main(args):
 
         try:
             # Use MVTecDataset for AnomaVision evaluation with configurable image processing
-            test_dataset = anodet.MVTecDataset(
+            test_dataset = anomavision.MVTecDataset(
                 DATASET_PATH,
                 config.class_name,
                 is_train=False,
@@ -388,7 +388,7 @@ def main(args):
 
             try:
                 # Use the anodet visualization function for AnomaVision results
-                anodet.visualize_eval_data(
+                anomavision.visualize_eval_data(
                     image_classifications_target,
                     masks_target.astype(np.uint8).flatten(),
                     image_scores,
