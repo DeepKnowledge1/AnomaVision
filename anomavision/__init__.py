@@ -2,7 +2,7 @@
 Provides functions for performing anomaly detection in images.
 """
 
-from .datasets.dataset import anomavisionDataset
+from .datasets.dataset import AnodetDataset
 from .datasets.mvtec_dataset import MVTecDataset
 from .feature_extraction import ResnetEmbeddingsExtractor
 from .padim import Padim
