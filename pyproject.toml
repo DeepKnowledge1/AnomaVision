@@ -37,7 +37,6 @@ opencv-python = [
     { version = "^4.6.0", markers = "sys_platform == 'win32'"},
     { version = "4.10.0.82", markers = "sys_platform == 'linux'" }
 ]
-#visionpublisher = {git = "https://ac-it-mvs@dev.azure.com/ac-it-mvs/crd-swec/_git/VisionPublisher", rev = "v0.1.5"}
 uvicorn = "^0.34.3"
 python-multipart = "^0.0.20"
 seaborn = "^0.13.2"
