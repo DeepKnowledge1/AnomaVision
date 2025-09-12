@@ -33,16 +33,6 @@ from anomavision.utils import (
     setup_logging,
 )
 
-
-import anodet
-from anodet.config import _shape, load_config
-from anodet.general import Profiler, determine_device, increment_path
-from anodet.inference.model.wrapper import ModelWrapper
-from anodet.inference.modelType import ModelType
-from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup_logging
-
-
-
 matplotlib.use("Agg")  # non-interactive, faster PNG writing
 
 
@@ -424,21 +414,25 @@ def main():
                         )
 
                         # Generate AnomaVision visualization outputs
-                        boundary_images = anomavision.visualization.framed_boundary_images(
-                            test_images,
-                            score_map_classifications_np,
-                            image_classifications_np,
-                            padding=config.get("viz_padding", 40),
+                        boundary_images = (
+                            anomavision.visualization.framed_boundary_images(
+                                test_images,
+                                score_map_classifications_np,
+                                image_classifications_np,
+                                padding=config.get("viz_padding", 40),
+                            )
                         )
                         heatmap_images = anomavision.visualization.heatmap_images(
                             test_images,
                             score_maps_np,
                             alpha=config.get("viz_alpha", 0.5),
                         )
-                        highlighted_images = anomavision.visualization.highlighted_images(
-                            [images[i] for i in range(len(images))],
-                            score_map_classifications_np,
-                            color=viz_color,
+                        highlighted_images = (
+                            anomavision.visualization.highlighted_images(
+                                [images[i] for i in range(len(images))],
+                                score_map_classifications_np,
+                                color=viz_color,
+                            )
                         )
 
                         # Display AnomaVision results
