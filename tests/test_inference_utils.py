@@ -66,7 +66,7 @@ def test_main_with_missing_model_file_raises(tmp_path, monkeypatch):
     sys.argv = [old[0], "--model", "does_not_exist.pt", "--device", "cpu"]
 
     try:
-        # If detect's global imports (e.g., anodet) aren't available,
+        # If detect's global imports (e.g., anomavision) aren't available,
         # importing detect would already have failed. But if we're here,
         # guard runtime errors unrelated to "file not found" by catching and skipping.
         with pytest.raises(FileNotFoundError):

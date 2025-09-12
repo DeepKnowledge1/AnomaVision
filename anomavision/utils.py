@@ -344,64 +344,151 @@ def split_tensor_and_run_function(
     return output_tensor
 
 
-# Global flag to ensure logging is configured only once
-_logging_configured = False
-_log_filename = None
+# Create a logger for this package/module
+# This follows Python logging best practices for libraries
+logger = logging.getLogger(__name__)
+
+# Add a NullHandler to prevent "No handler found" warnings
+# This is the recommended approach for libraries
+logger.addHandler(logging.NullHandler())
 
 
-def setup_logging(log_level="INFO"):
+def setup_logging(
+    log_level: str = "INFO",
+    log_to_file: bool = False,
+    log_file_path: Optional[str] = None,
+    enable_console: bool = True,
+    enabled: bool = False,
+) -> logging.Logger:
     """
-    Setup logging configuration - call once at application startup.
-    Returns the root logger.
+    Setup logging configuration for applications using this library.
+
+    This function configures only the anomavision logger, not the root logger,
+    to avoid interfering with other libraries' logging.
     """
-    global _logging_configured, _log_filename
 
-    # Only configure logging once
-    if not _logging_configured:
-        # Create logs directory if it doesn't exist
-        os.makedirs("logs", exist_ok=True)
+    # Get the anomavision package logger
+    anomavision_logger = logging.getLogger("anomavision")
 
-        # Create timestamp for log filename (only once)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        _log_filename = f"logs/detect_{timestamp}.log"
+    if not enabled:
+        anomavision_logger.disabled = True
+        return anomavision_logger
 
-        # Clear any existing handlers on the root logger
-        root_logger = logging.getLogger()
-        root_logger.handlers.clear()
+    # Enable and configure the anomavision logger
+    anomavision_logger.disabled = False
+    anomavision_logger.setLevel(getattr(logging, log_level.upper()))
 
-        # Configure root logger (this affects all loggers)
-        logging.basicConfig(
-            level=getattr(logging, log_level.upper()),
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            handlers=[
-                logging.FileHandler(_log_filename),
-                logging.StreamHandler(),  # Also log to console
-            ],
-            force=True,  # Override any existing configuration
-        )
+    # Clear existing handlers to avoid duplicates
+    anomavision_logger.handlers.clear()
 
-        _logging_configured = True
+    # Create formatter
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 
-        # Log the initialization message
-        init_logger = logging.getLogger(__name__)
-        init_logger.info(f"Logging initialized. Log file: {_log_filename}")
+    # Add console handler if requested
+    if enable_console:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        anomavision_logger.addHandler(console_handler)
 
-    # Return the root logger configured with the specified level
-    return logging.getLogger()
+    # Add file handler if requested
+    if log_to_file:
+        if log_file_path is None:
+            os.makedirs("logs", exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_file_path = f"logs/anomavision_{timestamp}.log"
+
+        file_handler = logging.FileHandler(log_file_path)
+        file_handler.setFormatter(formatter)
+        anomavision_logger.addHandler(file_handler)
+
+    # Prevent propagation to root logger to avoid duplicate messages
+    anomavision_logger.propagate = False
+
+    anomavision_logger.info(f"Anomavision logging initialized - Level: {log_level}")
+    if log_to_file:
+        anomavision_logger.info(f"Log file: {log_file_path}")
+
+    return anomavision_logger
 
 
-def get_logger(name=None):
+def get_logger(name: Optional[str] = None) -> logging.Logger:
     """
-    Get a logger for a specific module.
-    Call setup_logging() first to configure the logging system.
+    Get a logger for a specific module within the library.
+
+    This is the function that library modules should use to get loggers.
+    It will return a logger that respects the user's logging configuration.
 
     Args:
-        name: Logger name (use __name__ from calling module)
+        name: Logger name (typically __name__ from the calling module)
+
+    Returns:
+        Logger instance for the specified module
+
+    Example:
+        >>> # In library modules:
+        >>> from anomavision.utils import get_logger
+        >>> logger = get_logger(__name__)
+        >>> logger.debug("Processing batch...")  # Only shows if user enabled DEBUG
     """
-    if not _logging_configured:
-        setup_logging()  # Auto-configure if not done yet
+    if name is None:
+        name = __name__
 
     return logging.getLogger(name)
+
+
+def disable_logging(logger_name: Optional[str] = None) -> None:
+    """
+    Disable logging for this library or a specific logger.
+
+    Args:
+        logger_name: Specific logger to disable. If None, disables the entire
+                    anomavision package logging.
+
+    Example:
+        >>> # Disable all library logging
+        >>> from anomavision.utils import disable_logging
+        >>> disable_logging()
+
+        >>> # Disable specific module logging
+        >>> disable_logging('anomavision.feature_extraction')
+    """
+    if logger_name is None:
+        logger_name = "anomavision"  # Your package name
+
+    logging.getLogger(logger_name).disabled = True
+
+
+def enable_logging(logger_name: Optional[str] = None, level: str = "INFO") -> None:
+    """
+    Enable logging for this library or a specific logger.
+
+    Args:
+        logger_name: Specific logger to enable. If None, enables the entire
+                    anomavision package logging.
+        level: Logging level to set
+
+    Example:
+        >>> from anomavision.utils import enable_logging
+        >>> enable_logging(level="DEBUG")
+    """
+    if logger_name is None:
+        logger_name = "anomavision"  # Your package name
+
+    logger_obj = logging.getLogger(logger_name)
+    logger_obj.disabled = False
+    logger_obj.setLevel(getattr(logging, level.upper()))
+
+
+# Remove the old global configuration variables and functions
+# These were problematic for library usage:
+# - _logging_configured (global state)
+# - _log_filename (global state)
+# - The old setup_logging that configured root logger automatically
+
+# The rest of your utility functions remain the same...
+# (I'm not including them here to focus on the logging changes)
 
 
 def save_args_to_yaml__(args, filename="config.yml"):

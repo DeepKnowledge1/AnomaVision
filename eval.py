@@ -247,7 +247,7 @@ def main(args):
     # Merge config with CLI args
     config = edict(merge_config(args, cfg))
 
-    setup_logging(config.log_level)
+    setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
     logger = get_logger(__name__)
 
     # Log image processing configuration

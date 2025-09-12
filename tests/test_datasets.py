@@ -16,7 +16,7 @@ class TestAnodetDataset:
 
     def test_dataset_initialization(self, sample_images_dir):
         """Test basic dataset initialization."""
-        dataset = anodet.AnodetDataset(
+        dataset = anomavision.AnodetDataset(
             str(sample_images_dir),
             resize=[224, 224],
             crop_size=[224, 224],
@@ -54,7 +54,7 @@ class TestAnodetDataset:
         self, sample_images_dir, resize, crop_size, expected_shape
     ):
         """Test dataset with different image dimensions."""
-        dataset = anodet.AnodetDataset(
+        dataset = anomavision.AnodetDataset(
             str(sample_images_dir), resize=resize, crop_size=crop_size, normalize=True
         )
 
@@ -64,10 +64,12 @@ class TestAnodetDataset:
     def test_normalization_options(self, sample_images_dir):
         """Test dataset with and without normalization."""
         # With normalization
-        dataset_norm = anodet.AnodetDataset(str(sample_images_dir), normalize=True)
+        dataset_norm = anomavision.AnodetDataset(str(sample_images_dir), normalize=True)
 
         # Without normalization
-        dataset_no_norm = anodet.AnodetDataset(str(sample_images_dir), normalize=False)
+        dataset_no_norm = anomavision.AnodetDataset(
+            str(sample_images_dir), normalize=False
+        )
 
         batch_norm, _, _, _ = dataset_norm[0]
         batch_no_norm, _, _, _ = dataset_no_norm[0]
@@ -83,7 +85,7 @@ class TestAnodetDataset:
         custom_mean = [0.5, 0.5, 0.5]
         custom_std = [0.5, 0.5, 0.5]
 
-        dataset = anodet.AnodetDataset(
+        dataset = anomavision.AnodetDataset(
             str(sample_images_dir), normalize=True, mean=custom_mean, std=custom_std
         )
 
@@ -98,7 +100,7 @@ class TestMVTecDataset:
 
     def test_mvtec_dataset_train(self, mvtec_structure):
         """Test MVTec dataset in training mode."""
-        dataset = anodet.MVTecDataset(
+        dataset = anomavision.MVTecDataset(
             str(mvtec_structure),
             class_name="bottle",
             is_train=True,
@@ -116,7 +118,7 @@ class TestMVTecDataset:
 
     def test_mvtec_dataset_test(self, mvtec_structure):
         """Test MVTec dataset in test mode."""
-        dataset = anodet.MVTecDataset(
+        dataset = anomavision.MVTecDataset(
             str(mvtec_structure),
             class_name="bottle",
             is_train=False,
@@ -139,7 +141,7 @@ class TestMVTecDataset:
 
     def test_mvtec_dataset_masks(self, mvtec_structure):
         """Test MVTec dataset mask handling."""
-        dataset = anodet.MVTecDataset(
+        dataset = anomavision.MVTecDataset(
             str(mvtec_structure),
             class_name="bottle",
             is_train=False,
@@ -161,7 +163,7 @@ class TestMVTecDataset:
     def test_mvtec_invalid_class(self, mvtec_structure):
         """Test MVTec dataset with invalid class name."""
         with pytest.raises(AssertionError, match="should be in"):
-            anodet.MVTecDataset(
+            anomavision.MVTecDataset(
                 str(mvtec_structure), class_name="invalid_class", is_train=True
             )
 
@@ -203,7 +205,7 @@ class TestDatasetCompatibility:
         empty_dir = temp_model_dir / "empty"
         empty_dir.mkdir()
 
-        dataset = anodet.AnodetDataset(str(empty_dir))
+        dataset = anomavision.AnodetDataset(str(empty_dir))
         assert len(dataset) == 0
 
     def test_mixed_image_formats(self, temp_model_dir):
@@ -217,7 +219,7 @@ class TestDatasetCompatibility:
         img.save(temp_model_dir / "test.jpg")
         img.save(temp_model_dir / "test.jpeg")
 
-        dataset = anodet.AnodetDataset(str(temp_model_dir))
+        dataset = anomavision.AnodetDataset(str(temp_model_dir))
         assert len(dataset) == 3  # Should load all formats
 
 
@@ -226,7 +228,7 @@ class TestDatasetTransforms:
 
     def test_transform_pipeline(self, sample_images_dir):
         """Test that transforms are applied correctly."""
-        dataset = anodet.AnodetDataset(
+        dataset = anomavision.AnodetDataset(
             str(sample_images_dir),
             resize=[256, 256],
             crop_size=[224, 224],
@@ -243,7 +245,7 @@ class TestDatasetTransforms:
 
     def test_no_crop_transform(self, sample_images_dir):
         """Test dataset without cropping."""
-        dataset = anodet.AnodetDataset(
+        dataset = anomavision.AnodetDataset(
             str(sample_images_dir), resize=[256, 192], crop_size=None, normalize=True
         )
 

@@ -4,7 +4,7 @@ import torch
 
 def test_build_padim_from_stats_and_predict_cpu(make_stats, patch_extractor):
     stats, (N, D, W, H) = make_stats()
-    # patch extractor inside anodet.padim_lite to our dummy
+    # patch extractor inside anomavision.padim_lite to our dummy
     patch_extractor(N, D, W, H)
 
     from anomavision.padim_lite import build_padim_from_stats
