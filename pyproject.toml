@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "anomavision"
-version = "3.0.10"  # Major version bump for breaking change
+version = "3.0.11"  # Major version bump for breaking change
 description = "Advanced Anomaly Detection Environment - Deep learning library for state-of-the-art anomaly detection algorithms"
 authors = ["Deep Knowledge <Deepp.Knowledge@gmail.com>"]
 readme = "README.md"
@@ -47,7 +47,6 @@ opencv-python = [
     { version = "^4.6.0", markers = "sys_platform == 'win32'"},
     { version = "^4.6.0", markers = "sys_platform == 'linux'" }
 ]
-#visionpublisher = {git = "https://ac-it-mvs@dev.azure.com/ac-it-mvs/crd-swec/_git/VisionPublisher", rev = "v0.1.5"}
 uvicorn = "^0.34.3"
 python-multipart = "^0.0.20"
 seaborn = "^0.13.2"
