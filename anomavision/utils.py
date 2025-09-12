@@ -344,13 +344,6 @@ def split_tensor_and_run_function(
     return output_tensor
 
 
-# Create a logger for this package/module
-# This follows Python logging best practices for libraries
-logger = logging.getLogger(__name__)
-
-# Add a NullHandler to prevent "No handler found" warnings
-# This is the recommended approach for libraries
-logger.addHandler(logging.NullHandler())
 
 
 def setup_logging(

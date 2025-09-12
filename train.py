@@ -142,7 +142,8 @@ def main():
     config = edict(merge_config(args, cfg))
 
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
-    logger = get_logger(__name__)
+    logger = get_logger("anomavision.train")  # Force it into anomavision hierarchy
+
 
     if not config.dataset_path:
         logger.error(

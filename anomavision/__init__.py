@@ -12,7 +12,7 @@ from .datasets.dataset import AnodetDataset
 from .datasets.mvtec_dataset import MVTecDataset
 from .feature_extraction import ResnetEmbeddingsExtractor
 from .padim import Padim
-from .patch_core import PatchCore
+
 from .sampling_methods.kcenter_greedy import kCenterGreedy
 from .test import optimal_threshold, visualize_eval_data, visualize_eval_pair
 from .utils import get_logger  # Export for users

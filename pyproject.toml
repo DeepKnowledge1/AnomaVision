@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "anomavision"
-version = "3.0.11"  # Major version bump for breaking change
+version = "3.0.12"  # Major version bump for breaking change
 description = "Advanced Anomaly Detection Environment - Deep learning library for state-of-the-art anomaly detection algorithms"
 authors = ["Deep Knowledge <Deepp.Knowledge@gmail.com>"]
 readme = "README.md"
@@ -18,56 +18,28 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.9"
-paho-mqtt = "1.6.1"
+python = ">=3.9,<=3.12"
 matplotlib = "3.8.3"
 numpy = "1.26.4"
-gitpython = "3.1.42"
-albumentations = "1.4.0"
-pycocotools = "2.0.7"
-ipython = "8.18.1"
 openvino-dev = "2023.0"
 easydict = "1.13"
-pandas = "^2.2.2"
-py-cpuinfo = "^9.0.0"
-thon = "^2.2"
-psutil = "^5.9.8"
-onnx = "1.14.1"
-onnxruntime-gpu = "1.14.1"
+onnx = "^1.15.0"
+onnxruntime-gpu = "^1.15.0"
 
-#torch = { version = "1.13.1+cu117", source="torch"}
-#torchaudio = { version = "^0.13.1+cu117", source="torch"}
-#torchvision = { version = "0.14.1+cu117", source="torch"}
-torch = "^1.13.1"
-torchaudio = "^0.13.1"
-torchvision = "^0.14.1"
+torch = "^2.0.0"
+torchaudio = "^2.0.0"
+torchvision = "^0.15.0"
 
 
-opencv-python = [
-    { version = "^4.6.0", markers = "sys_platform == 'win32'"},
-    { version = "^4.6.0", markers = "sys_platform == 'linux'" }
-]
-uvicorn = "^0.34.3"
-python-multipart = "^0.0.20"
-seaborn = "^0.13.2"
-tabulate = "^0.9.0"
-tqdm = "^4.67.1"
+opencv-python = "^4.6.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.0.2"
 black = "24.2.0"
 flake8 = "7.0.0"
 pre-commit = "3.6.2"
-tox = "4.13.0"
-ipykernel = "^6.29.5"
-twine = "^6.2.0"
 
 
-
-[[tool.poetry.source]]
-name = "torch"
-url = "https://download.pytorch.org/whl/cu117"
-priority = "supplemental"
 
 
 [build-system]

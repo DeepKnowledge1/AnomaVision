@@ -419,7 +419,8 @@ def main():
 
     # Setup logging & logger
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
-    logger = get_logger(__name__)
+    logger = get_logger("anomavision.export")  # Force it into anomavision hierarchy
+
 
     model_path = Path(config.model_data_path) / config.model
 
