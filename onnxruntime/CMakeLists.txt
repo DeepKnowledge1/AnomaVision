@@ -19,8 +19,16 @@ set(OpenCV_DIR "D:/TOOLS/opencv/build")   # root of OpenCV build folder
 include_directories(${OpenCV_DIR}/include)
 link_directories(${OpenCV_DIR}/x64/vc16/lib)
 
-# --- Executable ---
-add_executable(onnx_inference main.cpp)
+# Add both source files
+add_executable(onnx_inference
+    detect.cpp
+    oop_anomaly_detector.cpp
+)
+
+add_custom_command(TARGET onnx_inference POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${OpenCV_DIR}/x64/vc16/bin/opencv_world4120.dll"
+        $<TARGET_FILE_DIR:onnx_inference>)
 
 # --- Link libraries ---
 target_link_libraries(onnx_inference
