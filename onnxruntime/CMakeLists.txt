@@ -1,16 +1,29 @@
+
+# cd path\to\project
+# cmake -S . -B build
+# cmake --build build --config Release
 cmake_minimum_required(VERSION 3.15)
 project(onnx_inference)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# Path to ONNX Runtime
+# --- ONNX Runtime ---
+# Adjust this path if ONNX Runtime is installed somewhere else
 set(ONNXRUNTIME_DIR "C:/onnxruntime")
 
 include_directories(${ONNXRUNTIME_DIR}/include)
 link_directories(${ONNXRUNTIME_DIR}/lib)
 
-# Create executable with proper target name
+# --- OpenCV ---
+set(OpenCV_DIR "D:/TOOLS/opencv/build")   # root of OpenCV build folder
+include_directories(${OpenCV_DIR}/include)
+link_directories(${OpenCV_DIR}/x64/vc16/lib)
+
+# --- Executable ---
 add_executable(onnx_inference main.cpp)
 
-# Link against ONNX Runtime
-target_link_libraries(onnx_inference onnxruntime)
+# --- Link libraries ---
+target_link_libraries(onnx_inference
+    onnxruntime
+    opencv_world4120   # change to match your OpenCV version (e.g., opencv_world470.lib)
+)
