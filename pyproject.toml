@@ -26,10 +26,10 @@ easydict = "1.13"
 onnx = "^1.15.0"
 onnxruntime-gpu = "^1.15.0"
 
-torch = "^2.0.0"
-torchaudio = "^2.0.0"
-torchvision = "^0.15.0"
 
+torch = { version = "2.0.1+cu118", source="torch" }
+torchvision = { version = "0.15.2+cu118", source="torch" }
+torchaudio = { version = "2.0.2+cu118", source="torch" }
 
 opencv-python = "^4.6.0"
 
@@ -39,6 +39,10 @@ black = "24.2.0"
 flake8 = "7.0.0"
 pre-commit = "3.6.2"
 
+[[tool.poetry.source]]
+name = "torch"
+url = "https://download.pytorch.org/whl/cu118"
+priority = "supplemental"
 
 
 
