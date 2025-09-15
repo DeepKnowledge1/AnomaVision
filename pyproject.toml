@@ -34,6 +34,8 @@ torchaudio = { version = "2.0.2+cu118", source="torch" }
 opencv-python = "^4.6.0"
 
 triton = { version = "2.0.0", markers = "sys_platform == 'linux' and python_version >= '3.10'" }
+scikit-learn = "^1.7.2"
+scikit-image = "0.22.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.0.2"
