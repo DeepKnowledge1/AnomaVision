@@ -4,104 +4,111 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
+import time
+from typing import Optional, Dict, Any
 
 from .base import BaseRealtimeDataset
+
+from anodet.utils import get_logger
+logger = get_logger(__name__)
 
 
 class VideoDataset(BaseRealtimeDataset):
     """Dataset for video file input"""
 
-    def __init__(self, video_path: str, loop: bool = True, **kwargs):
+    def __init__(
+        self,
+        video_path: str,
+        loop: bool = True,
+        playback_speed: float = 1.0,
+        **kwargs
+    ):
         """
         Args:
             video_path: Path to video file
             loop: Whether to loop video when it ends
+            playback_speed: Playback speed multiplier (1.0 = normal speed)
         """
         super().__init__(**kwargs)
         self.video_path = video_path
         self.loop = loop
+        self.playback_speed = playback_speed
         self.cap = None
+        self._total_frames = 0
+        self._current_frame = 0
+
+    def _get_source_info(self) -> Dict[str, Any]:
+        """Return video-specific metadata"""
+        info = {
+            'video_path': self.video_path,
+            'loop': self.loop,
+            'playback_speed': self.playback_speed,
+            'current_frame': self._current_frame,
+            'total_frames': self._total_frames
+        }
+
+        if self.cap and self.cap.isOpened():
+            try:
+                info.update({
+                    'frame_width': int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                    'frame_height': int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                    'original_fps': self.cap.get(cv2.CAP_PROP_FPS),
+                })
+            except Exception as e:
+                logger.debug(f"Could not get video properties: {e}")
+
+        return info
 
     def _capture_loop(self):
         """Capture frames from video file"""
-        import time
-
         while self._running:
             self.cap = cv2.VideoCapture(self.video_path)
 
             if not self.cap.isOpened():
-                raise RuntimeError(f"Cannot open video file {self.video_path}")
+                raise ConnectionError(f"Cannot open video file {self.video_path}")
 
-            frame_count = 0
-            while self._running and self.cap.isOpened():
-                ret, frame = self.cap.read()
-                if not ret:
-                    if self.loop:
-                        break  # Restart video
-                    else:
-                        self._running = False
-                        break
+            # Get video properties
+            original_fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
+            self._total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            frame_delay = (1.0 / original_fps) / self.playback_speed
 
-                metadata = {
-                    "timestamp": time.time(),
-                    "frame_number": frame_count,
-                    "source": self.video_path,
-                }
+            self._current_frame = 0
 
-                try:
-                    self.frame_buffer.put_nowait((frame, metadata))
-                except queue.Full:
-                    try:
-                        self.frame_buffer.get_nowait()
-                        self.frame_buffer.put_nowait((frame, metadata))
-                    except queue.Empty:
-                        pass
+            try:
+                while self._running and self.cap.isOpened():
+                    ret, frame = self.cap.read()
+                    if not ret:
+                        if self.loop:
+                            logger.info("Video ended, looping...")
+                            break  # Break inner loop to restart video
+                        else:
+                            logger.info("Video ended")
+                            self._running = False
+                            break
 
-                frame_count += 1
-                time.sleep(0.033)  # ~30 FPS
+                    metadata = {
+                        "source": self.video_path,
+                        "frame_number": self._current_frame,
+                        "total_frames": self._total_frames,
+                        "progress": self._current_frame / max(self._total_frames, 1)
+                    }
 
-            self.cap.release()
+                    self._add_frame_to_buffer(frame, metadata)
+                    self._current_frame += 1
+
+                    if frame_delay > 0:
+                        time.sleep(frame_delay)
+            finally:
+                if self.cap:
+                    self.cap.release()
+
             if not self.loop:
                 break
 
-    def __len__(self):
-        """Return buffer size as dataset length"""
-        return self.buffer_size
+    def close(self):
+        """Clean up video resources"""
+        super().close()
+        if self.cap:
+            self.cap.release()
+            self.cap = None
 
-    def __iter__(self):
-        """Make dataset iterable - continuously yield frames"""
-        while self._running:
-            try:
-                batch, image, classification, mask = self.__getitem__(0)
-                yield batch, image, classification, mask
-            except Exception as e:
-                print(f"Error in iteration: {e}")
-                break
-
-    def __getitem__(self, idx):
-        """Get current frame with same format as AnodetDataset"""
-        frame_data = self.get_frame()
-        if frame_data is None:
-            # Return dummy data if no frame available
-            dummy_tensor = torch.zeros(3, 224, 224)
-            dummy_image = np.zeros((224, 224, 3), dtype=np.uint8)
-            return dummy_tensor, dummy_image, 1, torch.zeros(1, 224, 224)
-
-        frame, metadata = frame_data
-
-        # Convert BGR to RGB
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image_pil = Image.fromarray(frame_rgb)
-
-        # Apply transforms if available
-        if hasattr(self, "image_transforms") and self.image_transforms:
-            batch = self.image_transforms(image_pil)
-        else:
-            # Basic transform if none provided
-            batch = torch.from_numpy(frame_rgb).permute(2, 0, 1).float() / 255.0
-
-        # Match AnodetDataset return format: (batch, image, classification, mask)
-        image_classification = 1  # No anomaly mask for real-time
-        mask = torch.zeros([1, batch.shape[1], batch.shape[2]])
-
-        return batch, frame_rgb, image_classification, mask
