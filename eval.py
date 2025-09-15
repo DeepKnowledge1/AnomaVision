@@ -19,6 +19,7 @@ from anodet.general import Profiler, determine_device
 from anodet.inference.model.wrapper import ModelWrapper
 from anodet.inference.modelType import ModelType
 from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup_logging
+from anodet.datasets.wrapper_dataset import DatasetWrapper
 
 
 def parse_args():
@@ -312,16 +313,18 @@ def main(args):
 
         try:
             # Use MVTecDataset for AnomaVision evaluation with configurable image processing
-            test_dataset = anodet.MVTecDataset(
-                DATASET_PATH,
-                config.class_name,
-                is_train=False,
-                resize=config.resize,
-                crop_size=config.crop_size,
-                normalize=config.normalize,
-                mean=config.norm_mean,
-                std=config.norm_std,
-            )
+
+            test_dataset = DatasetWrapper("D:/01-DATA", "mvtec", class_name="bottle")
+            # test_dataset = anodet.MVTecDataset(
+            #     DATASET_PATH,
+            #     config.class_name,
+            #     is_train=False,
+            #     resize=config.resize,
+            #     crop_size=config.crop_size,
+            #     normalize=config.normalize,
+            #     mean=config.norm_mean,
+            #     std=config.norm_std,
+            # )
             test_dataloader = DataLoader(
                 test_dataset,
                 batch_size=config.batch_size,

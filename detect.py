@@ -31,8 +31,6 @@ from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup
 matplotlib.use("Agg")  # non-interactive, faster PNG writing
 
 
-# Updated imports to use the inference modules
-
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -168,6 +166,19 @@ def main():
     # Merge config with CLI args
     config = edict(merge_config(args, cfg))
 
+    from anodet.datasets.wrapper_dataset import (  # Wrapper for various dataset types
+        DatasetWrapper,
+        create_realtime_dataset,
+    )
+
+    # DATASET_PATH = os.path.realpath(config.img_path)
+    src = "webcam"
+    # dataset = DatasetWrapper(src, camera_id=0)
+
+    dataset = DatasetWrapper(
+        "C:/Users/abdulgader/Pictures/Screenpresso/anomavision.mp4"
+    )
+
     # Setup logging first
     setup_logging(config.log_level)
     logger = get_logger(__name__)
@@ -279,23 +290,15 @@ def main():
         logger.info("Creating AnomaVision dataset and dataloader")
         try:
             # Create dataset with configurable image processing parameters
-            test_dataset = anodet.AnodetDataset(
-                DATASET_PATH,
-                resize=resize,
-                crop_size=crop_size,
-                normalize=normalize,
-                mean=config.norm_mean,
-                std=config.norm_std,
-            )
             test_dataloader = DataLoader(
-                test_dataset,
+                dataset,
                 batch_size=config.batch_size,
-                num_workers=config.num_workers,
+                num_workers=config.num_workers if src != "webcam" else 0,
                 pin_memory=config.pin_memory,
-                persistent_workers=config.num_workers > 0,
+                persistent_workers=config.num_workers > 0 and src != "webcam",
             )
             logger.info(
-                f"AnomaVision dataset created successfully. Total images: {len(test_dataset)}"
+                f"AnomaVision dataset created successfully. Total images: {len(dataset)}"
             )
             logger.info(
                 f"AnomaVision batch size: {config.get('batch_size', 1)}, Number of batches: {len(test_dataloader)}"
@@ -305,7 +308,7 @@ def main():
             raise
 
     logger.info(
-        f"Processing {len(test_dataset)} images using AnomaVision {model_type.value.upper()}"
+        f"Processing {len(dataset)} images using AnomaVision {model_type.value.upper()}"
     )
 
     # ---- Warm-up

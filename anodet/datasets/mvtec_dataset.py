@@ -1,16 +1,18 @@
 import os
+from typing import List, Optional, Tuple, Union
+
+import cv2 as cv
+import numpy as np
 import torch
-from typing import Optional, Union, Tuple, List
 from PIL import Image
 from torch.utils.data import Dataset
+
 from ..utils import (
-    standard_image_transform,
-    standard_mask_transform,
     create_image_transform,
     create_mask_transform,
+    standard_image_transform,
+    standard_mask_transform,
 )
-import numpy as np
-import cv2 as cv
 
 # URL =
 # 'ftp://guest:GU.205dldo@ftp.softronics.ch/mvtec_anomaly_detection/mvtec_anomaly_detection.tar.xz'

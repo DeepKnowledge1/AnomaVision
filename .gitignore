@@ -162,7 +162,7 @@ cython_debug/
 
 # Datasets
 data/
-datasets/
+# datasets/
 *.csv
 *.tsv
 *.json
