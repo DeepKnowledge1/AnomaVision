@@ -175,9 +175,11 @@ def main():
     src = "webcam"
     # dataset = DatasetWrapper(src, camera_id=0)
 
-    dataset = DatasetWrapper(
-        "C:/Users/abdulgader/Pictures/Screenpresso/anomavision.mp4"
-    )
+    # dataset = DatasetWrapper(        "C:/Users/abdulgader/Pictures/Screenpresso/anomavision.mp4"    )
+
+    dataset = DatasetWrapper("tcp", host="127.0.0.1", port=5000)
+
+
 
     # Setup logging first
     setup_logging(config.log_level)
@@ -512,7 +514,7 @@ def main():
     logger.info("=" * 60)
 
     # AnomaVision performance metrics (focusing on meaningful metrics)
-    total_images = len(test_dataset)
+    total_images = len(dataset)
     inference_fps = anomavision_profilers["inference"].get_fps(total_images)
     avg_inference_time = anomavision_profilers["inference"].get_avg_time_ms(batch_count)
 
