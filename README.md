@@ -38,12 +38,12 @@
 <details open>
 <summary>✨ What's New (September 2025)</summary>
 
+- **Compatibility**:  Added backward compatibility for anodet → anomavision migration with deprecation warning, full module mapping, and verification; legacy support to be removed in v4.0.0.
 - **Slim artifacts (`.pth`)**: Save only PaDiM statistics (mean, cov_inv, channel indices, layer indices, backbone) for **2–4× smaller files** vs. full `.pt` checkpoints
 - **Plug-and-play loading**: `.pth` loads seamlessly through `TorchBackend` and exporter via lightweight runtime (`PadimLite`) with same `.predict(...)` interface
 - **CPU-first pipeline**: Everything works on machines **without a GPU**. FP16 used only for storage; compute happens in FP32 on CPU
 - **Export from `.pth`**: ONNX/TorchScript/OpenVINO export now accepts stats-only `.pth` directly
 - **Test coverage**: New pytest cases validate saving stats, loading via `PadimLite`, CPU inference, and exporter compatibility
-
 </details>
 
 ---
