@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "anomavision"
-version = "3.0.12"  # Major version bump for breaking change
+version = "3.0.13"  # Major version bump for breaking change
 description = "Advanced Anomaly Detection Environment - Deep learning library for state-of-the-art anomaly detection algorithms"
 authors = ["Deep Knowledge <Deepp.Knowledge@gmail.com>"]
 readme = "README.md"
