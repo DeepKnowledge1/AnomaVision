@@ -11,14 +11,19 @@ import torch
 from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
 
-import anodet
-from anodet.config import load_config
-from anodet.general import Profiler, determine_device
+import anomavision
+from anomavision.config import load_config
+from anomavision.general import Profiler, determine_device
 
 # Updated imports to use the inference modules (same as detect.py)
-from anodet.inference.model.wrapper import ModelWrapper
-from anodet.inference.modelType import ModelType
-from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup_logging
+from anomavision.inference.model.wrapper import ModelWrapper
+from anomavision.inference.modelType import ModelType
+from anomavision.utils import (
+    adaptive_gaussian_blur,
+    get_logger,
+    merge_config,
+    setup_logging,
+)
 
 
 def parse_args():
@@ -242,8 +247,9 @@ def main(args):
     # Merge config with CLI args
     config = edict(merge_config(args, cfg))
 
-    setup_logging(config.log_level)
-    logger = get_logger(__name__)
+    setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
+    logger = get_logger("anomavision.eval")  # Force it into anomavision hierarchy
+
 
     # Log image processing configuration
     logger.info(
@@ -312,7 +318,7 @@ def main(args):
 
         try:
             # Use MVTecDataset for AnomaVision evaluation with configurable image processing
-            test_dataset = anodet.MVTecDataset(
+            test_dataset = anomavision.MVTecDataset(
                 DATASET_PATH,
                 config.class_name,
                 is_train=False,
@@ -383,7 +389,7 @@ def main(args):
 
             try:
                 # Use the anodet visualization function for AnomaVision results
-                anodet.visualize_eval_data(
+                anomavision.visualize_eval_data(
                     image_classifications_target,
                     masks_target.astype(np.uint8).flatten(),
                     image_scores,

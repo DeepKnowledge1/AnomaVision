@@ -14,19 +14,26 @@ import os
 import time
 from pathlib import Path
 
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
+from anomavision.config import _shape, load_config
 
-import anodet
-from anodet.config import _shape, load_config
-from anodet.general import Profiler, determine_device, increment_path
-from anodet.inference.model.wrapper import ModelWrapper
-from anodet.inference.modelType import ModelType
-from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup_logging
+import anomavision
+from anomavision.utils import (
+    adaptive_gaussian_blur,
+    get_logger,
+    merge_config,
+    setup_logging,
+)
+
+from anomavision.general import Profiler, determine_device, increment_path
+from anomavision.inference.model.wrapper import ModelWrapper
+from anomavision.inference.modelType import ModelType
 
 matplotlib.use("Agg")  # non-interactive, faster PNG writing
 
@@ -62,7 +69,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.pth",
+        default="padim_model.onnx",
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
@@ -144,7 +151,7 @@ def parse_args():
     parser.add_argument(
         "--log_level",
         type=str,
-        default=None,
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Logging level.",
     )
@@ -169,8 +176,8 @@ def main():
     config = edict(merge_config(args, cfg))
 
     # Setup logging first
-    setup_logging(config.log_level)
-    logger = get_logger(__name__)
+    setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
+    logger = get_logger("anomavision.detect")  # Force it into anomavision hierarchy
 
     # Parse visualization color
     try:
@@ -279,7 +286,7 @@ def main():
         logger.info("Creating AnomaVision dataset and dataloader")
         try:
             # Create dataset with configurable image processing parameters
-            test_dataset = anodet.AnodetDataset(
+            test_dataset = anomavision.AnodetDataset(
                 DATASET_PATH,
                 resize=resize,
                 crop_size=crop_size,
@@ -338,9 +345,6 @@ def main():
                 try:
                     image_scores, score_maps = model.predict(batch)
 
-                    logger.info(
-                        f"AnomaVision batch shape: {batch.shape}, Inference completed in {inference_prof.elapsed_time * 1000:.2f} ms"
-                    )
                     logger.debug(
                         f"AnomaVision image scores shape: {image_scores.shape}, Score maps shape: {score_maps.shape}"
                     )
@@ -350,6 +354,10 @@ def main():
                     )
                     continue
 
+            logger.info(
+                f"AnomaVision batch shape: {batch.shape}, Inference completed in {inference_prof.elapsed_time * 1000:.2f} ms"
+            )
+
             # AnomaVision postprocessing phase - anomaly classification
             with anomavision_profilers["postprocessing"]:
                 try:
@@ -357,10 +365,10 @@ def main():
                         score_maps, kernel_size=33, sigma=4
                     )
 
-                    score_map_classifications = anodet.classification(
+                    score_map_classifications = anomavision.classification(
                         score_maps, config.thresh
                     )
-                    image_classifications = anodet.classification(
+                    image_classifications = anomavision.classification(
                         image_scores, config.thresh
                     )
 
@@ -409,21 +417,25 @@ def main():
                         )
 
                         # Generate AnomaVision visualization outputs
-                        boundary_images = anodet.visualization.framed_boundary_images(
-                            test_images,
-                            score_map_classifications_np,
-                            image_classifications_np,
-                            padding=config.get("viz_padding", 40),
+                        boundary_images = (
+                            anomavision.visualization.framed_boundary_images(
+                                test_images,
+                                score_map_classifications_np,
+                                image_classifications_np,
+                                padding=config.get("viz_padding", 40),
+                            )
                         )
-                        heatmap_images = anodet.visualization.heatmap_images(
+                        heatmap_images = anomavision.visualization.heatmap_images(
                             test_images,
                             score_maps_np,
                             alpha=config.get("viz_alpha", 0.5),
                         )
-                        highlighted_images = anodet.visualization.highlighted_images(
-                            [images[i] for i in range(len(images))],
-                            score_map_classifications_np,
-                            color=viz_color,
+                        highlighted_images = (
+                            anomavision.visualization.highlighted_images(
+                                [images[i] for i in range(len(images))],
+                                score_map_classifications_np,
+                                color=viz_color,
+                            )
                         )
 
                         # Display AnomaVision results

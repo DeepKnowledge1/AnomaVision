@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from anodet.utils import get_logger, setup_logging
+from anomavision.utils import get_logger, setup_logging
 
 # Adjust this import to your actual exporter module filename if needed
 # e.g., from export import ModelExporter, _ExportWrapper

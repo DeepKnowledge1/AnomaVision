@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from anodet.mahalanobis import MahalanobisDistance
+from anomavision.mahalanobis import MahalanobisDistance
+
 
 def make_identity_cov_inv(n: int, d: int) -> torch.Tensor:
     """

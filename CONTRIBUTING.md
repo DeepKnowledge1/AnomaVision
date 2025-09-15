@@ -498,7 +498,7 @@ import anodet
 def main():
     """Demonstrate new feature usage."""
     # Step 1: Setup
-    dataset = anodet.AnodetDataset(
+    dataset = anomavision.AnodetDataset(
         "path/to/images",
         resize=[320, 240],  # New flexible dimensions feature
         crop_size=[224, 224]

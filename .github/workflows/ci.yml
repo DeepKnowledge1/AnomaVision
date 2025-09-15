@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.9']#, '3.10', '3.11', '3.12']
+        python-version: ['3.10', '3.11']
 
     steps:
       - name: Checkout
@@ -34,6 +34,9 @@ jobs:
 
       - name: Install Poetry via pipx
         run: pipx install poetry
+
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
 
       - name: Install dependencies
         run: poetry install --no-interaction --no-root

@@ -1,7 +1,7 @@
 # tests/test_export_load_model.py
 import torch
 
-from anodet.utils import get_logger, setup_logging
+from anomavision.utils import get_logger, setup_logging
 
 setup_logging("INFO")
 logger = get_logger(__name__)
