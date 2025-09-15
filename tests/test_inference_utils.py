@@ -23,7 +23,8 @@ def test_determine_device_basic_roundtrip():
 
 
 def test_save_visualization_single_and_batch(tmp_path):
-    from anodet.general import save_visualization
+    from anomavision.general import save_visualization
+
     # Single image (H,W,3)
     single = (np.random.rand(8, 8, 3) * 255).astype(np.uint8)
     save_visualization(single, "single.png", str(tmp_path))
@@ -49,10 +50,10 @@ def test_parse_args_defaults(monkeypatch):
         sys.argv = old
 
     # Check that args object exists and has expected attributes
-    assert hasattr(args, 'batch_size')
-    assert hasattr(args, 'thresh')
-    assert hasattr(args, 'device')
-    assert hasattr(args, 'enable_visualization')
+    assert hasattr(args, "batch_size")
+    assert hasattr(args, "thresh")
+    assert hasattr(args, "device")
+    assert hasattr(args, "enable_visualization")
 
 
 def test_main_with_missing_model_file_raises(tmp_path, monkeypatch):
@@ -62,14 +63,10 @@ def test_main_with_missing_model_file_raises(tmp_path, monkeypatch):
     """
     # Mock sys.argv to simulate command line arguments with the correct argument names
     old = sys.argv[:]
-    sys.argv = [
-        old[0],
-        "--model", "does_not_exist.pt",
-        "--device", "cpu"
-    ]
+    sys.argv = [old[0], "--model", "does_not_exist.pt", "--device", "cpu"]
 
     try:
-        # If detect's global imports (e.g., anodet) aren't available,
+        # If detect's global imports (e.g., anomavision) aren't available,
         # importing detect would already have failed. But if we're here,
         # guard runtime errors unrelated to "file not found" by catching and skipping.
         with pytest.raises(FileNotFoundError):

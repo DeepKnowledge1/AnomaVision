@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import torch
 
-import anodet
+import anomavision
 
 
 class TestPadimCore:
@@ -17,7 +17,7 @@ class TestPadimCore:
 
     def test_padim_initialization(self, test_device):
         """Test PaDiM model initialization."""
-        model = anodet.Padim(
+        model = anomavision.Padim(
             backbone="resnet18", device=test_device, layer_indices=[0, 1], feat_dim=50
         )
 
@@ -27,7 +27,7 @@ class TestPadimCore:
 
     def test_padim_training(self, sample_dataloader, test_device):
         """Test PaDiM model training."""
-        model = anodet.Padim(
+        model = anomavision.Padim(
             backbone="resnet18", device=test_device, layer_indices=[0], feat_dim=10
         )
 
@@ -109,7 +109,9 @@ class TestPadimStatistics:
         trained_padim_model.save_statistics(str(stats_path))
 
         # Load statistics
-        stats = anodet.Padim.load_statistics(str(stats_path), device=str(test_device))
+        stats = anomavision.Padim.load_statistics(
+            str(stats_path), device=str(test_device)
+        )
 
         # Check types and shapes
         assert isinstance(stats["mean"], torch.Tensor)
@@ -136,14 +138,14 @@ class TestPadimDimensions:
     ):
         """Test PaDiM with different image dimensions."""
         # Create dataset with custom dimensions
-        dataset = anodet.AnodetDataset(
+        dataset = anomavision.AnodetDataset(
             str(sample_images_dir), resize=resize, crop_size=crop_size, normalize=True
         )
 
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=2)
 
         # Create and train model
-        model = anodet.Padim(
+        model = anomavision.Padim(
             backbone="resnet18", device=test_device, layer_indices=[0], feat_dim=10
         )
 
@@ -163,7 +165,7 @@ class TestPadimBackbones:
     @pytest.mark.parametrize("backbone", ["resnet18", "wide_resnet50"])
     def test_different_backbones(self, sample_dataloader, test_device, backbone):
         """Test PaDiM with different backbone architectures."""
-        model = anodet.Padim(
+        model = anomavision.Padim(
             backbone=backbone, device=test_device, layer_indices=[0], feat_dim=10
         )
 
@@ -190,7 +192,7 @@ class TestPadimClassification:
         threshold = 10.0
 
         # Run classification
-        classifications = anodet.classification(scores, threshold)
+        classifications = anomavision.classification(scores, threshold)
 
         # Check results (below threshold = normal=1, above = anomaly=0)
         expected = torch.tensor([1, 0, 1, 0])
@@ -201,7 +203,7 @@ class TestPadimClassification:
         scores = np.array([5.0, 15.0, 8.0, 20.0])
         threshold = 10.0
 
-        classifications = anodet.classification(scores, threshold)
+        classifications = anomavision.classification(scores, threshold)
 
         expected = np.array([1, 0, 1, 0])
         np.testing.assert_array_equal(classifications, expected)
@@ -224,7 +226,7 @@ class TestPadimMemoryEfficiency:
 
     def test_device_conversion(self, test_device):
         """Test device conversion functionality."""
-        model = anodet.Padim(
+        model = anomavision.Padim(
             backbone="resnet18",
             device=torch.device("cpu"),
             layer_indices=[0],

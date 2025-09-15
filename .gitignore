@@ -162,7 +162,6 @@ cython_debug/
 
 # Datasets
 data/
-datasets/
 *.csv
 *.tsv
 *.json
@@ -355,3 +354,4 @@ images/
 !docs/images/
 !docs/images/AnomaVision_banner.png
 !docs/images/av_al.png
+poetry publish --build --username __toke.txt

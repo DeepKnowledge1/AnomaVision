@@ -18,7 +18,7 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 
-import anodet
+import anomavision
 
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -104,9 +104,9 @@ def mvtec_structure(sample_images_dir: Path) -> Iterator[Path]:
 
 
 @pytest.fixture
-def sample_dataset(sample_images_dir: Path) -> anodet.AnodetDataset:
+def sample_dataset(sample_images_dir: Path) -> anomavision.AnodetDataset:
     """Create a sample AnodetDataset."""
-    return anodet.AnodetDataset(
+    return anomavision.AnodetDataset(
         str(sample_images_dir),
         resize=[224, 224],
         crop_size=[224, 224],
@@ -115,15 +115,15 @@ def sample_dataset(sample_images_dir: Path) -> anodet.AnodetDataset:
 
 
 @pytest.fixture
-def sample_dataloader(sample_dataset: anodet.AnodetDataset) -> DataLoader:
+def sample_dataloader(sample_dataset: anomavision.AnodetDataset) -> DataLoader:
     """Create a sample DataLoader."""
     return DataLoader(sample_dataset, batch_size=2, shuffle=False)
 
 
 @pytest.fixture
-def mvtec_dataset(mvtec_structure: Path) -> anodet.MVTecDataset:
+def mvtec_dataset(mvtec_structure: Path) -> anomavision.MVTecDataset:
     """Create a sample MVTecDataset."""
-    return anodet.MVTecDataset(
+    return anomavision.MVTecDataset(
         str(mvtec_structure),
         class_name="bottle",
         is_train=True,
@@ -141,7 +141,7 @@ def mvtec_dataset(mvtec_structure: Path) -> anodet.MVTecDataset:
 @pytest.fixture
 def trained_padim_model(sample_dataloader: DataLoader, test_device: torch.device):
     """Train a minimal PaDiM model for testing."""
-    model = anodet.Padim(
+    model = anomavision.Padim(
         backbone="resnet18",
         device=test_device,
         layer_indices=[0],
@@ -269,10 +269,10 @@ def make_stats():
 
 @pytest.fixture
 def patch_extractor(monkeypatch):
-    """Monkeypatch DummyExtractor into anodet.padim_lite."""
+    """Monkeypatch DummyExtractor into anomavision.padim_lite."""
     from importlib import import_module
 
-    padim_lite = import_module("anodet.padim_lite")
+    padim_lite = import_module("anomavision.padim_lite")
 
     def _apply(N, D, W, H):
         class _Extractor(DummyExtractor):

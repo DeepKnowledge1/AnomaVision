@@ -1,6 +1,6 @@
 """Example usage of the model handling system"""
 
-from anodet.inference import ModelService, ModelFormat, ModelConfig, DeviceType
+from anomavision.inference import DeviceType, ModelConfig, ModelFormat, ModelService
 
 
 def main():

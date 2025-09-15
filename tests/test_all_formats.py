@@ -8,8 +8,13 @@ import numpy as np
 import pytest
 import torch
 
-from anodet.inference.model.wrapper import ModelWrapper
-from anodet.utils import adaptive_gaussian_blur, get_logger, merge_config, setup_logging
+from anomavision.inference.model.wrapper import ModelWrapper
+from anomavision.utils import (
+    adaptive_gaussian_blur,
+    get_logger,
+    merge_config,
+    setup_logging,
+)
 from export import ModelExporter
 
 
