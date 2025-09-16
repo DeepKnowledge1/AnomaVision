@@ -58,3 +58,6 @@ jobs:
 
       - name: Check cu124 install
         run: poetry install --extras "cu124" --only-root
+
+      - name: Check full install
+        run: poetry install --extras "full" --only-root

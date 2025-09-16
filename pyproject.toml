@@ -43,16 +43,13 @@ flake8 = "7.0.0"
 pre-commit = "3.6.2"
 
 [tool.poetry.extras]
-
-cpu = ["torch", "torchvision", "torchaudio", "onnxruntime"]
-
+cpu   = ["torch", "torchvision", "torchaudio", "onnxruntime"]
 cu118 = ["torch", "torchvision", "torchaudio", "onnxruntime-gpu"]
 cu121 = ["torch", "torchvision", "torchaudio", "onnxruntime-gpu"]
 cu124 = ["torch", "torchvision", "torchaudio", "onnxruntime-gpu"]
 
-# Full install (just combine the extras)
-full = ["torch", "torchvision", "torchaudio", "onnxruntime", "onnxruntime-gpu"]
-
+# Full install (all variants together)
+full  = ["torch", "torchvision", "torchaudio", "onnxruntime", "onnxruntime-gpu"]
 
 [[tool.poetry.source]]
 name = "torch-cu118"
