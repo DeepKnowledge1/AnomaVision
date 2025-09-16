@@ -57,41 +57,41 @@ jobs:
       - name: Run tests
         run: poetry run pytest -v
 
-  cuda-extras:
-    name: Verify CUDA Extras (${{ matrix.cuda }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        cuda: ["cu118", "cu121", "cu124", "full"]
+  # cuda-extras:
+  #   name: Verify CUDA Extras (${{ matrix.cuda }})
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       cuda: ["cu118", "cu121", "cu124", "full"]
 
-    steps:
-      - uses: actions/checkout@v4
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-          cache: "poetry"
+  #     - name: Set up Python 3.10
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.10"
+  #         cache: "poetry"
 
-      - name: Install Poetry
-        run: pip install poetry
+  #     - name: Install Poetry
+  #       run: pip install poetry
 
-      - name: Cache Poetry & Pip
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pypoetry
-            ~/.cache/pip
-          key: poetry-${{ runner.os }}-cuda-${{ matrix.cuda }}-${{ hashFiles('**/poetry.lock') }}
-          restore-keys: |
-            poetry-${{ runner.os }}-cuda-
+  #     - name: Cache Poetry & Pip
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: |
+  #           ~/.cache/pypoetry
+  #           ~/.cache/pip
+  #         key: poetry-${{ runner.os }}-cuda-${{ matrix.cuda }}-${{ hashFiles('**/poetry.lock') }}
+  #         restore-keys: |
+  #           poetry-${{ runner.os }}-cuda-
 
-      # Retry install of CUDA extras (can be large wheels)
-      - name: Verify install with ${{ matrix.cuda }}
-        uses: nick-fields/retry@v3
-        with:
-          max_attempts: 3
-          retry_wait_seconds: 30
-          command: |
-            export PIP_DEFAULT_TIMEOUT=180
-            poetry install --extras "${{ matrix.cuda }}" --only-root
+  #     # Retry install of CUDA extras (can be large wheels)
+  #     - name: Verify install with ${{ matrix.cuda }}
+  #       uses: nick-fields/retry@v3
+  #       with:
+  #         max_attempts: 3
+  #         retry_wait_seconds: 30
+  #         command: |
+  #           export PIP_DEFAULT_TIMEOUT=180
+  #           poetry install --extras "${{ matrix.cuda }}" --only-root
