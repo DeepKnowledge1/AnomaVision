@@ -52,15 +52,23 @@ jobs:
 
       - name: Install Poetry
         run: pip install poetry
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
 
       - name: Check cu118 install
         run: poetry install --extras "cu118" --only-root
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
 
       - name: Check cu121 install
         run: poetry install --extras "cu121" --only-root
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
 
       - name: Check cu124 install
         run: poetry install --extras "cu124" --only-root
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
 
       - name: Check full install
         run: poetry install --extras "full" --only-root
