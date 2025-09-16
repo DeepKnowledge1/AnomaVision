@@ -6,9 +6,10 @@ on:
   pull_request:
     branches: [develop, main]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# Temporarily commented out concurrency controls for debugging
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.ref }}
+#   cancel-in-progress: true
 
 jobs:
   tests:
@@ -16,54 +17,31 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9","3.10", "3.11", "3.12"]
 
     steps:
-      # Checkout repository (with retry safety)
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # Python setup with Poetry cache
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "poetry"
 
       - name: Install Poetry
         run: pip install poetry
 
-      # Cache Poetry + pip downloads
-      - name: Cache Poetry & Pip
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pypoetry
-            ~/.cache/pip
-          key: poetry-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
-          restore-keys: |
-            poetry-${{ runner.os }}-${{ matrix.python-version }}-
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
 
-      # Install dependencies (CPU only, with retry + timeout)
       - name: Install dependencies (CPU)
-        uses: nick-fields/retry@v3
-        with:
-          max_attempts: 3
-          retry_wait_seconds: 20
-          command: |
-            export PIP_DEFAULT_TIMEOUT=120
-            poetry install --with dev --extras "cpu"
+        run: poetry install --with dev --extras "cpu"
 
       - name: Run tests
         run: poetry run pytest -v
 
   # cuda-extras:
-  #   name: Verify CUDA Extras (${{ matrix.cuda }})
+  #   name: Verify CUDA Extras Install
   #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix:
-  #       cuda: ["cu118", "cu121", "cu124", "full"]
-
   #   steps:
   #     - uses: actions/checkout@v4
 
@@ -71,27 +49,30 @@ jobs:
   #       uses: actions/setup-python@v5
   #       with:
   #         python-version: "3.10"
-  #         cache: "poetry"
 
   #     - name: Install Poetry
   #       run: pip install poetry
 
-  #     - name: Cache Poetry & Pip
-  #       uses: actions/cache@v4
-  #       with:
-  #         path: |
-  #           ~/.cache/pypoetry
-  #           ~/.cache/pip
-  #         key: poetry-${{ runner.os }}-cuda-${{ matrix.cuda }}-${{ hashFiles('**/poetry.lock') }}
-  #         restore-keys: |
-  #           poetry-${{ runner.os }}-cuda-
+  #     - name: Regenerate lock file
+  #       run: poetry lock --no-cache --no-interaction
 
-  #     # Retry install of CUDA extras (can be large wheels)
-  #     - name: Verify install with ${{ matrix.cuda }}
-  #       uses: nick-fields/retry@v3
-  #       with:
-  #         max_attempts: 3
-  #         retry_wait_seconds: 30
-  #         command: |
-  #           export PIP_DEFAULT_TIMEOUT=180
-  #           poetry install --extras "${{ matrix.cuda }}" --only-root
+  #     - name: Check cu118 install
+  #       run: poetry install --extras "cu118" --only-root
+
+  #     - name: Regenerate lock file
+  #       run: poetry lock --no-cache --no-interaction
+
+  #     - name: Check cu121 install
+  #       run: poetry install --extras "cu121" --only-root
+
+  #     - name: Regenerate lock file
+  #       run: poetry lock --no-cache --no-interaction
+
+  #     - name: Check cu124 install
+  #       run: poetry install --extras "cu124" --only-root
+
+  #     - name: Regenerate lock file
+  #       run: poetry lock --no-cache --no-interaction
+
+  #     - name: Check full install
+  #       run: poetry install --extras "full" --only-root
