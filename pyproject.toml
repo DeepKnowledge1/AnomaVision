@@ -43,38 +43,18 @@ flake8 = "7.0.0"
 pre-commit = "3.6.2"
 
 [tool.poetry.extras]
-cpu = [
-    "torch>=2.4.0",
-    "torchvision>=0.19.0",
-    "torchaudio>=2.4.0",
-    "onnxruntime",
-]
+cpu = ["torch", "torchvision", "torchaudio", "onnxruntime"]
 
 # CUDA 11.8
-cu118 = [
-    "torch>=2.4.0",
-    "torchvision>=0.19.0",
-    "torchaudio>=2.4.0",
-    "onnxruntime-gpu",
-]
+cu118 = ["torch", "torchvision", "torchaudio", "onnxruntime-gpu"]
 
 # CUDA 12.1
-cu121 = [
-    "torch>=2.4.0",
-    "torchvision>=0.19.0",
-    "torchaudio>=2.4.0",
-    "onnxruntime-gpu",
-]
+cu121 = ["torch", "torchvision", "torchaudio", "onnxruntime-gpu"]
 
 # CUDA 12.4
-cu124 = [
-    "torch>=2.4.0",
-    "torchvision>=0.19.0",
-    "torchaudio>=2.4.0",
-    "onnxruntime-gpu",
-]
+cu124 = ["torch", "torchvision", "torchaudio", "onnxruntime-gpu"]
 
-# Full install (all CUDA variants)
+# Full install (all variants)
 full = ["anomavision[cpu,cu118,cu121,cu124]"]
 
 [[tool.poetry.source]]
