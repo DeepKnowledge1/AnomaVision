@@ -68,7 +68,6 @@ try:
         AnodetDataset,
         MVTecDataset,
         Padim,
-        PatchCore,
         ResnetEmbeddingsExtractor,
         optimal_threshold,
         test,
@@ -287,7 +286,6 @@ except ImportError as e:
 __all__ = [
     # Core models
     "Padim",
-    "PatchCore",
     # Datasets
     "MVTecDataset",
     "AnodetDataset",

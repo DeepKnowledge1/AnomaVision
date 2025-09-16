@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [develop, main]
+    branches: [main, develop]
   pull_request:
     branches: [develop, main]
 
@@ -16,54 +16,63 @@ jobs:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ["3.9","3.10", "3.11", "3.12"]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install pipx
-        run: python -m pip install --upgrade pip pipx
-
-      - name: Install Poetry via pipx
-        run: pipx install poetry
+      - name: Install Poetry
+        run: pip install poetry
 
       - name: Regenerate lock file
         run: poetry lock --no-cache --no-interaction
 
-      - name: Install dependencies
-        run: poetry install --no-interaction --no-root
+      - name: Install dependencies (CPU)
+        run: poetry install --with dev --extras "cpu"
 
       - name: Run tests
-        run: poetry run pytest -q
+        run: poetry run pytest -v
 
-      # (Optional) save test results / coverage if you add them later
-      # - name: Upload pytest cache
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: pytest-cache-${{ matrix.python-version }}
-      #     path: .pytest_cache
-      #
-      # - name: Upload coverage XML
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: coverage-${{ matrix.python-version }}
-      #     path: coverage.xml
+  cuda-extras:
+    name: Verify CUDA Extras Install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-  # Example: only run extra checks on main (optional)
-  # main-only:
-  #   if: github.ref == 'refs/heads/main'
-  #   needs: tests
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - run: echo "Do deployment or tagging here"
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
+
+      - name: Check cu118 install
+        run: poetry install --extras "cu118" --only-root
+
+
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
+      - name: Check cu121 install
+        run: poetry install --extras "cu121" --only-root
+
+
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
+      - name: Check cu124 install
+        run: poetry install --extras "cu124" --only-root
+
+
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
+
+      - name: Check full install
+        run: poetry install --extras "full" --only-root
