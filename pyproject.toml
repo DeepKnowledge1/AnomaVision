@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "anomavision"
-version = "3.0.13"  # Major version bump for breaking change
+version = "3.0.14"
 description = "Advanced Anomaly Detection Environment - Deep learning library for state-of-the-art anomaly detection algorithms"
 authors = ["Deep Knowledge <Deepp.Knowledge@gmail.com>"]
 readme = "README.md"
@@ -11,31 +11,30 @@ homepage = "https://github.com/DeepKnowledge1"
 repository = "https://github.com/DeepKnowledge1/AnomaVision"
 documentation = "https://github.com/DeepKnowledge1/AnomaVision/wiki"
 
-
 packages = [
     {include = "anomavision"},
     {include = "anodet"},  # Backward compatibility layer
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.9,<3.13"
 matplotlib = "3.8.3"
 numpy = "1.26.4"
-openvino-dev = "2023.0"
+openvino-dev = ">=2023.0"
 easydict = "1.13"
 onnx = "^1.15.0"
-onnxruntime-gpu = "^1.15.0"
-
-
-torch = { version = "2.0.1+cu118", source="torch" }
-torchvision = { version = "0.15.2+cu118", source="torch" }
-torchaudio = { version = "2.0.2+cu118", source="torch" }
-
 opencv-python = "^4.6.0"
-
-triton = { version = "2.0.0", markers = "sys_platform == 'linux' and python_version >= '3.10'" }
 scikit-learn = "^1.7.2"
 scikit-image = "0.22.0"
+
+# Default (CPU)
+onnxruntime = ">=1.16.0"
+torch = "2.4.0"
+torchvision = "0.19.0"
+torchaudio = "2.4.0"
+
+# GPU (optional, via extras)
+onnxruntime-gpu = { version = ">=1.16.0", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.0.2"
@@ -43,12 +42,53 @@ black = "24.2.0"
 flake8 = "7.0.0"
 pre-commit = "3.6.2"
 
+[tool.poetry.extras]
+# CUDA 11.8
+cu118 = [
+    "torch==2.4.0+cu118",
+    "torchvision==0.19.0+cu118",
+    "torchaudio==2.4.0+cu118",
+    "onnxruntime-gpu",
+]
+
+# CUDA 12.1
+cu121 = [
+    "torch==2.4.0+cu121",
+    "torchvision==0.19.0+cu121",
+    "torchaudio==2.4.0+cu121",
+    "onnxruntime-gpu",
+]
+
+# CUDA 12.4
+cu124 = [
+    "torch==2.4.0+cu124",
+    "torchvision==0.19.0+cu124",
+    "torchaudio==2.4.0+cu124",
+    "onnxruntime-gpu",
+]
+
+# Full install (all CUDA variants)
+full = ["anomavision[cu118,cu121,cu124]"]
+
 [[tool.poetry.source]]
-name = "torch"
+name = "torch-cu118"
 url = "https://download.pytorch.org/whl/cu118"
 priority = "supplemental"
 
+[[tool.poetry.source]]
+name = "torch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+priority = "supplemental"
 
+[[tool.poetry.source]]
+name = "torch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "torch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "supplemental"
 
 [build-system]
 requires = ["poetry-core"]

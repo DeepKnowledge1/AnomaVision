@@ -37,6 +37,7 @@
 
 <details open>
 <summary>✨ What's New (September 2025)</summary>
+- **CPU- CUDA Support**: CI now tests CPU + CUDA (11.8, 12.1, 12.4),16 matrix jobs ensure full compatibility across versions and backends
 
 - **Compatibility**:  Added backward compatibility for anodet → anomavision migration with deprecation warning, full module mapping, and verification; legacy support to be removed in v4.0.0.
 - **Slim artifacts (`.pth`)**: Save only PaDiM statistics (mean, cov_inv, channel indices, layer indices, backbone) for **2–4× smaller files** vs. full `.pt` checkpoints
@@ -67,23 +68,35 @@ AnomaVision transforms the cutting-edge **PaDiM (Patch Distribution Modeling)** 
 
 ---
 
-<details >
+
+<details>
 <summary>✨ Installation</summary>
 
 ### 📋 Prerequisites
-- **Python**: 3.9+
-- **CUDA**: 11.7+ for GPU acceleration
-- **PyTorch**: 2.0+ (automatically installed)
+- **Python**: 3.9 – 3.12
+- **CUDA**: 11.8 / 12.1 / 12.4 for GPU acceleration (optional)
+- **PyTorch**: 2.0+ (installed automatically via Poetry/pip)
+
+> ⚡ **Note**: If no compatible GPU/CUDA is found, AnomaVision will automatically fall back to **CPU execution**.
 
 ### 🎯 Method 1: Poetry (Recommended)
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
+
+# CPU only (default)
 poetry install
+
+# GPU (choose one backend)
+poetry install -E cu118   # CUDA 11.8
+poetry install -E cu121   # CUDA 12.1
+poetry install -E cu124   # CUDA 12.4
+
 poetry shell
-```
+````
 
 ### 🎯 Method 2: pip
+
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
@@ -91,9 +104,14 @@ pip install -r requirements.txt
 ```
 
 ### ✅ Verify Installation
-```python
+
+```bash
 python -c "import anomavision; print('🎉 AnomaVision installed successfully!')"
 ```
+
+
+
+
 
 ### 🐳 Docker Support
 ```bash

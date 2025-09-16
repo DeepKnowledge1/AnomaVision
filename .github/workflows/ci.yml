@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [develop, main]
+    branches-ignore:
+      - main
+      - develop
   pull_request:
     branches: [develop, main]
 
@@ -13,12 +15,13 @@ concurrency:
 
 jobs:
   tests:
-    name: Tests (Python ${{ matrix.python-version }})
+    name: Tests (Python ${{ matrix.python-version }}, Backend: ${{ matrix.backend }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        backend: ["cpu", "cu118", "cu121", "cu124"]
 
     steps:
       - name: Checkout
@@ -39,7 +42,12 @@ jobs:
         run: poetry lock --no-cache --no-interaction
 
       - name: Install dependencies
-        run: poetry install --no-interaction --no-root
+        run: |
+          if [ "${{ matrix.backend }}" = "cpu" ]; then
+            poetry install --no-interaction --no-root --with dev
+          else
+            poetry install --no-interaction --no-root --with dev -E ${{ matrix.backend }}
+          fi
 
       - name: Run tests
         run: poetry run pytest -q
@@ -49,21 +57,12 @@ jobs:
       #   if: always()
       #   uses: actions/upload-artifact@v4
       #   with:
-      #     name: pytest-cache-${{ matrix.python-version }}
+      #     name: pytest-cache-${{ matrix.python-version }}-${{ matrix.backend }}
       #     path: .pytest_cache
       #
       # - name: Upload coverage XML
       #   if: always()
       #   uses: actions/upload-artifact@v4
       #   with:
-      #     name: coverage-${{ matrix.python-version }}
+      #     name: coverage-${{ matrix.python-version }}-${{ matrix.backend }}
       #     path: coverage.xml
-
-  # Example: only run extra checks on main (optional)
-  # main-only:
-  #   if: github.ref == 'refs/heads/main'
-  #   needs: tests
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - run: echo "Do deployment or tagging here"
