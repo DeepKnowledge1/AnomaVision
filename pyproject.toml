@@ -24,7 +24,8 @@ openvino-dev = ">=2023.0"
 easydict = "1.13"
 onnx = "^1.15.0"
 opencv-python = "^4.6.0"
-scikit-learn = "^1.7.2"
+scikit-learn = ">=1.2,<1.4"
+
 scikit-image = "0.22.0"
 
 # Default (CPU)
