@@ -30,6 +30,9 @@ jobs:
       - name: Install Poetry
         run: pip install poetry
 
+      - name: Regenerate lock file
+        run: poetry lock --no-cache --no-interaction
+
       - name: Install dependencies (CPU)
         run: poetry install --with dev --extras "cpu"
 
