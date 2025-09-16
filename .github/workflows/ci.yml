@@ -6,10 +6,10 @@ on:
   pull_request:
     branches: [develop, main]
 
-# cancel redundant runs on the same branch/PR
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# Temporarily commented out concurrency controls for debugging
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.ref }}
+#   cancel-in-progress: true
 
 jobs:
   tests:
@@ -52,24 +52,24 @@ jobs:
 
       - name: Install Poetry
         run: pip install poetry
+
       - name: Regenerate lock file
         run: poetry lock --no-cache --no-interaction
 
       - name: Check cu118 install
         run: poetry install --extras "cu118" --only-root
 
-
       - name: Regenerate lock file
         run: poetry lock --no-cache --no-interaction
+
       - name: Check cu121 install
         run: poetry install --extras "cu121" --only-root
 
-
       - name: Regenerate lock file
         run: poetry lock --no-cache --no-interaction
+
       - name: Check cu124 install
         run: poetry install --extras "cu124" --only-root
-
 
       - name: Regenerate lock file
         run: poetry lock --no-cache --no-interaction
