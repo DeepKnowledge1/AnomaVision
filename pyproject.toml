@@ -29,7 +29,8 @@ scikit-learn = ">=1.2,<1.4"
 scikit-image = "0.22.0"
 
 # Default (CPU)
-onnxruntime = ">=1.16.0"
+onnxruntime = ">=1.16.0,<1.18"
+
 torch = ">=2.4.0"
 torchvision = ">=0.19.0"
 torchaudio = ">=2.4.0"
