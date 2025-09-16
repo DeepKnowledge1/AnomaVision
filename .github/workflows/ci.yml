@@ -13,7 +13,8 @@ concurrency:
 
 jobs:
   tests:
-    name: Tests (Python ${{ matrix.python-version }}, Backend: ${{ matrix.backend }})
+    # ✅ Report only "Tests (Python X)" to GitHub
+    name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -48,19 +49,6 @@ jobs:
           fi
 
       - name: Run tests
-        run: poetry run pytest -q
-
-      # (Optional) save test results / coverage if you add them later
-      # - name: Upload pytest cache
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: pytest-cache-${{ matrix.python-version }}-${{ matrix.backend }}
-      #     path: .pytest_cache
-      #
-      # - name: Upload coverage XML
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: coverage-${{ matrix.python-version }}-${{ matrix.backend }}
-      #     path: coverage.xml
+        run: |
+          echo "Running tests on backend=${{ matrix.backend }}"
+          poetry run pytest -q
