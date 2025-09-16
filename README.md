@@ -15,23 +15,21 @@
 **🔥 Production-ready anomaly detection powered by state-of-the-art PaDiM algorithm**
 *Deploy anywhere, run everywhere - from edge devices to cloud infrastructure*
 
-
 <details open>
 <summary>✨ Supported Export Formats</summary>
 
-| Format | Status | Use Case | Language Support |
-|--------|--------|----------|------------------|
-| **PyTorch** | ✅ Ready | Development & Research | Python |
-| **Statistics (.pth)** | ✅ Ready | Ultra-compact deployment (2-4x smaller) | Python |
-| **ONNX** | ✅ Ready | Cross-platform deployment | Python, C++ |
-| **TorchScript** | ✅ Ready | Production Python deployment | Python |
-| **OpenVINO** | ✅ Ready | Intel hardware optimization | Python|
-| **TensorRT** | 🚧 Coming Soon | NVIDIA GPU acceleration | Python|
+| Format                | Status         | Use Case                                | Language Support |
+| --------------------- | -------------- | --------------------------------------- | ---------------- |
+| **PyTorch**           | ✅ Ready        | Development & Research                  | Python           |
+| **Statistics (.pth)** | ✅ Ready        | Ultra-compact deployment (2-4x smaller) | Python           |
+| **ONNX**              | ✅ Ready        | Cross-platform deployment               | Python, C++      |
+| **TorchScript**       | ✅ Ready        | Production Python deployment            | Python           |
+| **OpenVINO**          | ✅ Ready        | Intel hardware optimization             | Python           |
+| **TensorRT**          | 🚧 Coming Soon | NVIDIA GPU acceleration                 | Python           |
 
 </details>
 
 </div>
-
 
 ---
 
@@ -39,12 +37,13 @@
 <summary>✨ What's New (September 2025)</summary>
 - **CPU- CUDA Support**: CI now tests CPU + CUDA (11.8, 12.1, 12.4),16 matrix jobs ensure full compatibility across versions and backends
 
-- **Compatibility**:  Added backward compatibility for anodet → anomavision migration with deprecation warning, full module mapping, and verification; legacy support to be removed in v4.0.0.
-- **Slim artifacts (`.pth`)**: Save only PaDiM statistics (mean, cov_inv, channel indices, layer indices, backbone) for **2–4× smaller files** vs. full `.pt` checkpoints
-- **Plug-and-play loading**: `.pth` loads seamlessly through `TorchBackend` and exporter via lightweight runtime (`PadimLite`) with same `.predict(...)` interface
-- **CPU-first pipeline**: Everything works on machines **without a GPU**. FP16 used only for storage; compute happens in FP32 on CPU
-- **Export from `.pth`**: ONNX/TorchScript/OpenVINO export now accepts stats-only `.pth` directly
-- **Test coverage**: New pytest cases validate saving stats, loading via `PadimLite`, CPU inference, and exporter compatibility
+* **Compatibility**:  Added backward compatibility for anodet → anomavision migration with deprecation warning, full module mapping, and verification; legacy support to be removed in v4.0.0.
+* **Slim artifacts (`.pth`)**: Save only PaDiM statistics (mean, cov\_inv, channel indices, layer indices, backbone) for **2–4× smaller files** vs. full `.pt` checkpoints
+* **Plug-and-play loading**: `.pth` loads seamlessly through `TorchBackend` and exporter via lightweight runtime (`PadimLite`) with same `.predict(...)` interface
+* **CPU-first pipeline**: Everything works on machines **without a GPU**. FP16 used only for storage; compute happens in FP32 on CPU
+* **Export from `.pth`**: ONNX/TorchScript/OpenVINO export now accepts stats-only `.pth` directly
+* **Test coverage**: New pytest cases validate saving stats, loading via `PadimLite`, CPU inference, and exporter compatibility
+
 </details>
 
 ---
@@ -59,6 +58,7 @@ AnomaVision transforms the cutting-edge **PaDiM (Patch Distribution Modeling)** 
 </details>
 
 ---
+
 <details>
 <summary>✨ Benchmark Results: AnomaVision vs Anomalib (MVTec Bottle, CPU-only)</summary>
 
@@ -68,18 +68,21 @@ AnomaVision transforms the cutting-edge **PaDiM (Patch Distribution Modeling)** 
 
 ---
 
-
 <details>
 <summary>✨ Installation</summary>
 
 ### 📋 Prerequisites
-- **Python**: 3.9 – 3.12
-- **CUDA**: 11.8 / 12.1 / 12.4 for GPU acceleration (optional)
-- **PyTorch**: 2.0+ (installed automatically via Poetry/pip)
+
+* **Python**: 3.9 – 3.12
+* **CUDA**: 11.8 / 12.1 / 12.4 for GPU acceleration (optional)
+* **PyTorch**: 2.0+ (installed automatically via Poetry/pip)
 
 > ⚡ **Note**: If no compatible GPU/CUDA is found, AnomaVision will automatically fall back to **CPU execution**.
 
+---
+
 ### 🎯 Method 1: Poetry (Recommended)
+
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
@@ -88,20 +91,41 @@ cd AnomaVision
 poetry install
 
 # GPU (choose one backend)
-poetry install -E cu118   # CUDA 11.8
-poetry install -E cu121   # CUDA 12.1
-poetry install -E cu124   # CUDA 12.4
+poetry install --extras "cu118"   # CUDA 11.8
+poetry install --extras "cu121"   # CUDA 12.1
+poetry install --extras "cu124"   # CUDA 12.4
+
+# Full install (CPU + GPU support)
+poetry install --extras "full"
 
 poetry shell
-````
+```
+
+---
 
 ### 🎯 Method 2: pip
 
 ```bash
+# Local installation
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
-pip install -r requirements.txt
+pip install .
+
+# Or install directly from GitHub
+pip install git+https://github.com/DeepKnowledge1/AnomaVision.git
 ```
+
+Optional extras:
+
+```bash
+pip install ".[cpu]"     # CPU only
+pip install ".[cu118]"   # CUDA 11.8
+pip install ".[cu121]"   # CUDA 12.1
+pip install ".[cu124]"   # CUDA 12.4
+pip install ".[full]"    # Full (CPU + GPU)
+```
+
+---
 
 ### ✅ Verify Installation
 
@@ -109,17 +133,15 @@ pip install -r requirements.txt
 python -c "import anomavision; print('🎉 AnomaVision installed successfully!')"
 ```
 
-
-
-
+---
 
 ### 🐳 Docker Support
+
 ```bash
 # Build Docker image (coming soon)
 docker build -t anomavision:latest .
 docker run --gpus all -v $(pwd):/workspace anomavision:latest
 ```
-
 </details>
 
 ---

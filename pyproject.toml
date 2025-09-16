@@ -38,6 +38,7 @@ torchaudio = ">=2.4.0"
 
 # GPU (optional, via extras)
 onnxruntime-gpu = { version = ">=1.16.0", optional = true }
+tqdm = "^4.67.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.0.2"
