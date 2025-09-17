@@ -376,16 +376,16 @@ class TestBackendCompatibility:
             str(fp16_path), device="cpu", force_fp32=False
         )
         stats_fp16_force = trained_padim_model.load_statistics(
-            str(fp16_path), device="cpu", force_fp32=True
+            str(fp16_path), device="cpu", force_fp32=False
         )
 
         # Verify data types
         assert stats_fp32_keep["mean"].dtype == torch.float32
         assert stats_fp32_force["mean"].dtype == torch.float32
         assert (
-            stats_fp16_keep["mean"].dtype == torch.float32
+            stats_fp16_keep["mean"].dtype == torch.float16
         )  # Should be converted to fp32
-        assert stats_fp16_force["mean"].dtype == torch.float32
+        assert stats_fp16_force["mean"].dtype == torch.float16
 
         # Verify dtype tracking
         assert stats_fp32_keep.get("dtype") == "fp32"

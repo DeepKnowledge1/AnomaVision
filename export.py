@@ -2,11 +2,12 @@
 Model Export Utility
 Export PyTorch models to ONNX, TorchScript, and OpenVINO with dynamic batch support.
 Logging is concise: key config, start/end, timings, sizes, and clear errors.
-Now extended with ONNX quantization (dynamic + static INT8).
+Now extended with ONNX quantization (dynamic + static INT8) and device-based precision detection .
 """
 
 import argparse
 import json
+import os
 import sys
 import time
 import warnings
@@ -30,6 +31,7 @@ from onnxruntime.quantization import (
 from PIL import Image
 
 from anomavision.config import load_config
+from anomavision.general import determine_device
 from anomavision.padim_lite import (  # stats-only .pth → runtime module
     build_padim_from_stats,
 )
@@ -50,13 +52,6 @@ warnings.filterwarnings(
 warnings.filterwarnings("ignore", message="Constant folding")
 
 
-from pathlib import Path
-
-from PIL import Image
-
-from anomavision.utils import create_image_transform
-
-
 def load_calibration_images(
     img_dir: str,
     input_shape: Tuple[int, int, int, int],
@@ -69,10 +64,7 @@ def load_calibration_images(
     Load calibration images using the same preprocessing as AnodetDataset.
     Returns a list of np.ndarrays shaped (1,C,H,W).
     """
-    import os
     from glob import glob
-
-    import numpy as np
 
     h, w = input_shape[2], input_shape[3]
     transform = create_image_transform(
@@ -141,13 +133,24 @@ class _ExportWrapper(torch.nn.Module):
 
 
 class ModelExporter:
-    """Professional model exporter with clean interface."""
+    """Professional model exporter with clean interface and device-aware precision."""
 
-    def __init__(self, model_path: Path, output_dir: Path, logger):
+    def __init__(
+        self, model_path: Path, output_dir: Path, logger, device: Optional[str] = None
+    ):
         self.model_path = Path(model_path)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger = logger
+        device = determine_device(device)
+
+        # Auto-detect device if not specified
+        if device.lower().startswith("cuda"):
+            self.device = torch.device("cuda")
+            self.logger.info("Auto-detected device: CUDA")
+        else:
+            self.device = torch.device("cpu")
+            self.logger.info("Auto-detected device: CPU")
 
     def _load_model(self) -> torch.nn.Module:
         """Load and prepare model for export (supports .pt and stats-only .pth)."""
@@ -179,25 +182,15 @@ class ModelExporter:
             "backbone",
         }.issubset(obj.keys()):
             self.logger.info("GOING INTO STATS PATH - building PadimLite")
-            base = build_padim_from_stats(obj, device="cpu")
+            base = build_padim_from_stats(obj, device=str(self.device))
             self.logger.info("Export: built PadimLite from statistics (.pth).")
         else:
             self.logger.info("GOING INTO FULL MODEL PATH")
             base = obj
+            # Move model to target device
+            base = base.to(self.device)
+
         return _ExportWrapper(base)
-
-    # # Original: assume full model in .pt
-    # def _load_model(self) -> torch.nn.Module:
-    #     """Load and prepare model for export."""
-    #     self.logger.info("load: %s", self.model_path)
-    #     model = _ExportWrapper(torch.load(self.model_path, map_location="cpu"))
-
-    #     # Handle DataParallel wrapper
-    #     if hasattr(model, "module"):
-    #         model = model.module
-
-    #     model.eval()
-    #     return model
 
     def _get_output_names(
         self, model: torch.nn.Module, dummy_input: torch.Tensor
@@ -222,7 +215,8 @@ class ModelExporter:
         quantize_dynamic_flag: bool = False,
         quantize_static_flag: bool = False,
         calib_samples: int = 0,
-        calib_dir: Optional[str] = None,   # 👈 NEW
+        calib_dir: Optional[str] = None,
+        force_precision: Optional[str] = None,
     ) -> Optional[Path]:
         """
         Export model to ONNX format (with optional quantization).
@@ -236,13 +230,31 @@ class ModelExporter:
             quantize_static_flag: Export static INT8 quantized model
             calib_samples: Number of calibration samples for static quantization
             calib_dir: Directory with calibration images (required if static quantization)
+            force_precision: Force specific precision ("fp16" or "fp32"), None for auto-detect
         Returns:
             Path to exported file or None if failed
         """
         t0 = time.perf_counter()
         try:
             model = self._load_model()
-            dummy_input = torch.randn(*input_shape)
+            dummy_input = torch.randn(*input_shape, device=self.device)
+
+            # Auto-detect precision based on device if not forced
+            if force_precision is None:
+                use_fp16 = self.device.type == "cuda"
+                precision_reason = f"auto-detected for {self.device.type.upper()}"
+            else:
+                use_fp16 = force_precision.lower() == "fp16"
+                precision_reason = f"forced to {force_precision.upper()}"
+
+            self.logger.info(
+                f"Using {'FP16' if use_fp16 else 'FP32'} precision ({precision_reason})"
+            )
+
+            # Convert model precision if needed
+            if use_fp16 and self.device.type == "cuda":
+                model = model.half()
+                dummy_input = dummy_input.half()
 
             # Warm up model
             with torch.no_grad():
@@ -282,17 +294,15 @@ class ModelExporter:
             size_mb = output_path.stat().st_size / (1024 * 1024)
 
             self.logger.info(
-                "onnx: ok (%.2fs) file=%s size=%.1fMB dynamic_batch=%s opset=%d",
+                "onnx: ok (%.2fs) file=%s size=%.1fMB dynamic_batch=%s opset=%d precision=%s device=%s",
                 elapsed,
                 output_path,
                 size_mb,
                 dynamic_batch,
                 opset_version,
+                "FP16" if use_fp16 else "FP32",
+                self.device,
             )
-
-            # ---------------------------
-            # Quantization Step
-            # ---------------------------
 
             # ---------------------------
             # Quantization Step
@@ -349,23 +359,6 @@ class ModelExporter:
                 )
                 onnx.checker.check_model(onnx.load(static_path))
 
-            # if quantize_static_flag:
-            #     if calib_samples <= 0:
-            #         raise ValueError("Static quantization requires --calib-samples > 0")
-            #     static_path = output_path.with_name(output_path.stem + "_int8_static.onnx")
-            #     self.logger.info("quant: static INT8 -> %s", static_path)
-            #     dummy_data = [np.random.rand(*input_shape).astype("float32") for _ in range(calib_samples)]
-            #     dr = DummyDataReader("input", dummy_data)
-            #     quantize_static(
-            #         output_path,
-            #         static_path,
-            #         dr,
-            #         quant_format=QuantFormat.QDQ,
-            #         activation_type=QuantType.QInt8,
-            #         weight_type=QuantType.QInt8,
-            #     )
-            #     onnx.checker.check_model(onnx.load(static_path))
-
             return output_path
 
         except Exception:
@@ -377,14 +370,16 @@ class ModelExporter:
         input_shape: Tuple[int, int, int, int] = (1, 3, 224, 224),
         output_name: str = "model.torchscript",
         optimize: bool = False,
+        force_precision: Optional[str] = None,
     ) -> Optional[Path]:
         """
-        Export model to TorchScript format.
+        Export model to TorchScript format with device-aware precision.
 
         Args:
             input_shape: Model input shape (batch, channels, height, width)
             output_name: Output filename
             optimize: Enable mobile optimization
+            force_precision: Force specific precision ("fp16" or "fp32"), None for auto-detect
 
         Returns:
             Path to exported file or None if failed
@@ -392,7 +387,24 @@ class ModelExporter:
         t0 = time.perf_counter()
         try:
             model = self._load_model()
-            dummy_input = torch.randn(*input_shape)
+            dummy_input = torch.randn(*input_shape, device=self.device)
+
+            # Auto-detect precision based on device if not forced
+            if force_precision is None:
+                use_fp16 = self.device.type == "cuda"
+                precision_reason = f"auto-detected for {self.device.type.upper()}"
+            else:
+                use_fp16 = force_precision.lower() == "fp16"
+                precision_reason = f"forced to {force_precision.upper()}"
+
+            self.logger.info(
+                f"Using {'FP16' if use_fp16 else 'FP32'} precision ({precision_reason})"
+            )
+
+            # Convert model precision if needed
+            if use_fp16 and self.device.type == "cuda":
+                model = model.half()
+                dummy_input = dummy_input.half()
 
             with torch.no_grad():
                 for _ in range(2):
@@ -402,10 +414,19 @@ class ModelExporter:
             if not output_path.suffix:
                 output_path = output_path.with_suffix(".torchscript")
 
-            self.logger.info("ts: tracing optimize=%s", optimize)
+            self.logger.info(
+                "ts: tracing optimize=%s precision=%s device=%s",
+                optimize,
+                "FP16" if use_fp16 else "FP32",
+                self.device,
+            )
             traced_model = torch.jit.trace(model, dummy_input, strict=False)
 
-            config_data = {"shape": list(dummy_input.shape)}
+            config_data = {
+                "shape": list(dummy_input.shape),
+                "precision": "FP16" if use_fp16 else "FP32",
+                "device": str(self.device),
+            }
             extra_files = {"config.txt": json.dumps(config_data)}
 
             if optimize:
@@ -429,11 +450,13 @@ class ModelExporter:
             size_mb = output_path.stat().st_size / (1024 * 1024)
 
             self.logger.info(
-                "ts: ok (%.2fs) file=%s size=%.1fMB optimized=%s",
+                "ts: ok (%.2fs) file=%s size=%.1fMB optimized=%s precision=%s device=%s",
                 elapsed,
                 output_path,
                 size_mb,
                 optimize,
+                "FP16" if use_fp16 else "FP32",
+                self.device,
             )
             return output_path
 
@@ -445,19 +468,35 @@ class ModelExporter:
         self,
         input_shape: Tuple[int, int, int, int] = (1, 3, 224, 224),
         output_name: str = "model_openvino",
-        fp16: bool = True,
+        fp16: Optional[bool] = None,
         dynamic_batch: bool = False,
     ) -> Optional[Path]:
         """
-        Export model to OpenVINO format via ONNX.
+        Export model to OpenVINO format via ONNX with device-aware precision.
+
+        Args:
+            fp16: If True, use FP16. If False, use FP32. If None, auto-detect based on device.
         """
         t0 = time.perf_counter()
         temp_onnx = self.output_dir / "temp_model.onnx"
+
+        # Auto-detect precision if not specified
+        if fp16 is None:
+            fp16 = self.device.type == "cuda"
+            precision_reason = f"auto-detected for {self.device.type.upper()}"
+        else:
+            precision_reason = f"explicitly set to {'FP16' if fp16 else 'FP32'}"
+
+        self.logger.info(
+            f"OpenVINO: using {'FP16' if fp16 else 'FP32'} ({precision_reason})"
+        )
+
         try:
             onnx_path = self.export_onnx(
                 input_shape=input_shape,
                 output_name=temp_onnx.name,
                 dynamic_batch=dynamic_batch,
+                force_precision="fp16" if fp16 else "fp32",
             )
             if onnx_path is None:
                 raise RuntimeError("ONNX export failed")
@@ -472,7 +511,10 @@ class ModelExporter:
             output_dir.mkdir(exist_ok=True)
 
             self.logger.info(
-                "ov: convert fp16=%s dynamic_batch=%s", fp16, dynamic_batch
+                "ov: convert fp16=%s dynamic_batch=%s device=%s",
+                fp16,
+                dynamic_batch,
+                self.device,
             )
             ov_model = mo.convert_model(
                 onnx_path, framework="onnx", compress_to_fp16=fp16
@@ -489,13 +531,14 @@ class ModelExporter:
             size_mb = xml_path.stat().st_size / (1024 * 1024)
 
             self.logger.info(
-                "ov: ok (%.2fs) dir=%s xml=%s size=%.1fMB precision=%s dynamic_batch=%s",
+                "ov: ok (%.2fs) dir=%s xml=%s size=%.1fMB precision=%s dynamic_batch=%s device=%s",
                 elapsed,
                 output_dir,
                 xml_path.name,
                 size_mb,
                 "FP16" if fp16 else "FP32",
                 dynamic_batch,
+                self.device,
             )
             return output_dir
 
@@ -550,15 +593,25 @@ def parse_args():
         help="Export format",
     )
 
+    # Device selection
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="Device for export (cuda, cpu, auto). If auto/None, uses GPU if available",
+    )
+
+    # Precision control
+    parser.add_argument(
+        "--precision",
+        choices=["fp16", "fp32", "auto"],
+        default="auto",
+        help="Precision for export. Auto uses FP16 for GPU, FP32 for CPU",
+    )
+
     parser.add_argument("--opset", type=int, default=17, help="ONNX opset version")
     parser.add_argument(
         "--static-batch", action="store_true", help="Disable dynamic batch size"
-    )
-
-    parser.add_argument(
-        "--fp32",
-        action="store_true",
-        help="Use FP32 precision for OpenVINO (default: FP16)",
     )
 
     parser.add_argument(
@@ -567,10 +620,10 @@ def parse_args():
         help="Enable mobile optimization for TorchScript",
     )
 
-    # NEW: Quantization flags
+    # Quantization flags
     parser.add_argument(
         "--quantize-dynamic",
-        action="store_false",
+        action="store_true",
         help="Also export dynamic INT8 quantized ONNX model",
     )
     parser.add_argument(
@@ -582,7 +635,7 @@ def parse_args():
         "--calib-samples",
         type=int,
         default=100,
-        help="Number of dummy calibration samples for static quantization",
+        help="Number of calibration samples for static quantization",
     )
 
     parser.add_argument(
@@ -609,36 +662,41 @@ def main():
 
     # Setup logging & logger
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
-    logger = get_logger("anomavision.export")  # Force it into anomavision hierarchy
+    logger = get_logger("anomavision.export")
 
     model_path = Path(config.model_data_path) / config.model
-
     output_dir = Path(config.model_data_path)
     model_stem = Path(config.model).stem
 
-    onnx_name = f"{model_stem}.onnx"
-    openvino_name = f"{model_stem}_openvino"
-    torchscript_name = f"{model_stem}.torchscript"
+    # Generate output names
+    precision_suffix = "" if config.precision == "auto" else f"_{config.precision}"
+    onnx_name = f"{model_stem}{precision_suffix}.onnx"
+    openvino_name = f"{model_stem}_openvino{precision_suffix}"
+    torchscript_name = f"{model_stem}{precision_suffix}.torchscript"
 
     h, w = config.crop_size if config.crop_size is not None else config.resize
     input_shape = [1, 3, h, w]
 
+    # Determine precision setting
+    force_precision = None if config.precision == "auto" else config.precision
+
     # Run header (compact)
     logger.info(
-        "=== export start === model=%s fmt=%s in_shape=%s dyn_batch=%s opset=%d fp16=%s opt=%s",
+        "=== export start === model=%s fmt=%s in_shape=%s dyn_batch=%s opset=%d precision=%s device=%s opt=%s",
         model_path,
         config.format,
         tuple(input_shape),
-        config.dynamic_batch,
+        not config.static_batch,
         config.opset,
-        (not config.fp32),
+        config.precision,
+        config.device or "auto",
         config.optimize,
     )
 
-    exporter = ModelExporter(model_path, output_dir, logger)
+    exporter = ModelExporter(model_path, output_dir, logger, device=config.device)
     started = time.perf_counter()
     success = True
-    import os
+
     calib_dir = os.path.join(
         os.path.realpath(config.dataset_path), config.class_name, "train", "good"
     )
@@ -650,22 +708,26 @@ def main():
                     input_shape=tuple(input_shape),
                     output_name=onnx_name,
                     opset_version=config.opset,
-                    dynamic_batch=config.dynamic_batch,
+                    dynamic_batch=not config.static_batch,
                     quantize_dynamic_flag=config.quantize_dynamic,
                     quantize_static_flag=config.quantize_static,
                     calib_samples=config.calib_samples,
                     calib_dir=calib_dir,
+                    force_precision=force_precision,
                 )
                 is not None
             )
 
         if config.format in ["openvino", "all"]:
+            fp16_setting = (
+                None if config.precision == "auto" else (config.precision == "fp16")
+            )
             success &= (
                 exporter.export_openvino(
                     input_shape=tuple(input_shape),
                     output_name=openvino_name,
-                    fp16=not config.fp32,
-                    dynamic_batch=config.dynamic_batch,
+                    fp16=fp16_setting,
+                    dynamic_batch=not config.static_batch,
                 )
                 is not None
             )
@@ -676,6 +738,7 @@ def main():
                     input_shape=tuple(input_shape),
                     output_name=torchscript_name,
                     optimize=config.optimize,
+                    force_precision=force_precision,
                 )
                 is not None
             )
