@@ -347,6 +347,11 @@ class ModelExporter:
                         for _ in range(calib_samples)
                     ]
 
+
+                if use_fp16:
+                    self.logger.info("Casting calibration data to FP16 for quantization")
+                    calib_data = [s.astype("float16") for s in calib_data]
+
                 dr = DummyDataReader("input", calib_data)
 
                 quantize_static(
