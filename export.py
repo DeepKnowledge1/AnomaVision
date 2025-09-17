@@ -218,12 +218,14 @@ class ModelExporter:
         output_name: str = "model.onnx",
         opset_version: int = 17,
         dynamic_batch: bool = True,
-        quantize_dynamic_flag: bool = False,  # NEW
-        quantize_static_flag: bool = False,  # NEW
-        calib_samples: int = 0,  # NEW
+        quantize_dynamic_flag: bool = False,
+        quantize_static_flag: bool = False,
+        calib_samples: int = 0,
+        calib_dir: Optional[str] = None,   # 👈 NEW
     ) -> Optional[Path]:
         """
         Export model to ONNX format (with optional quantization).
+
         Args:
             input_shape: Model input shape (batch, channels, height, width)
             output_name: Output filename
@@ -232,6 +234,7 @@ class ModelExporter:
             quantize_dynamic_flag: Export dynamic INT8 quantized model
             quantize_static_flag: Export static INT8 quantized model
             calib_samples: Number of calibration samples for static quantization
+            calib_dir: Directory with calibration images (required if static quantization)
         Returns:
             Path to exported file or None if failed
         """
@@ -305,26 +308,6 @@ class ModelExporter:
                 )
                 onnx.checker.check_model(onnx.load(dyn_path))
 
-            # if quantize_static_flag:
-            #     if calib_samples <= 0:
-            #         raise ValueError("Static quantization requires --calib-samples > 0")
-            #     static_path = output_path.with_name(output_path.stem + "_int8_static.onnx")
-            #     self.logger.info("quant: static INT8 -> %s", static_path)
-            #     dummy_data = [
-            #         np.random.rand(*input_shape).astype("float32")
-            #         for _ in range(calib_samples)
-            #     ]
-            #     dr = DummyDataReader("input", dummy_data)
-            #     quantize_static(
-            #         output_path,
-            #         static_path,
-            #         dr,
-            #         quant_format=QuantFormat.QOperator,
-            #         activation_type=QuantType.QInt8,
-            #         weight_type=QuantType.QInt8,
-            #     )
-            #     onnx.checker.check_model(onnx.load(static_path))
-
             if quantize_static_flag:
                 if calib_samples <= 0:
                     raise ValueError("Static quantization requires --calib-samples > 0")
@@ -335,7 +318,6 @@ class ModelExporter:
                 self.logger.info("quant: static INT8 -> %s", static_path)
 
                 # Use real training images for calibration
-                calib_dir = r"D:\01-DATA\bottle\train\good"
                 calib_data = load_calibration_images(
                     calib_dir,
                     input_shape,
@@ -655,6 +637,10 @@ def main():
     exporter = ModelExporter(model_path, output_dir, logger)
     started = time.perf_counter()
     success = True
+    import os
+    calib_dir = os.path.join(
+        os.path.realpath(config.dataset_path), config.class_name, "train", "good"
+    )
 
     try:
         if config.format in ["onnx", "all"]:
@@ -667,6 +653,7 @@ def main():
                     quantize_dynamic_flag=config.quantize_dynamic,
                     quantize_static_flag=config.quantize_static,
                     calib_samples=config.calib_samples,
+                    calib_dir=calib_dir,
                 )
                 is not None
             )
