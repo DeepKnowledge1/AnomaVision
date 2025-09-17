@@ -31,8 +31,8 @@ class Config:
         p = argparse.ArgumentParser(
             description="Python OOP Anomaly Detector (vis compatible with C++)."
         )
-        p.add_argument("model", type=str, help="Path to ONNX model")
-        p.add_argument("images_dir", type=Path, help="Directory of input images")
+        p.add_argument("--model", type=str, help="Path to ONNX model")
+        p.add_argument("--images_dir", type=Path, help="Directory of input images")
         p.add_argument("--save_viz", type=Path, help="Directory to save visualizations")
         p.add_argument(
             "--alpha",
@@ -311,3 +311,4 @@ class App:
 if __name__ == "__main__":
     cfg = Config.parse()
     sys.exit(App(cfg).run())
+# python .\oop_anomaly_detector.py  model_int8.onnx D:/01-DATA/test --save_viz D:/output --alpha 0.5 --thresh 13.0
