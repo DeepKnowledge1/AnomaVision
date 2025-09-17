@@ -255,7 +255,7 @@ class Padim(torch.nn.Module):
         #     "The model must be trained or provided with mean and cov_inv"
         return self(batch, export=export)  # (B), (B,H,W)
 
-    def save_statistics(self, path: str, half: bool = False) -> None:
+    def save_statistics(self, path: str, half: Optional[bool] = None) -> None:
         """Save trained model statistics to disk.
 
         Saves the learned Gaussian parameters (mean, inverse covariance) and model
@@ -263,15 +263,17 @@ class Padim(torch.nn.Module):
 
         Args:
             path (str): File path where to save the statistics.
-            half (bool, optional): If True, saves tensors in FP16 precision for
-                smaller file size while maintaining compatibility. Defaults to False.
+            half (Optional[bool], optional): If True, saves tensors in FP16 precision for
+                smaller file size while maintaining compatibility. If False, uses FP32.
+                If None (default), automatically uses FP16 when GPU is available and FP32 for CPU.
 
         Raises:
             RuntimeError: If model has not been trained yet.
 
         Example:
-            >>> model.save_statistics("padim_stats.pth", half=True)  # Compact storage
-            >>> model.save_statistics("padim_stats_full.pth")       # Full precision
+            >>> model.save_statistics("padim_stats.pth")  # Auto-detect precision
+            >>> model.save_statistics("padim_stats.pth", half=True)   # Force FP16
+            >>> model.save_statistics("padim_stats.pth", half=False)  # Force FP32
         """
 
         if (
@@ -279,6 +281,11 @@ class Padim(torch.nn.Module):
             or self.mahalanobisDistance._cov_inv_flat is None
         ):
             raise RuntimeError("Model is not trained. Call fit() first.")
+
+        # Auto-detect precision based on device availability if not specified
+        if half is None:
+            half = torch.cuda.is_available()
+            print(f"Auto-detected precision: {'FP16' if half else 'FP32'} (GPU available: {torch.cuda.is_available()})")
 
         # Get tensors and move to CPU first
         mean_tensor = self.mahalanobisDistance._mean_flat.detach().cpu()
@@ -309,9 +316,10 @@ class Padim(torch.nn.Module):
         }
 
         torch.save(stats, path)
+        print(f"Statistics saved to {path} using {dtype_info.upper()} precision")
 
     @staticmethod
-    def load_statistics(path: str, device: str = "cpu", force_fp32: bool = True):
+    def load_statistics(path: str, device: str = "cpu", force_fp32: Optional[bool] = None):
         """Load model statistics from disk.
 
         Loads previously saved Gaussian statistics and model configuration,
@@ -320,15 +328,17 @@ class Padim(torch.nn.Module):
         Args:
             path (str): Path to the saved statistics file.
             device (str, optional): Target device for loaded tensors. Defaults to "cpu".
-            force_fp32 (bool, optional): If True, converts to FP32 regardless of
-                saved precision for numerical stability. Defaults to True.
+            force_fp32 (Optional[bool], optional): If True, converts to FP32 regardless of
+                saved precision. If False, keeps saved precision. If None (default),
+                automatically uses FP32 for CPU device and preserves saved precision for GPU.
 
         Returns:
             dict: Statistics dictionary with tensors moved to specified device.
 
         Example:
-            >>> stats = Padim.load_statistics("padim_stats.pth", device="cuda")
-            >>> # Use stats to initialize model or create PadimLite
+            >>> stats = Padim.load_statistics("padim_stats.pth", device="cuda")  # Auto-detect
+            >>> stats = Padim.load_statistics("padim_stats.pth", device="cpu", force_fp32=True)  # Force FP32
+            >>> stats = Padim.load_statistics("padim_stats.pth", device="cuda", force_fp32=False)  # Keep saved precision
         """
 
         stats = torch.load(path, map_location="cpu", weights_only=False)
@@ -336,21 +346,35 @@ class Padim(torch.nn.Module):
         # Get saved precision info (default to fp32 for backward compatibility)
         saved_dtype = stats.get("dtype", "fp32")
 
-        # Always convert to computation precision (FP32 recommended for stability)
-        if force_fp32 or saved_dtype == "fp16":
+        # Auto-detect precision handling if not specified
+        if force_fp32 is None:
+            # For CPU device, always use FP32 for better numerical stability
+            # For GPU device, preserve the saved precision (FP16 if it was saved as FP16)
+            device_obj = torch.device(device)
+            if device_obj.type == "cpu":
+                force_fp32 = True
+                reason = "CPU device detected"
+            else:
+                force_fp32 = False
+                reason = "GPU device detected"
+            print(f"Auto-detected precision handling: {'FP32' if force_fp32 else f'preserve saved ({saved_dtype.upper()})'} ({reason})")
+
+        # Apply precision conversion based on decision
+        if force_fp32:
             stats["mean"] = stats["mean"].float().to(device)
             stats["cov_inv"] = stats["cov_inv"].float().to(device)
+            final_dtype = "fp32"
         else:
+            # Keep saved precision (could be fp16 or fp32)
             stats["mean"] = stats["mean"].to(device)
             stats["cov_inv"] = stats["cov_inv"].to(device)
+            final_dtype = saved_dtype
 
         # Handle indices (always int64)
         stats["channel_indices"] = stats["channel_indices"].to(torch.int64).to(device)
 
         print(f"Statistics loaded from {path}")
-        print(
-            f"Saved as: {saved_dtype}, loaded as: {'fp32' if force_fp32 else saved_dtype}"
-        )
+        print(f"Saved as: {saved_dtype.upper()}, loaded as: {final_dtype.upper()}")
 
         return stats
 
