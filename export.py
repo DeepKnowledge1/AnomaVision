@@ -2,6 +2,7 @@
 Model Export Utility
 Export PyTorch models to ONNX, TorchScript, and OpenVINO with dynamic batch support.
 Logging is concise: key config, start/end, timings, sizes, and clear errors.
+Now extended with ONNX quantization (dynamic + static INT8).
 """
 
 import argparse
@@ -12,14 +13,31 @@ import warnings
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import numpy as np
+import onnx
 import torch
 from easydict import EasyDict as edict
+
+# ONNX Runtime quantization
+from onnxruntime.quantization import (
+    CalibrationDataReader,
+    QuantFormat,
+    QuantType,
+    quantize_dynamic,
+    quantize_static,
+)
+from PIL import Image
 
 from anomavision.config import load_config
 from anomavision.padim_lite import (  # stats-only .pth → runtime module
     build_padim_from_stats,
 )
-from anomavision.utils import get_logger, merge_config, setup_logging
+from anomavision.utils import (
+    create_image_transform,
+    get_logger,
+    merge_config,
+    setup_logging,
+)
 
 # Suppress "To copy construct from a tensor..." warnings
 warnings.filterwarnings("ignore", message="To copy construct from a tensor")
@@ -29,6 +47,74 @@ warnings.filterwarnings(
     "ignore", message="The shape inference of prim::Constant type is missing"
 )
 warnings.filterwarnings("ignore", message="Constant folding")
+
+
+from pathlib import Path
+
+from PIL import Image
+
+from anomavision.utils import create_image_transform
+
+
+def load_calibration_images(
+    img_dir: str,
+    input_shape: Tuple[int, int, int, int],
+    max_samples: int = 100,
+    normalize: bool = True,
+    mean=[0.485, 0.456, 0.406],
+    std=[0.229, 0.224, 0.225],
+):
+    """
+    Load calibration images using the same preprocessing as AnodetDataset.
+    Returns a list of np.ndarrays shaped (1,C,H,W).
+    """
+    import os
+    from glob import glob
+
+    import numpy as np
+
+    h, w = input_shape[2], input_shape[3]
+    transform = create_image_transform(
+        resize=(h, w),
+        crop_size=(h, w),
+        normalize=normalize,
+        mean=mean,
+        std=std,
+    )
+
+    paths = glob(os.path.join(img_dir, "*.png"))[:max_samples]
+    samples = []
+
+    for p in paths:
+        try:
+            img = Image.open(p).convert("RGB")
+            tensor = transform(img)  # torch tensor [C,H,W]
+            samples.append(tensor.unsqueeze(0).numpy())  # (1,C,H,W)
+        except Exception as e:
+            print(f"Skipping {p}, error {e}")
+
+    if not samples:
+        # Fallback to random data if no images found
+        samples = [np.random.rand(*input_shape).astype("float32") for _ in range(32)]
+
+    return samples
+
+
+# ---------------------------
+# Calibration Data Reader for static quantization
+# ---------------------------
+class DummyDataReader(CalibrationDataReader):
+    """Replace with a real data reader if you have calibration images."""
+
+    def __init__(self, input_name: str, samples: list):
+        self.input_name = input_name
+        self.samples = iter(samples)
+
+    def get_next(self):
+        try:
+            return {self.input_name: next(self.samples)}
+        except StopIteration:
+            return None
 
 
 # during export
@@ -132,15 +218,20 @@ class ModelExporter:
         output_name: str = "model.onnx",
         opset_version: int = 17,
         dynamic_batch: bool = True,
+        quantize_dynamic_flag: bool = False,  # NEW
+        quantize_static_flag: bool = False,  # NEW
+        calib_samples: int = 0,  # NEW
     ) -> Optional[Path]:
         """
-        Export model to ONNX format.
+        Export model to ONNX format (with optional quantization).
         Args:
             input_shape: Model input shape (batch, channels, height, width)
             output_name: Output filename
             opset_version: ONNX opset version
             dynamic_batch: Enable dynamic batch size
-
+            quantize_dynamic_flag: Export dynamic INT8 quantized model
+            quantize_static_flag: Export static INT8 quantized model
+            calib_samples: Number of calibration samples for static quantization
         Returns:
             Path to exported file or None if failed
         """
@@ -194,6 +285,104 @@ class ModelExporter:
                 dynamic_batch,
                 opset_version,
             )
+
+            # ---------------------------
+            # Quantization Step
+            # ---------------------------
+
+            # ---------------------------
+            # Quantization Step
+            # ---------------------------
+            if quantize_dynamic_flag:
+                dyn_path = output_path.with_name(
+                    output_path.stem + "_int8_dynamic.onnx"
+                )
+                self.logger.info("quant: dynamic INT8 -> %s", dyn_path)
+                quantize_dynamic(
+                    output_path,
+                    dyn_path,
+                    weight_type=QuantType.QInt8,
+                )
+                onnx.checker.check_model(onnx.load(dyn_path))
+
+            # if quantize_static_flag:
+            #     if calib_samples <= 0:
+            #         raise ValueError("Static quantization requires --calib-samples > 0")
+            #     static_path = output_path.with_name(output_path.stem + "_int8_static.onnx")
+            #     self.logger.info("quant: static INT8 -> %s", static_path)
+            #     dummy_data = [
+            #         np.random.rand(*input_shape).astype("float32")
+            #         for _ in range(calib_samples)
+            #     ]
+            #     dr = DummyDataReader("input", dummy_data)
+            #     quantize_static(
+            #         output_path,
+            #         static_path,
+            #         dr,
+            #         quant_format=QuantFormat.QOperator,
+            #         activation_type=QuantType.QInt8,
+            #         weight_type=QuantType.QInt8,
+            #     )
+            #     onnx.checker.check_model(onnx.load(static_path))
+
+            if quantize_static_flag:
+                if calib_samples <= 0:
+                    raise ValueError("Static quantization requires --calib-samples > 0")
+
+                static_path = output_path.with_name(
+                    output_path.stem + "_int8_static.onnx"
+                )
+                self.logger.info("quant: static INT8 -> %s", static_path)
+
+                # Use real training images for calibration
+                calib_dir = r"D:\01-DATA\bottle\train\good"
+                calib_data = load_calibration_images(
+                    calib_dir,
+                    input_shape,
+                    max_samples=calib_samples,
+                    normalize=True,
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+
+                if not calib_data:
+                    self.logger.warning(
+                        "No calibration images found, falling back to random data"
+                    )
+                    calib_data = [
+                        np.random.rand(*input_shape).astype("float32")
+                        for _ in range(calib_samples)
+                    ]
+
+                dr = DummyDataReader("input", calib_data)
+
+                quantize_static(
+                    output_path,
+                    static_path,
+                    dr,
+                    quant_format=QuantFormat.QDQ,  # QDQ is usually safer for accuracy
+                    activation_type=QuantType.QInt8,
+                    weight_type=QuantType.QInt8,
+                )
+                onnx.checker.check_model(onnx.load(static_path))
+
+            # if quantize_static_flag:
+            #     if calib_samples <= 0:
+            #         raise ValueError("Static quantization requires --calib-samples > 0")
+            #     static_path = output_path.with_name(output_path.stem + "_int8_static.onnx")
+            #     self.logger.info("quant: static INT8 -> %s", static_path)
+            #     dummy_data = [np.random.rand(*input_shape).astype("float32") for _ in range(calib_samples)]
+            #     dr = DummyDataReader("input", dummy_data)
+            #     quantize_static(
+            #         output_path,
+            #         static_path,
+            #         dr,
+            #         quant_format=QuantFormat.QDQ,
+            #         activation_type=QuantType.QInt8,
+            #         weight_type=QuantType.QInt8,
+            #     )
+            #     onnx.checker.check_model(onnx.load(static_path))
+
             return output_path
 
         except Exception:
@@ -341,7 +530,7 @@ class ModelExporter:
 def parse_args():
     """Command line interface."""
     parser = argparse.ArgumentParser(
-        description="Export PaDiM models to ONNX, TorchScript, and OpenVINO",
+        description="Export PaDiM models to ONNX, TorchScript, and OpenVINO (with optional quantization)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -395,6 +584,24 @@ def parse_args():
         help="Enable mobile optimization for TorchScript",
     )
 
+    # NEW: Quantization flags
+    parser.add_argument(
+        "--quantize-dynamic",
+        action="store_false",
+        help="Also export dynamic INT8 quantized ONNX model",
+    )
+    parser.add_argument(
+        "--quantize-static",
+        action="store_false",
+        help="Also export static INT8 quantized ONNX model (requires --calib-samples)",
+    )
+    parser.add_argument(
+        "--calib-samples",
+        type=int,
+        default=100,
+        help="Number of dummy calibration samples for static quantization",
+    )
+
     parser.add_argument(
         "--log-level",
         dest="log_level",
@@ -421,20 +628,11 @@ def main():
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
     logger = get_logger("anomavision.export")  # Force it into anomavision hierarchy
 
-
     model_path = Path(config.model_data_path) / config.model
-
-    # # Paths & names
-    # if model_path.suffix != ".pt":
-    #     model_path = model_path.with_suffix(".pt")
 
     output_dir = Path(config.model_data_path)
     model_stem = Path(config.model).stem
-    # if config.output_path:
-    #     onnx_name = config.output_path
-    #     openvino_name = Path(config.output_path).stem + "_openvino"
-    #     torchscript_name = Path(config.output_path).stem + ".torchscript"
-    # else:
+
     onnx_name = f"{model_stem}.onnx"
     openvino_name = f"{model_stem}_openvino"
     torchscript_name = f"{model_stem}.torchscript"
@@ -466,6 +664,9 @@ def main():
                     output_name=onnx_name,
                     opset_version=config.opset,
                     dynamic_batch=config.dynamic_batch,
+                    quantize_dynamic_flag=config.quantize_dynamic,
+                    quantize_static_flag=config.quantize_static,
+                    calib_samples=config.calib_samples,
                 )
                 is not None
             )
