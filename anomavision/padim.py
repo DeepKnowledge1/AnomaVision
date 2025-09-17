@@ -60,7 +60,7 @@ class Padim(torch.nn.Module):
 
         super(Padim, self).__init__()
 
-        self.device = device
+        self.device = torch.device(device=device)
         # Register as a submodule for proper ONNX export
         self.embeddings_extractor = ResnetEmbeddingsExtractor(backbone, self.device)
         self.layer_indices = layer_indices
@@ -80,12 +80,14 @@ class Padim(torch.nn.Module):
 
         # Register channel indices (use provided, or compute default)
         if channel_indices is not None:
-            self.register_buffer("channel_indices", channel_indices.to(device))
+            self.register_buffer("channel_indices", channel_indices.to(self.device))
         else:
             channel_indices_tensor = get_dims_indices(
                 self.layer_indices, feat_dim, self.net_feature_size
             )
-            self.register_buffer("channel_indices", channel_indices_tensor.to(device))
+            self.register_buffer(
+                "channel_indices", channel_indices_tensor.to(self.device)
+            )
 
     @property
     def mean(self):
@@ -285,7 +287,9 @@ class Padim(torch.nn.Module):
         # Auto-detect precision based on device availability if not specified
         if half is None:
             half = torch.cuda.is_available()
-            print(f"Auto-detected precision: {'FP16' if half else 'FP32'} (GPU available: {torch.cuda.is_available()})")
+            print(
+                f"Auto-detected precision: {'FP16' if half else 'FP32'} (GPU available: {torch.cuda.is_available()})"
+            )
 
         # Get tensors and move to CPU first
         mean_tensor = self.mahalanobisDistance._mean_flat.detach().cpu()
@@ -319,7 +323,9 @@ class Padim(torch.nn.Module):
         print(f"Statistics saved to {path} using {dtype_info.upper()} precision")
 
     @staticmethod
-    def load_statistics(path: str, device: str = "cpu", force_fp32: Optional[bool] = None):
+    def load_statistics(
+        path: str, device: str = "cpu", force_fp32: Optional[bool] = None
+    ):
         """Load model statistics from disk.
 
         Loads previously saved Gaussian statistics and model configuration,
@@ -357,7 +363,9 @@ class Padim(torch.nn.Module):
             else:
                 force_fp32 = False
                 reason = "GPU device detected"
-            print(f"Auto-detected precision handling: {'FP32' if force_fp32 else f'preserve saved ({saved_dtype.upper()})'} ({reason})")
+            print(
+                f"Auto-detected precision handling: {'FP32' if force_fp32 else f'preserve saved ({saved_dtype.upper()})'} ({reason})"
+            )
 
         # Apply precision conversion based on decision
         if force_fp32:

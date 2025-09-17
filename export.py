@@ -318,51 +318,67 @@ class ModelExporter:
                     weight_type=QuantType.QInt8,
                 )
                 onnx.checker.check_model(onnx.load(dyn_path))
-
             if quantize_static_flag:
-                if calib_samples <= 0:
-                    raise ValueError("Static quantization requires --calib-samples > 0")
-
                 static_path = output_path.with_name(
                     output_path.stem + "_int8_static.onnx"
                 )
                 self.logger.info("quant: static INT8 -> %s", static_path)
 
-                # Use real training images for calibration
-                calib_data = load_calibration_images(
-                    calib_dir,
-                    input_shape,
-                    max_samples=calib_samples,
-                    normalize=True,
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-
-                if not calib_data:
-                    self.logger.warning(
-                        "No calibration images found, falling back to random data"
+                # If running on CUDA, re-export in FP32 only for quantization
+                if self.device.type == "cuda":
+                    self.logger.info(
+                        "Re-exporting FP32 copy for static quantization (not saved permanently)"
                     )
-                    calib_data = [
-                        np.random.rand(*input_shape).astype("float32")
-                        for _ in range(calib_samples)
-                    ]
+                    model_fp32 = self._load_model()
+                    dummy_input_fp32 = torch.randn(*input_shape, device=self.device)
 
+                    # export to a temporary ONNX file in memory
+                    tmp_path = self.output_dir / (output_path.stem + "_tmp_fp32.onnx")
+                    torch.onnx.export(
+                        model_fp32,
+                        dummy_input_fp32,
+                        tmp_path,
+                        export_params=True,
+                        opset_version=opset_version,
+                        do_constant_folding=True,
+                        input_names=["input"],
+                        output_names=self._get_output_names(
+                            model_fp32, dummy_input_fp32
+                        ),
+                        dynamic_axes=(
+                            {"input": {0: "batch_size"}} if dynamic_batch else None
+                        ),
+                    )
 
-                if use_fp16:
-                    self.logger.info("Casting calibration data to FP16 for quantization")
-                    calib_data = [s.astype("float16") for s in calib_data]
-
-                dr = DummyDataReader("input", calib_data)
-
-                quantize_static(
-                    output_path,
-                    static_path,
-                    dr,
-                    quant_format=QuantFormat.QDQ,  # QDQ is usually safer for accuracy
-                    activation_type=QuantType.QInt8,
-                    weight_type=QuantType.QInt8,
-                )
-                onnx.checker.check_model(onnx.load(static_path))
+                    quantize_static(
+                        tmp_path,
+                        static_path,
+                        DummyDataReader(
+                            "input",
+                            load_calibration_images(
+                                calib_dir, input_shape, max_samples=calib_samples
+                            ),
+                        ),
+                        quant_format=QuantFormat.QDQ,
+                        activation_type=QuantType.QInt8,
+                        weight_type=QuantType.QInt8,
+                    )
+                    tmp_path.unlink(missing_ok=True)  # 🔥 clean up temp file
+                else:
+                    # CPU case: we already exported in FP32, reuse it
+                    quantize_static(
+                        output_path,
+                        static_path,
+                        DummyDataReader(
+                            "input",
+                            load_calibration_images(
+                                calib_dir, input_shape, max_samples=calib_samples
+                            ),
+                        ),
+                        quant_format=QuantFormat.QDQ,
+                        activation_type=QuantType.QInt8,
+                        weight_type=QuantType.QInt8,
+                    )
 
             return output_path
 

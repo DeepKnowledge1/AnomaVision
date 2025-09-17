@@ -14,26 +14,24 @@ import os
 import time
 from pathlib import Path
 
-
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
-from anomavision.config import _shape, load_config
 
 import anomavision
+from anomavision.config import _shape, load_config
+from anomavision.general import Profiler, determine_device, increment_path
+from anomavision.inference.model.wrapper import ModelWrapper
+from anomavision.inference.modelType import ModelType
 from anomavision.utils import (
     adaptive_gaussian_blur,
     get_logger,
     merge_config,
     setup_logging,
 )
-
-from anomavision.general import Profiler, determine_device, increment_path
-from anomavision.inference.model.wrapper import ModelWrapper
-from anomavision.inference.modelType import ModelType
 
 matplotlib.use("Agg")  # non-interactive, faster PNG writing
 
@@ -69,7 +67,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.onnx",
+        default="padim_model.pt",
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
@@ -318,7 +316,12 @@ def main():
     # ---- Warm-up
     try:
         first = next(iter(test_dataloader))  # (batch, images, _, _)
-        first_batch = first[0].to(device_str)
+        first_batch = first[0]
+        if device_str == "cuda":
+            first_batch = first_batch.half()
+
+        first_batch = first_batch.to(device_str)
+
         model.warmup(batch=first_batch, runs=2)
         logger.info(
             "AnomaVision warm-up done with first batch %s.", tuple(first_batch.shape)
@@ -334,13 +337,17 @@ def main():
     batch_count = 0
     try:
         for batch_idx, (batch, images, _, _) in enumerate(test_dataloader):
-            batch = batch.to(device_str)
+
             batch_count += 1
             logger.debug(
                 f"Processing AnomaVision batch {batch_idx + 1}/{len(test_dataloader)}"
             )
 
             # AnomaVision core inference phase
+            if device_str == "cuda":
+                batch = batch.half()
+
+            batch = batch.to(device_str)
             with anomavision_profilers["inference"] as inference_prof:
                 try:
                     image_scores, score_maps = model.predict(batch)
