@@ -19,6 +19,7 @@ import torch
 from easydict import EasyDict as edict
 
 # ONNX Runtime quantization
+# pip install onnxruntime onnxruntime-tools
 from onnxruntime.quantization import (
     CalibrationDataReader,
     QuantFormat,
