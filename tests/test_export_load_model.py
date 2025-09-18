@@ -21,7 +21,7 @@ def test_exporter_loads_stats_pth_and_wraps(tmp_path, make_stats, patch_extracto
 
     from export import ModelExporter, _ExportWrapper
 
-    exp = ModelExporter(model_path=pth_path, output_dir=tmp_path, logger=logger)
+    exp = ModelExporter(model_path=pth_path, output_dir=tmp_path, logger=logger,device="cpu")
     m = exp._load_model()  # should be _ExportWrapper(PadimLite)
     assert isinstance(m, _ExportWrapper)
     assert hasattr(m, "forward")

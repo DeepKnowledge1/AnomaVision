@@ -46,7 +46,7 @@ class TestAllFormats:
         models["stats_fp16"] = pth_fp16_path
 
         # Export other formats
-        exporter = ModelExporter(pt_path, temp_model_dir, logger=logger)
+        exporter = ModelExporter(pt_path, temp_model_dir, logger=logger,device="cpu")
 
         # ONNX
         try:

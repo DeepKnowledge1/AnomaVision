@@ -141,14 +141,10 @@ void Postprocessor::process(std::vector<Ort::Value>& outputs, Result& r) {
 Visualizer::Visualizer(double alpha) : alpha_(alpha) {}
 
 cv::Mat Visualizer::overlay(const cv::Mat& orig, const cv::Mat& heat) const {
-    if(heat.empty()) return orig.clone();
-    cv::Mat hn, hu8, hc;
-    cv::normalize(heat, hn, 0, 255, cv::NORM_MINMAX); hn.convertTo(hu8, CV_8UC1);
-    cv::applyColorMap(hu8, hc, cv::COLORMAP_JET);
-    cv::resize(hc, hc, orig.size());
-    cv::Mat out; cv::addWeighted(orig, 1.0-alpha_, hc, alpha_, 0.0, out);
-    return out;
+    // Just return original image (no heatmap overlay)
+    return orig.clone();
 }
+
 
 void Visualizer::annotate(cv::Mat& img, const Result& r, double t_ms) const {
     cv::Scalar txt = r.anomalous ? cv::Scalar(0,0,255) : cv::Scalar(0,255,0);

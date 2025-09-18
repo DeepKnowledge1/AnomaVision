@@ -90,7 +90,7 @@ class TorchBackend(InferenceBackend):
             logger.info(
                 "Detected statistics-only artifact (.pth). Building PadimLite on CPU."
             )
-            model = build_padim_from_stats(loaded_obj, device="cpu")
+            model = build_padim_from_stats(loaded_obj, device=device)
         else:
             model = loaded_obj
 
