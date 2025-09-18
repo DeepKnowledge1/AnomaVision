@@ -105,7 +105,7 @@ class OnnxBackend(InferenceBackend):
                 name=self.input_names[0],
                 device_type="cuda",
                 device_id=inp.device.index or 0,
-                # element_type=np.float32,
+                element_type = np.float16 if torch.cuda.is_available() else np.float32,
                 shape=tuple(inp.shape),
                 buffer_ptr=inp.data_ptr(),
             )
