@@ -9,6 +9,7 @@ from .onnx_backend import OnnxBackend
 from .openvino_backend import OpenVinoBackend
 from .tensorrt_backend import TensorRTBackend
 from .torch_backend import TorchBackend
+from .torchscript_backend import TorchScriptBackend
 
 __all__ = [
     "InferenceBackend",
@@ -17,4 +18,5 @@ __all__ = [
     "TorchBackend",
     "TensorRTBackend",
     "OpenVinoBackend",
+    "TorchScriptBackend",
 ]

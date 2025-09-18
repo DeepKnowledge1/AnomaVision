@@ -29,7 +29,7 @@ def increment_path(path, exist_ok=False, sep="", mkdir=False):
 
 def determine_device(device_arg):
     """Determine the best device to use for inference"""
-    if device_arg == "auto":
+    if device_arg == "auto" or device_arg == "cude":
         if torch.cuda.is_available():
             return "cuda"
         else:

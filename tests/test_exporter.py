@@ -55,7 +55,7 @@ def _save_tiny_model(tmp_path: Path) -> Path:
 
 def test_export_onnx_creates_file(tmp_path):
     model_path = _save_tiny_model(tmp_path)
-    exporter = ModelExporter(str(model_path), str(tmp_path), logger)
+    exporter = ModelExporter(str(model_path), str(tmp_path), logger,device="cpu")
 
     out = exporter.export_onnx(
         input_shape=(1, 3, 16, 16),
@@ -71,7 +71,7 @@ def test_export_onnx_creates_file(tmp_path):
 
 def test_export_torchscript_creates_file_and_loads(tmp_path):
     model_path = _save_tiny_model(tmp_path)
-    exporter = ModelExporter(str(model_path), str(tmp_path), logger)
+    exporter = ModelExporter(str(model_path), str(tmp_path), logger,device="cpu")
 
     out = exporter.export_torchscript(
         input_shape=(1, 3, 16, 16),
@@ -92,7 +92,7 @@ def test_export_openvino_returns_none_if_not_installed(tmp_path, monkeypatch):
     and return None. If it IS installed, we still accept a valid export.
     """
     model_path = _save_tiny_model(tmp_path)
-    exporter = ModelExporter(str(model_path), str(tmp_path), logger)
+    exporter = ModelExporter(str(model_path), str(tmp_path), logger,device="cpu")
 
     try:
         import openvino  # noqa: F401
