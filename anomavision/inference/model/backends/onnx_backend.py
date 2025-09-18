@@ -98,14 +98,22 @@ class OnnxBackend(InferenceBackend):
         if self.device == "cuda" and isinstance(batch, torch.Tensor) and batch.is_cuda:
             # --- GPU fast path using I/O binding ---
             io_binding = self.session.io_binding()
+            inp = batch.contiguous()
+
+            # Map torch dtype → numpy dtype
+            torch_to_numpy = {
+                torch.float32: np.float32,
+                torch.float16: np.float16,
+                torch.float64: np.float64,
+            }
+            element_type = torch_to_numpy.get(inp.dtype, np.float32)
 
             # Bind input tensor directly from GPU memory (zero-copy)
-            inp = batch.contiguous()
             io_binding.bind_input(
                 name=self.input_names[0],
                 device_type="cuda",
                 device_id=inp.device.index or 0,
-                element_type = np.float16 if torch.cuda.is_available() else np.float32,
+                element_type=element_type,
                 shape=tuple(inp.shape),
                 buffer_ptr=inp.data_ptr(),
             )
@@ -119,7 +127,6 @@ class OnnxBackend(InferenceBackend):
 
             # Copy results back to CPU numpy (needed for further processing)
             ort_outputs = io_binding.copy_outputs_to_cpu()
-            scores, maps = ort_outputs[0], ort_outputs[1]
 
         else:
             # --- CPU / NumPy fallback path ---
@@ -128,10 +135,17 @@ class OnnxBackend(InferenceBackend):
             else:
                 input_arr = batch.detach().cpu().numpy()
 
-            outputs = self.session.run(
+            ort_outputs = self.session.run(
                 self.output_names, {self.input_names[0]: input_arr}
             )
-            scores, maps = outputs[0], outputs[1]
+
+        # Validate output count
+        if len(ort_outputs) < 2:
+            raise RuntimeError(
+                f"Expected at least 2 outputs (scores, maps), got {len(ort_outputs)}"
+            )
+
+        scores, maps = ort_outputs[0], ort_outputs[1]
         logger.debug("ONNX output shapes: %s, %s", scores.shape, maps.shape)
         return scores, maps
 
