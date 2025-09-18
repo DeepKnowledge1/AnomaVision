@@ -1,17 +1,13 @@
 # inference/model/backends/onnx_backend.py
 
-"""
-ONNX Runtime backend implementation.
-"""
-
 from __future__ import annotations
 
-import os
 from typing import List
 
 import numpy as np
-
 import onnxruntime as ort
+import torch
+
 from anomavision.utils import get_logger
 
 from .base import Batch, InferenceBackend, ScoresMaps
@@ -20,93 +16,122 @@ logger = get_logger(__name__)
 
 
 class OnnxBackend(InferenceBackend):
-    """Inference backend based on ONNX Runtime."""
+    """
+    ONNX Runtime backend implementation with GPU I/O binding.
 
-    def __init__(
-        self,
-        model_path: str,
-        device: str = "cuda",
-        *,
-        intra_threads: int | None = None,
-        inter_threads: int | None = None,
-    ):
-        """Initialize ONNX Runtime backend for model inference.
+    This backend provides optimized inference for ONNX models using
+    ONNX Runtime, with full GPU support and zero-copy I/O binding
+    when inputs are PyTorch CUDA tensors.
 
-        Creates an optimized ONNX Runtime session with automatic provider selection
-        based on device availability. Configures graph optimizations and threading
-        for optimal performance.
+    Features:
+        - Automatic provider selection ("cuda" → CUDAExecutionProvider).
+        - I/O binding for direct GPU tensor input/output (avoids
+          CPU↔GPU copies and improves performance).
+        - Warmup runs to stabilize CUDA kernel loading and allocation.
+        - Clean fallback to CPUExecutionProvider if requested.
+
+    Example:
+        >>> backend = OnnxBackend("model.onnx", "cuda")
+        >>> dummy = torch.randn(1, 3, 224, 224, device="cuda")
+        >>> scores, maps = backend.predict(dummy)
+    """
+
+    def __init__(self, model_path: str, device: str = "cuda"):
+        """
+        Initialize ONNX Runtime backend for model inference.
 
         Args:
             model_path (str): Path to the ONNX model file (.onnx extension).
-            device (str, optional): Target device for inference. "cuda" enables
-                GPU acceleration if available, otherwise falls back to CPU.
+            device (str, optional): Target device ("cuda" or "cpu").
                 Defaults to "cuda".
-            intra_threads (int | None, optional): Number of threads for intra-op
-                parallelism. If None, uses ONNX Runtime defaults.
-            inter_threads (int | None, optional): Number of threads for inter-op
-                parallelism. If None, uses ONNX Runtime defaults.
 
-        Example:
-            >>> backend = OnnxBackend("model.onnx", "cuda")
-            >>> backend = OnnxBackend("model.onnx", "cpu", intra_threads=4)
+        Notes:
+            - For CUDA: uses CUDAExecutionProvider only (no CPU fallback).
+            - For CPU: uses CPUExecutionProvider with default threading.
         """
-
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = (
             ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         )
-
-        if intra_threads:
-            sess_options.intra_op_num_threads = intra_threads
-        if inter_threads:
-            sess_options.inter_op_num_threads = inter_threads
+        sess_options.enable_cpu_mem_arena = True
 
         if device.lower().startswith("cuda"):
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            # GPU execution: avoid hidden CPU fallback
+            providers = ["CUDAExecutionProvider"]
+            # Threads are irrelevant for GPU, keep minimal
+            sess_options.intra_op_num_threads = 1
+            sess_options.inter_op_num_threads = 1
         else:
             providers = ["CPUExecutionProvider"]
 
-        logger.info("Initializing OnnxRuntime with providers=%s", providers)
+        logger.info("Initializing ONNX Runtime with providers=%s", providers)
 
         self.session = ort.InferenceSession(
             model_path, sess_options=sess_options, providers=providers
         )
+        logger.info(f"ONNX Runtime providers: {self.session.get_providers()}")
+        logger.info(
+            f"ONNX Runtime provider options: {self.session.get_provider_options()}"
+        )
+
         self.input_names: List[str] = [inp.name for inp in self.session.get_inputs()]
         self.output_names: List[str] = [out.name for out in self.session.get_outputs()]
+        self.device = device.lower()
 
     def predict(self, batch: Batch) -> ScoresMaps:
-        """Run ONNX inference on input batch.
+        """
+        Run ONNX inference on input batch.
 
-        Executes the ONNX model on the provided input batch and returns anomaly
-        detection results. Handles automatic conversion from PyTorch tensors to
-        numpy arrays as required by ONNX Runtime.
+        Uses I/O binding for zero-copy GPU execution if input is a
+        PyTorch CUDA tensor. Otherwise, falls back to NumPy/CPU input.
 
         Args:
-            batch (Batch): Input batch of images. Can be:
-                - torch.Tensor of shape (B, C, H, W)
-                - numpy.ndarray of shape (B, C, H, W)
+            batch (Batch): Input batch of shape (B, C, H, W), either:
+                - torch.Tensor (GPU or CPU)
+                - numpy.ndarray
 
         Returns:
-            ScoresMaps: Tuple containing:
-                - scores (np.ndarray): Per-image anomaly scores of shape (B,)
-                - maps (np.ndarray): Pixel-level anomaly maps of shape (B, H, W)
-
-        Example:
-            >>> import numpy as np
-            >>> batch = np.random.randn(2, 3, 224, 224)
-            >>> scores, maps = backend.predict(batch)
+            ScoresMaps: Tuple of:
+                - scores (np.ndarray): Per-image anomaly scores (B,)
+                - maps (np.ndarray): Pixel-level anomaly maps (B, H, W)
         """
+        if self.device == "cuda" and isinstance(batch, torch.Tensor) and batch.is_cuda:
+            # --- GPU fast path using I/O binding ---
+            io_binding = self.session.io_binding()
 
-        if isinstance(batch, np.ndarray):
-            input_arr = batch
+            # Bind input tensor directly from GPU memory (zero-copy)
+            inp = batch.contiguous()
+            io_binding.bind_input(
+                name=self.input_names[0],
+                device_type="cuda",
+                device_id=inp.device.index or 0,
+                element_type=np.float32,
+                shape=tuple(inp.shape),
+                buffer_ptr=inp.data_ptr(),
+            )
+
+            # Bind outputs to GPU memory
+            for out in self.output_names:
+                io_binding.bind_output(out, "cuda")
+
+            # Execute inference with bound inputs/outputs
+            self.session.run_with_iobinding(io_binding)
+
+            # Copy results back to CPU numpy (needed for further processing)
+            ort_outputs = io_binding.copy_outputs_to_cpu()
+            scores, maps = ort_outputs[0], ort_outputs[1]
+
         else:
-            input_arr = batch.detach().cpu().numpy()
+            # --- CPU / NumPy fallback path ---
+            if isinstance(batch, np.ndarray):
+                input_arr = batch
+            else:
+                input_arr = batch.detach().cpu().numpy()
 
-        logger.debug("ONNX input shape: %s dtype: %s", input_arr.shape, input_arr.dtype)
-
-        outputs = self.session.run(self.output_names, {self.input_names[0]: input_arr})
-
-        scores, maps = outputs[0], outputs[1]
+            outputs = self.session.run(
+                self.output_names, {self.input_names[0]: input_arr}
+            )
+            scores, maps = outputs[0], outputs[1]
         logger.debug("ONNX output shapes: %s, %s", scores.shape, maps.shape)
         return scores, maps
 

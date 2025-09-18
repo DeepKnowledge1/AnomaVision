@@ -110,26 +110,39 @@ class DummyDataReader(CalibrationDataReader):
             return None
 
 
-# during export
-class _ExportWrapper(torch.nn.Module):
-    """Call model.predict(x) for consistent outputs during export."""
+# # during export
+# class _ExportWrapper(torch.nn.Module):
+#     """Call model.predict(x) for consistent outputs during export."""
 
-    def __init__(self, m):
+#     def __init__(self, m):
+#         super().__init__()
+#         self.m = m
+#         # delegate device to the wrapped model
+#         if hasattr(m, "device"):
+#             self.device = m.device
+#         else:
+#             # fall back to parameter device or CPU
+#             try:
+#                 self.device = next(m.parameters()).device
+#             except StopIteration:
+#                 self.device = torch.device("cpu")
+
+#     def forward(self, x):
+#         scores, maps = self.m.predict(x, export=True)
+#         return scores, maps
+
+
+class _ExportWrapper(torch.nn.Module):
+    def __init__(self, m, export_format="onnx"):
         super().__init__()
         self.m = m
-        # delegate device to the wrapped model
-        if hasattr(m, "device"):
-            self.device = m.device
-        else:
-            # fall back to parameter device or CPU
-            try:
-                self.device = next(m.parameters()).device
-            except StopIteration:
-                self.device = torch.device("cpu")
+        self.export_format = export_format
 
     def forward(self, x):
-        scores, maps = self.m.predict(x, export=True)
-        return scores, maps
+        if hasattr(self.m, "forward") and self.export_format == "pytorch":
+            return self.m.forward(x)  # Direct path for PT
+        else:
+            return self.m.predict(x, export=True)  # Unified path for ONNX/OpenVINO
 
 
 class ModelExporter:
