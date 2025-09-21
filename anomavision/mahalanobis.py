@@ -123,11 +123,11 @@ class MahalanobisDistance(nn.Module):
 
         dtype = features.dtype  # check whether it's float32, float16, etc.
 
-        # self._mean_flat = self._mean_flat.to(device=device, dtype=dtype)
-        # self._cov_inv_flat = self._cov_inv_flat.to(device=device, dtype=dtype)
+        self._mean_flat = self._mean_flat.to(device=device, dtype=dtype)
+        self._cov_inv_flat = self._cov_inv_flat.to(device=device, dtype=dtype)
 
-        self._mean_flat = self._mean_flat.to(features)
-        self._cov_inv_flat = self._cov_inv_flat.to(features)
+        # self._mean_flat = self._mean_flat.to(features)
+        # self._cov_inv_flat = self._cov_inv_flat.to(features)
 
         # self._mean_flat = self._mean_flat.to(device)
         # self._cov_inv_flat = self._cov_inv_flat.to(device)
