@@ -106,6 +106,7 @@ class OnnxBackend(InferenceBackend):
                 torch.float16: np.float16,
                 torch.float64: np.float64,
             }
+
             element_type = torch_to_numpy.get(inp.dtype, np.float32)
 
             # Bind input tensor directly from GPU memory (zero-copy)
