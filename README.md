@@ -2,6 +2,8 @@
 
 # 🚀 AnomaVision: Edge-Ready Visual Anomaly Detection
 
+
+<!-- Row 1: Language + Frameworks -->
 [![Python 3.9–3.12](https://img.shields.io/badge/python-3.9–3.12-blue.svg)](https://www.python.org/)
 [![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0+-red.svg)](https://pytorch.org)
 [![ONNX Ready](https://img.shields.io/badge/ONNX-Export%20Ready-orange.svg)](https://onnx.ai/)
@@ -9,9 +11,11 @@
 [![TorchScript](https://img.shields.io/badge/Export-TorchScript-red.svg)](https://pytorch.org/docs/stable/jit.html)
 [![TensorRT](https://img.shields.io/badge/Deploy-TensorRT-green.svg)](https://developer.nvidia.com/tensorrt)
 [![Quantization](https://img.shields.io/badge/Optimized-Quantization-purple.svg)](https://onnxruntime.ai/docs/performance/quantization.html)
+
+<!-- Row 2: Distribution + License -->
+[![PyPI Version](https://img.shields.io/pypi/v/anomavision?label=PyPI%20version)](https://pypi.org/project/anomavision/)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/anomavision?label=PyPI%20downloads&color=blue)](https://pypi.org/project/anomavision/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](LICENSE)
-
 
 
 **🔥 Lightweight, fast, and production-ready anomaly detection — powered by PaDiM.**
