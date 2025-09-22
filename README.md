@@ -114,7 +114,7 @@ python export.py --config export_config.yml
 
 We welcome contributions!
 
-* See [Contributing Guide](docs/CONTRIBUTING.md) for high-level steps
+* See [Contributing Guide](docs/contributing.md) for high-level steps
 
 ---
 
