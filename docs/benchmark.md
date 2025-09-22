@@ -3,16 +3,6 @@
 
 We compare **AnomaVision (AV)** against **Anomalib (AL, PaDiM baseline)** on **MVTec AD** and **Visa** datasets.
 
-##  Visual Results
-<div align="center">
-
-
-<img src="images/mvtec.png" width="70%" alt="MVTec Benchmark Results"/> <p><em>MVTec AD Dataset</em></p> </div> <div align="center">
-
-
-
-<img src="images/visa.png" width="70%" alt="Visa Benchmark Results"/> <p><em>Visa Dataset</em></p> </div>
-
 
 Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
 
@@ -96,7 +86,11 @@ Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
 * **Consistent AUROC improvements** on most classes
 
 ---
+##  4. Visual Results
+<div align="center">
+<img src="images/mvtec.png" width="70%" alt="MVTec Benchmark Results"/> <p><em>MVTec AD Dataset</em></p> </div> <div align="center">
 
+<img src="images/visa.png" width="70%" alt="Visa Benchmark Results"/> <p><em>Visa Dataset</em></p> </div>
 
 👉 Benchmarks confirm: **AnomaVision is edge-ready, lightweight, and faster — without sacrificing accuracy.**
 

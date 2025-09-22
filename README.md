@@ -12,16 +12,33 @@
 **🔥 Lightweight, fast, and production-ready anomaly detection — powered by PaDiM.**
 *Deploy anywhere: edge devices, servers, or the cloud.*
 
+
 ---
 
 ## ✨ Features
 
 * 🎯 **State-of-the-art PaDiM** algorithm
 * ⚡ **3× faster inference** than Anomalib (CPU benchmarks)
-* 📦 **Multi-backend exports**: PyTorch, ONNX, TorchScript, OpenVINO
+* 📦 **Multi-backend exports**: PyTorch, ONNX, TorchScript, OpenVINO, TorchRT
 * 🎨 **Visualizations**: anomaly heatmaps, bounding boxes, ROC curves
 * 🖥️ **Unified Python + CLI workflows**
 * 🌍 **Edge-first design** with compact `.pth` models
+
+---
+
+## 🆚 Why AnomaVision over Anomalib?
+
+* ⚡ **3× faster inference** on CPU (MVTec & Visa benchmarks)
+* 📦 **Smaller models** (30 MB vs 40 MB) with **lower memory usage**
+* 🎯 **Higher AUROC** across most classes on **both MVTec AD and Visa datasets**
+* 🌍 **Edge-first design** → optimized for ONNX, TorchScript, and OpenVINO
+* 🛡️ **Production-ready** with clean API, CLI, and deployment options
+
+👉 See detailed results in [Benchmarks](docs/benchmarks.md).
+
+👉 [Download: AnomaVision vs Anomalib — A Comprehensive Performance Analysis (PDF)](docs/AnomaVision_vs_Anomalib.pdf)
+
+
 
 ---
 
