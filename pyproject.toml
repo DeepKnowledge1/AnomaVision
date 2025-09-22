@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "anomavision"
-version = "3.0.23"
+version = "3.0.25"
 description = "Advanced Anomaly Detection Environment - Deep learning library for state-of-the-art anomaly detection algorithms"
 authors = ["Deep Knowledge <Deepp.Knowledge@gmail.com>"]
 readme = "README.md"
