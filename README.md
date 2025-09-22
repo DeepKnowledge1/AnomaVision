@@ -52,7 +52,7 @@
 * [API Reference](docs/api.md)
 * [Configuration Guide](docs/config.md)
 * [Benchmarks](docs/benchmark.md)
-* [Contributing](CONTRIBUTING.md)
+* [Contributing](docs/contributing.md)
 
 ---
 
@@ -106,7 +106,7 @@ python export.py --config export_config.yml
 * **Pixel AUROC**: AV 0.96 ↑ vs AL 0.95
 * **FPS**: AV 45 ↑ vs AL 13
 
-📊 Full tables & plots → [Benchmarks](docs/benchmarks.md)
+📊 Full tables & plots → [Benchmarks](docs/benchmark.md)
 
 ---
 
