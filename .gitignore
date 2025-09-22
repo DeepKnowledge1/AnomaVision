@@ -352,6 +352,7 @@ yarn.lock
 
 images/
 !docs/images/
-!docs/images/AnomaVision_banner.png
-!docs/images/av_al.png
+!docs/images/banner.png
+!docs/images/mvtec.png
+!docs/images/visa.png
 poetry publish --build --username __toke.txt

@@ -1,8 +1,8 @@
 # =========================
 # Dataset / preprocessing (shared by train, detect, eval)
 # =========================
-dataset_path: "D:/01-DATA"               # Root dataset folder (MVTec-style: contains train/test subfolders)
-class_name: "bottle"                     # Class name for MVTec dataset
+dataset_path: "D:/01-DATA/VisA_pytorch"               # Root dataset folder (MVTec-style: contains train/test subfolders)
+class_name: "chewinggum"                     # Class name for MVTec dataset
 resize: [224, 224]                       # Resize dimensions before processing [width, height]
 crop_size:                               # Final crop size [width, height]
 normalize: true                          # Whether to normalize images
@@ -42,7 +42,7 @@ viz_color: "128,0,128"                   # RGB color for visualization overlays
 # =========================
 # Inference (detect.py)
 # =========================
-img_path: "D:/01-DATA/bottle/test/broken_large"  # Path to test images for inference
+img_path: "D:/01-DATA/VisA_pytorch/chewinggum/test/bad"  # Path to test images for inference
 thresh: 13.0                            # Threshold for anomaly detection
 num_workers: 1                          # Number of workers for dataloader
 pin_memory: false                       # Use pinned memory for faster GPU transfers
