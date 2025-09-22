@@ -118,6 +118,14 @@ We welcome contributions!
 
 ---
 
+## 🙏 Acknowledgments
+
+AnomaVision is built on top of the excellent [**Anodet**](https://github.com/OpenAOI/anodet) repository.
+We thank the original authors for their contributions to open-source anomaly detection research, which laid the foundation for this work.
+
+---
+
+
 ## 📜 Citation
 
 If you use AnomaVision in your research, please cite:
@@ -143,4 +151,3 @@ If you use AnomaVision in your research, please cite:
 
 👉 Start with [Quick Start](docs/quickstart.md) and build your first anomaly detection pipeline in **5 minutes**!
 
----
