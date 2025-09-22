@@ -120,8 +120,17 @@ class MahalanobisDistance(nn.Module):
 
         # Move buffers to the correct device
         device = features.device
-        self._mean_flat = self._mean_flat.to(device)
-        self._cov_inv_flat = self._cov_inv_flat.to(device)
+
+        dtype = features.dtype  # check whether it's float32, float16, etc.
+
+        self._mean_flat = self._mean_flat.to(device=device, dtype=dtype)
+        self._cov_inv_flat = self._cov_inv_flat.to(device=device, dtype=dtype)
+
+        # self._mean_flat = self._mean_flat.to(features)
+        # self._cov_inv_flat = self._cov_inv_flat.to(features)
+
+        # self._mean_flat = self._mean_flat.to(device)
+        # self._cov_inv_flat = self._cov_inv_flat.to(device)
 
         B, N, D = features.shape
         if N != width * height:

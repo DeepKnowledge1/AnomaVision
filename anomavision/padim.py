@@ -137,6 +137,7 @@ class Padim(torch.nn.Module):
             layer_hook=self.layer_hook,
             layer_indices=self.layer_indices,
         )
+        embedding_vectors= embedding_vectors.to(dtype=x.dtype)
         patch_scores = self.mahalanobisDistance(
             features=embedding_vectors, width=w, height=h, export=export, chunk=256
         )  # (B, w, h)
