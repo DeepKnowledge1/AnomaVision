@@ -2,11 +2,16 @@
 
 # 🚀 AnomaVision: Edge-Ready Visual Anomaly Detection
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
+[![Python 3.9–3.12](https://img.shields.io/badge/python-3.9–3.12-blue.svg)](https://www.python.org/)
 [![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0+-red.svg)](https://pytorch.org)
 [![ONNX Ready](https://img.shields.io/badge/ONNX-Export%20Ready-orange.svg)](https://onnx.ai/)
 [![OpenVINO Ready](https://img.shields.io/badge/OpenVINO-Ready-blue.svg)](https://docs.openvino.ai/)
+[![TorchScript](https://img.shields.io/badge/Export-TorchScript-red.svg)](https://pytorch.org/docs/stable/jit.html)
+[![TensorRT](https://img.shields.io/badge/Deploy-TensorRT-green.svg)](https://developer.nvidia.com/tensorrt)
+[![Quantization](https://img.shields.io/badge/Optimized-Quantization-purple.svg)](https://onnxruntime.ai/docs/performance/quantization.html)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/anomavision?label=PyPI%20downloads&color=blue)](https://pypi.org/project/anomavision/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](LICENSE)
+
 
 
 **🔥 Lightweight, fast, and production-ready anomaly detection — powered by PaDiM.**
@@ -38,6 +43,18 @@
 
 👉 [Download: AnomaVision vs Anomalib — A Comprehensive Performance Analysis (PDF)](docs/AnomaVision_vs_Anomalib.pdf)
 
+---
+
+## 🖥️ C++ Inference with ONNX
+
+AnomaVision isn’t just Python 🚀 — it also provides a **C++ implementation** for **ONNX Runtime + OpenCV**.
+
+* ⚡ **Real-time edge inference** (\~25 FPS on CPU)
+* 🖼️ **Full pipeline**: preprocessing → inference → postprocessing → visualization
+* 📦 **Modular design** (Config, Preprocessor, ONNXModel, Postprocessor, Visualizer, App)
+* 🌍 Perfect for **edge devices** and **production environments** without Python
+
+👉 See full guide: [Quickstart — C++ Inference](docs/cpp/README.md)
 
 
 ---
