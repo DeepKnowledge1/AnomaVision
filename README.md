@@ -36,7 +36,6 @@
 * [Configuration Guide](docs/config.md)
 * [Benchmarks](docs/benchmark.md)
 * [Contributing](CONTRIBUTING.md)
-* [Development Guide](docs/development.md)
 
 ---
 
