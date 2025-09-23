@@ -26,12 +26,13 @@
 
 ## ✨ Features
 
-* 🎯 **State-of-the-art PaDiM** algorithm
-* ⚡ **3× faster inference** than Anomalib (CPU benchmarks)
-* 📦 **Multi-backend exports**: PyTorch, ONNX, TorchScript, OpenVINO, TorchRT
+* 📦 **Multi-backend exports**: PyTorch, ONNX, TorchScript, OpenVINO, TorchRT,INT8 Quantization
 * 🎨 **Visualizations**: anomaly heatmaps, bounding boxes, ROC curves
 * 🖥️ **Unified Python + CLI workflows**
 * 🌍 **Edge-first design** with compact `.pth` models
+* ⚡**C++ inference** runtime for edge deployment
+
+
 
 ---
 
@@ -53,7 +54,6 @@
 
 AnomaVision isn’t just Python 🚀 — it also provides a **C++ implementation** for **ONNX Runtime + OpenCV**.
 
-* ⚡ **Real-time edge inference** (\~25 FPS on CPU)
 * 🖼️ **Full pipeline**: preprocessing → inference → postprocessing → visualization
 * 📦 **Modular design** (Config, Preprocessor, ONNXModel, Postprocessor, Visualizer, App)
 * 🌍 Perfect for **edge devices** and **production environments** without Python
@@ -73,9 +73,29 @@ AnomaVision isn’t just Python 🚀 — it also provides a **C++ implementation
 * [API Reference](docs/api.md)
 * [Configuration Guide](docs/config.md)
 * [Benchmarks](docs/benchmark.md)
+* [Troubleshooting & FAQ](docs/troubleshooting.md) → Common issues and fixes
 * [Contributing](docs/contributing.md)
+*
 
 ---
+
+## Installation
+
+Quick Install:
+using [Pyenv and Poetry](https://youtu.be/ocVk_B-ivHQ)
+```bash
+git clone https://github.com/DeepKnowledge1/AnomaVision.git
+cd AnomaVision
+poetry install
+poetry shell
+```
+
+From PYPI: [PYPI Video](https://youtu.be/SDM22RI3O7g)
+```bash
+pip install AnomaVision
+```
+
+➡ For detailed installation options, see [Installation Guide](docs/installation.md).
 
 ## ⚡ Quick Example
 
