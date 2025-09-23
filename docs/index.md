@@ -10,7 +10,6 @@ AnomaVision is designed for **fast, lightweight, and accurate anomaly detection*
 
 ## ✨ Key Features
 
-* 🔎 **State-of-the-art PaDiM** anomaly detection
 * ⚡ **3× faster** inference than Anomalib, with **smaller models**
 * 🖥️ **Multi-backend support**: PyTorch, ONNX, TorchScript, OpenVINO
 * 📦 **Production-ready CLI and API**
@@ -26,7 +25,8 @@ AnomaVision is designed for **fast, lightweight, and accurate anomaly detection*
 * [CLI Reference](cli.md) → Full command-line options for all scripts
 * [API Reference](api.md) → Use AnomaVision directly in Python
 * [Configuration Guide](config.md) → Explanation of all `config.yml` fields
-* [Benchmarks](benchmarks.md) → MVTec & Visa results vs Anomalib
+* [Benchmarks](benchmark.md) → MVTec & Visa results vs Anomalib
+* [Troubleshooting & FAQ](troubleshooting.md) → Common issues and fixes
 * [Contributing](contributing.md) → How to contribute to AnomaVision
 
 ---
