@@ -78,11 +78,11 @@ class PadimLite(torch.nn.Module):
         if self.use_fp16 and self.device.type == "cuda":
             mean = mean.half().to(self.device)
             cov_inv = cov_inv.half().to(self.device)
-            channel_indices = channel_indices.to(torch.int32).to(self.device)
+            channel_indices = channel_indices.to(torch.int64).to(self.device)
         else:
             mean = mean.float().to(self.device)
             cov_inv = cov_inv.float().to(self.device)
-            channel_indices = channel_indices.to(torch.int32).to(self.device)
+            channel_indices = channel_indices.to(torch.int64).to(self.device)
 
         # Register channel indices as buffer
         self.register_buffer("channel_indices", channel_indices)

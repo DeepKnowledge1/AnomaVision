@@ -165,7 +165,7 @@ class ModelExporter:
             self.device = torch.device("cpu")
             self.logger.info("Auto-detected device: CPU")
 
-    def _load_model(self) -> torch.nn.Module:
+    def _load_model(self, export_format: str = "onnx") -> torch.nn.Module:
         """Load and prepare model for export (supports .pt and stats-only .pth)."""
         self.logger.info("load: %s", self.model_path)
 
@@ -203,7 +203,7 @@ class ModelExporter:
             # Move model to target device
             base = base.to(self.device)
 
-        return _ExportWrapper(base)
+        return _ExportWrapper(base, export_format=export_format)
 
     def _get_output_names(
         self, model: torch.nn.Module, dummy_input: torch.Tensor
@@ -420,7 +420,7 @@ class ModelExporter:
         """
         t0 = time.perf_counter()
         try:
-            model = self._load_model()
+            model = self._load_model(export_format="pytorch")
             dummy_input = torch.randn(*input_shape, device=self.device)
 
             # Auto-detect precision based on device if not forced
