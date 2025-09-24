@@ -130,6 +130,8 @@ class Padim(torch.nn.Module):
             >>> print(f"Image scores: {image_scores.shape}")  # torch.Size([4])
             >>> print(f"Score map: {score_map.shape}")        # torch.Size([4, 224, 224])
         """
+        # Store original dtype for consistency
+        input_dtype = x.dtype
 
         embedding_vectors, w, h = self.embeddings_extractor(
             x,
@@ -137,16 +139,28 @@ class Padim(torch.nn.Module):
             layer_hook=self.layer_hook,
             layer_indices=self.layer_indices,
         )
-        embedding_vectors= embedding_vectors.to(dtype=x.dtype)
+
+        # CRITICAL: Ensure embedding_vectors maintains input dtype consistently
+        # Remove or modify this line that's causing the dtype conversion issue
+        # embedding_vectors = embedding_vectors.to(dtype=x.dtype)  # This might be problematic
+
+        # Instead, ensure dtype consistency throughout the pipeline
+        if embedding_vectors.dtype != input_dtype:
+            embedding_vectors = embedding_vectors.to(dtype=input_dtype)
+
+        # Make sure the MahalanobisDistance buffers are also in the correct dtype
+        if hasattr(self.mahalanobisDistance, '_mean_flat'):
+            if self.mahalanobisDistance._mean_flat.dtype != input_dtype:
+                self.mahalanobisDistance._mean_flat = self.mahalanobisDistance._mean_flat.to(dtype=input_dtype)
+            if self.mahalanobisDistance._cov_inv_flat.dtype != input_dtype:
+                self.mahalanobisDistance._cov_inv_flat = self.mahalanobisDistance._cov_inv_flat.to(dtype=input_dtype)
+
         patch_scores = self.mahalanobisDistance(
             features=embedding_vectors, width=w, height=h, export=export, chunk=256
         )  # (B, w, h)
 
         # fast image score directly from patch grid (no upsample needed)
         image_scores = patch_scores.flatten(1).amax(1)
-
-        # if not return_map:
-        #     return image_scores, None  # nothing large allocated
 
         score_map = F.interpolate(
             patch_scores.unsqueeze(1),
