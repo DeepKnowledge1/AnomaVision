@@ -52,9 +52,12 @@ class TorchScriptBackend(InferenceBackend):
             torch.set_num_threads(num_threads)
 
         logger.info("Loading TorchScript model with device=%s", self.device)
+        if self.device.type =="cuda":
+            self.model = torch.jit.load(model_path).eval().cuda()
 
-        self.model = torch.jit.load(model_path, map_location=self.device)
-        self.model.eval()
+        else:
+            self.model = torch.jit.load(model_path).eval()
+
 
     def predict(self, batch: Batch) -> ScoresMaps:
         """Run TorchScript inference on input batch.

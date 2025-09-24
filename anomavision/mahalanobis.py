@@ -146,6 +146,10 @@ class MahalanobisDistance(nn.Module):
             # (B,N,1,D) @ (B,N,D,1) -> (B,N,1,1) -> (B,N)
             dist2 = torch.matmul(left, delta.unsqueeze(-1)).squeeze(-1).squeeze(-1)
             distances = dist2.clamp_min_(0).sqrt_().view(B, width, height)
+
+            # 🔥 Ensure dtype matches features/input
+            distances = distances.to(features.dtype)
+
             return distances
 
         # === Chunked path (low peak RAM; fixes broadcasting by expanding over B) ===
@@ -170,4 +174,5 @@ class MahalanobisDistance(nn.Module):
             out[:, s:e] = (y * d).sum(-1)
 
         distances = out.clamp_min_(0).sqrt_().view(B, width, height)
+        distances = distances.to(features.dtype)
         return distances

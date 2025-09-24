@@ -67,7 +67,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.onnx",
+        default="padim_model.torchscript",
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
