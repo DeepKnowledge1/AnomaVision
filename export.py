@@ -169,7 +169,7 @@ class ModelExporter:
         """Load and prepare model for export (supports .pt and stats-only .pth)."""
         self.logger.info("load: %s", self.model_path)
 
-        obj = torch.load(self.model_path, map_location="cpu", weights_only=False)
+        obj = torch.load(self.model_path, map_location=self.device, weights_only=False)
 
         # Debug: Print what we actually loaded
         self.logger.info(f"Loaded object type: {type(obj)}")
@@ -454,7 +454,12 @@ class ModelExporter:
                 "FP16" if use_fp16 else "FP32",
                 self.device,
             )
-            traced_model = torch.jit.trace(model, dummy_input, strict=False)
+            if self.device.type == "cuda":
+                traced_model = torch.jit.trace(
+                    model.cuda().eval(), dummy_input, strict=False
+                )
+            else:
+                traced_model = torch.jit.trace(model, dummy_input, strict=False)
 
             config_data = {
                 "shape": list(dummy_input.shape),
@@ -624,6 +629,7 @@ def parse_args():
     parser.add_argument(
         "--format",
         choices=["onnx", "openvino", "torchscript", "all"],
+        default="torchscript",
         help="Export format",
     )
 
