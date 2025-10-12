@@ -36,7 +36,8 @@
 
 ---
 
-## 🆚 Why AnomaVision over Anomalib?
+
+<h2 align="left" style="color:red;">🆚 Why AnomaVision over Anomalib?</h2>
 
 * ⚡ **3× faster inference** on CPU (MVTec & Visa benchmarks)
 * 📦 **Smaller models** (30 MB vs 40 MB) with **lower memory usage**
@@ -44,11 +45,37 @@
 * 🌍 **Edge-first design** → optimized for ONNX, TorchScript, and OpenVINO
 * 🛡️ **Production-ready** with clean API, CLI, and deployment options
 
-👉 See detailed results in [Benchmarks](docs/benchmarks.md).
+### ⚡ **Speed Comparison (CPU Mode)**
+
+| Metric | 🟢 **AnomaVision** | 🔵 **Anomalib** | 🔺 **Difference** | 🏆 **Winner** |
+|:--|:--:|:--:|:--:|:--:|
+| 🧮 **Training Time (s)** | **8.38** | 13.07 | **-35.9%** | 🟢 AV |
+| 🚀 **Inference FPS** | **43.41** | 13.03 | **+233%** | 🟢 AV |
+| ⏱️ **ms / image** | **23.0** | 76.7 | **-70%** | 🟢 AV |
+
+> ⚡ **AnomaVision** trains faster, infers over **3× quicker**,
+> and processes each image in **70% less time** —
+> making it **ideal for real-time CPU deployment**.
+
+
+
+### ⚡ **Speed Comparison (CUDA Mode)**
+
+| Metric | 🟢 **AnomaVision** | 🔵 **Anomalib** | 🔺 **Difference** | 🏆 **Winner** |
+|:--|:--:|:--:|:--:|:--:|
+| 🧮 **Training Time (s)** | **8.38** | 13.07 | **-35.9%** | 🟢 AV |
+| 🚀 **Inference FPS** | **547.46** | 355.72 | **+53.9%** | 🟢 AV |
+| ⏱️ **ms / image** | **1.83** | 2.81 | **-35.0%** | 🟢 AV |
+
+> ⚡ *AnomaVision runs over **1.5× faster** — ideal for real-time edge inspection.*
+
+👉 See detailed results in [Benchmarks](docs/benchmark.md).
 
 👉 [Download: AnomaVision vs Anomalib — A Comprehensive Performance Analysis (PDF)](docs/AnomaVision_vs_Anomalib.pdf)
 
 ---
+
+
 
 ## 🖥️ C++ Inference with ONNX
 

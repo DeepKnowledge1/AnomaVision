@@ -1,7 +1,7 @@
 
 # 📊 Benchmarks
 
-We compare **AnomaVision (AV)** against **Anomalib (AL, PaDiM baseline)** on **MVTec AD** and **Visa** datasets.
+We compare **AnomaVision** against **Anomalib** using **(PaDiM baseline)** on **MVTec AD** and **Visa** datasets.
 
 
 Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
@@ -10,7 +10,7 @@ Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
 
 ## 1. MVTec AD — Average Results (15 classes)
 
-| Metric (avg)      | AV (Ours)  | AL (Baseline) |
+| Metric (avg)      | AnomaVision (Ours)  | Anomalib (Baseline) |
 | ----------------- | ---------- | ------------- |
 | **Image AUROC ↑** | **0.8499** | 0.8102        |
 | **Pixel AUROC ↑** | **0.9562** | 0.9354        |
@@ -24,7 +24,7 @@ Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
 
 ### Per-Class Breakdown
 
-| Class      | AV Image AUROC | AL Image AUROC | AV Pixel AUROC | AL Pixel AUROC | AV FPS | AL FPS |
+| Class      | AnomaVision Image AUROC | Anomalib Image AUROC | AnomaVision Pixel AUROC | Anomalib Pixel AUROC | AnomaVision FPS | Anomalib FPS |
 | ---------- | -------------- | -------------- | -------------- | -------------- | ------ | ------ |
 | bottle     | 0.997          | 0.996          | 0.984          | 0.987          | 42.17  | 13.42  |
 | cable      | 0.772          | 0.742          | 0.936          | 0.935          | 36.09  | 12.82  |
@@ -46,7 +46,7 @@ Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
 
 ## 2. Visa — Average Results (12 classes)
 
-| Metric (avg)      | AV (Ours)  | AL (Baseline) |
+| Metric (avg)      | AnomaVision (Ours)  | Anomalib (Baseline) |
 | ----------------- | ---------- | ------------- |
 | **Image AUROC ↑** | **0.8123** | 0.7825        |
 | **Pixel AUROC ↑** | **0.9618** | 0.9542        |
@@ -60,7 +60,7 @@ Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
 
 ### Per-Class Breakdown
 
-| Class       | AV Image AUROC | AL Image AUROC | AV Pixel AUROC | AL Pixel AUROC | AV FPS | AL FPS |
+| Class       | AnomaVision Image AUROC | Anomalib Image AUROC | AnomaVision Pixel AUROC | Anomalib Pixel AUROC | AnomaVision FPS | Anomalib FPS |
 | ----------- | -------------- | -------------- | -------------- | -------------- | ------ | ------ |
 | candle      | 0.866          | 0.868          | 0.973          | 0.977          | 40.25  | 13.48  |
 | capsules    | 0.654          | 0.595          | 0.916          | 0.920          | 43.29  | 14.52  |
