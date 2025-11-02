@@ -21,6 +21,7 @@ def allowed_file(filename):
         "png",
         "jpg",
         "jpeg",
+        "bmp",
     ]
 
 
