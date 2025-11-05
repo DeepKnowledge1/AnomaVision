@@ -205,11 +205,12 @@ class TrainingWorker(QThread):
             self.logger.info("Starting model training")
             t_fit = time.perf_counter()
             padim.fit(dl)
-            self.logger.info(f"fit: completed in {time.perf_counter() - t_fit:.2fs}")
+            self.logger.info(f"fit: completed in {time.perf_counter() - t_fit:.2f}s")
             self.progress_update.emit("训练完成!")
 
             # Save model
             model_path = Path(self.config['model_data_path']) / self.config['output_model']
+            model_path.parent.mkdir(parents=True, exist_ok=True)  # 若父目录不存在则自动创建
             torch.save(padim, str(model_path))
             self.progress_update.emit(f"模型已保存到: {model_path}")
             self.logger.info(f"Model saved to: {model_path}")
@@ -1510,8 +1511,12 @@ class AnomaVisionGUI(QMainWindow):
                 return
                 
             if not os.path.exists(output_dir):
-                QMessageBox.warning(self, "警告", "输出目录不存在")
-                return
+                try:
+                    os.makedirs(output_dir, exist_ok=True)
+                    self.update_log(f"输出目录不存在，已自动创建: {output_dir}")
+                except Exception as e:
+                    QMessageBox.critical(self, "错误", f"创建输出目录失败:\n{str(e)}")
+                    return
                 
             # Get configuration from UI
             config = {
