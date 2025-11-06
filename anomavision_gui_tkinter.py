@@ -30,6 +30,11 @@ from anomavision.utils import (
 from anomavision.config import load_config
 from anomavision.general import Profiler, determine_device
 
+# Set torch cache path to .cache
+cache_dir = Path(".cache")
+cache_dir.mkdir(exist_ok=True)
+os.environ['TORCH_HOME'] = str(cache_dir.absolute())
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -103,8 +108,13 @@ class TrainingWorker(threading.Thread):
             padim.fit(dl)
             self.logger.info(f"fit: completed in {time.perf_counter() - t_fit:.2f}s")
             self.progress_callback("Training completed!")
-            # Save model
-            model_path = Path(self.config['model_data_path']) / self.config['output_model']
+            # Save model with class name prefix and ensure directory exists
+            model_data_path = Path(self.config['model_data_path'])
+            model_data_path.mkdir(parents=True, exist_ok=True)  # Create directory if not exists
+            class_name = self.config['class_name']
+            original_model_name = self.config['output_model']
+            prefixed_model_name = f"{class_name}_{original_model_name}"
+            model_path = model_data_path / prefixed_model_name
             torch.save(padim, str(model_path))
             self.progress_callback(f"Model saved to: {model_path}")
             self.logger.info(f"Model saved to: {model_path}")
@@ -464,14 +474,16 @@ class ExportWorker(threading.Thread):
             h, w = self.config['crop_size'] if self.config['crop_size'] is not None else self.config['resize']
             input_shape = [1, 3, h, w]
             self.logger.info(f"Input shape: {tuple(input_shape)}")
-            self.progress_callback(f"输入形状: {tuple(input_shape)}")
+            self.progress_callback(f"Input shape: {tuple(input_shape)}")
             # Export based on format
+            # Extract the original model name without extension
+            original_model_name = Path(self.model_path).stem
             if self.export_format == "onnx":
                 self.logger.info("Exporting to ONNX format")
                 output_path = exporter.export_onnx(
                     input_shape=tuple(input_shape),
-                    output_name=f"padim_model.onnx",
-                    opset_version=self.config.get('opset', 17),
+                    output_name=f"{original_model_name}.onnx",
+                    opset_version=self.config.get('opset', 18),
                     dynamic_batch=self.config.get('dynamic_batch', True),
                 )
                 if output_path:
@@ -484,7 +496,7 @@ class ExportWorker(threading.Thread):
                 self.logger.info("Exporting to TorchScript format")
                 output_path = exporter.export_torchscript(
                     input_shape=tuple(input_shape),
-                    output_name=f"padim_model.torchscript",
+                    output_name=f"{original_model_name}.torchscript",
                     optimize=self.config.get('optimize', False),
                 )
                 if output_path:
@@ -497,7 +509,7 @@ class ExportWorker(threading.Thread):
                 self.logger.info("Exporting to OpenVINO format")
                 output_path = exporter.export_openvino(
                     input_shape=tuple(input_shape),
-                    output_name=f"padim_model_openvino",
+                    output_name=f"{original_model_name}_openvino",
                     fp16=self.config.get('fp16', True),
                     dynamic_batch=self.config.get('dynamic_batch', True),
                 )
@@ -774,29 +786,57 @@ class AnomaVisionGUI:
                                             font=("Arial", 12, "bold"))
         self.anomaly_score_label.pack(pady=5)
         
-        # Visualization area - Use larger minimum size for better display effect
+        # Visualization area - Changed to horizontal layout with fixed size labels
         vis_frame = ttk.Frame(results_frame)
-        vis_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        vis_frame.pack(fill=tk.BOTH, expand=True, pady=5)  # Allow expansion
         
-        # Create a canvas for visualization with a larger minimum size
-        self.vis_canvas = tk.Canvas(vis_frame, bg="lightgray", height=400)
-        self.vis_canvas.pack(fill=tk.BOTH, expand=True)
+        # Create a frame for the image display area with uniform grid layout
+        image_display_frame = ttk.Frame(vis_frame)
+        image_display_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Create labels for different visualizations with fixed minimum sizes
-        self.original_image_label = tk.Label(self.vis_canvas, text="Original Image", bg="white", relief="solid", 
-                                           width=25, height=15)
-        self.heatmap_label = tk.Label(self.vis_canvas, text="Heatmap", bg="white", relief="solid", 
-                                    width=25, height=15)
-        self.highlighted_label = tk.Label(self.vis_canvas, text="Highlighted Anomalies", bg="white", relief="solid", 
-                                        width=25, height=15)
-        self.boundary_label = tk.Label(self.vis_canvas, text="Boundary Detection", bg="white", relief="solid", 
-                                     width=25, height=15)
+        # Configure grid layout for uniform distribution
+        image_display_frame.columnconfigure(0, weight=1, uniform="image_col")
+        image_display_frame.columnconfigure(1, weight=1, uniform="image_col")
+        image_display_frame.columnconfigure(2, weight=1, uniform="image_col")
+        image_display_frame.columnconfigure(3, weight=1, uniform="image_col")
+        image_display_frame.rowconfigure(0, weight=1)
         
-        # Position labels in canvas with better spacing
-        self.original_image_label.place(relx=0.125, rely=0.5, anchor="center")
-        self.heatmap_label.place(relx=0.375, rely=0.5, anchor="center")
-        self.highlighted_label.place(relx=0.625, rely=0.5, anchor="center")
-        self.boundary_label.place(relx=0.875, rely=0.5, anchor="center")
+        # Create labels for different visualizations with dynamic sizing
+        self.original_image_label = tk.Label(
+            image_display_frame, 
+            text="Original Image", 
+            bg="white", 
+            relief="solid", 
+            bd=1
+        )
+        self.original_image_label.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        
+        self.heatmap_label = tk.Label(
+            image_display_frame, 
+            text="Heatmap", 
+            bg="white", 
+            relief="solid", 
+            bd=1
+        )
+        self.heatmap_label.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+        
+        self.highlighted_label = tk.Label(
+            image_display_frame, 
+            text="Highlighted Anomalies", 
+            bg="white", 
+            relief="solid", 
+            bd=1
+        )
+        self.highlighted_label.grid(row=0, column=2, padx=5, pady=5, sticky="nsew")
+        
+        self.boundary_label = tk.Label(
+            image_display_frame, 
+            text="Boundary Detection", 
+            bg="white", 
+            relief="solid", 
+            bd=1
+        )
+        self.boundary_label.grid(row=0, column=3, padx=5, pady=5, sticky="nsew")
         
         # Buttons
         buttons_frame = ttk.Frame(self.inference_frame)
@@ -852,7 +892,7 @@ class AnomaVisionGUI:
         onnx_opset_frame = ttk.Frame(config_frame)
         onnx_opset_frame.pack(fill=tk.X, pady=2)
         ttk.Label(onnx_opset_frame, text="ONNX Opset:").pack(side=tk.LEFT)
-        self.onnx_opset_var = tk.IntVar(value=self.config.get("opset", 17))
+        self.onnx_opset_var = tk.IntVar(value=self.config.get("opset", 18))
         self.onnx_opset_spin = ttk.Spinbox(onnx_opset_frame, from_=1, to=20, textvariable=self.onnx_opset_var)
         self.onnx_opset_spin.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         
@@ -1354,46 +1394,64 @@ class AnomaVisionGUI:
                 # Convert to PhotoImage for tkinter
                 height, width = image.shape[:2]
                 
-                # 获取标签的尺寸并调整图像大小以适应标签
-                label.update_idletasks()  # 确保获取到最新的尺寸
-                label_width = label.winfo_width()
-                label_height = label.winfo_height()
+                # Define fixed display size for uniform appearance
+                display_width, display_height = 300, 250
                 
-                # 如果标签尺寸有效，则调整图像大小
-                if label_width > 1 and label_height > 1:
-                    # 计算缩放比例，保持宽高比
-                    scale_w = label_width / width
-                    scale_h = label_height / height
-                    scale = min(scale_w, scale_h)
-                    
-                    # 确保缩放比例不会放大图像超过原始尺寸
-                    scale = min(scale, 1.0)
-                    
-                    # 计算新的尺寸
-                    new_width = int(width * scale)
-                    new_height = int(height * scale)
-                    
-                    # 只有在新尺寸小于原始尺寸时才进行缩放
-                    if new_width < width and new_height < height:
-                        # 使用OpenCV调整图像大小
-                        image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                # Calculate scaling factor to fit within display size while maintaining aspect ratio
+                scale_w = display_width / width
+                scale_h = display_height / height
+                scale = min(scale_w, scale_h)
                 
-                pil_image = Image.fromarray(image)
+                # Calculate new dimensions
+                new_width = int(width * scale)
+                new_height = int(height * scale)
+                
+                # Resize image using OpenCV
+                image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                
+                # Create a black background canvas of fixed size
+                canvas = np.zeros((display_height, display_width, 3), dtype=np.uint8)
+                
+                # Calculate position to center the image
+                y_offset = (display_height - new_height) // 2
+                x_offset = (display_width - new_width) // 2
+                
+                # Place the resized image on the canvas
+                canvas[y_offset:y_offset+new_height, x_offset:x_offset+new_width] = image
+                
+                pil_image = Image.fromarray(canvas)
                 tk_image = ImageTk.PhotoImage(pil_image)
                 
                 # Update label with image
-                label.config(image=tk_image, text="", bg="white", relief="solid", bd=3, 
-                           highlightbackground=border_color, highlightthickness=2)
+                label.config(
+                    image=tk_image, 
+                    text="", 
+                    bg="white", 
+                    relief="solid", 
+                    bd=2,
+                    highlightbackground=border_color, 
+                    highlightthickness=2
+                )
                 # Keep a reference to avoid garbage collection
                 label.image = tk_image
             else:
                 # Assume it's already a QImage or QPixmap
-                label.config(text="Image", bg="white", relief="solid", bd=3, 
-                           highlightbackground=border_color, highlightthickness=2)
+                label.config(
+                    text="Image", 
+                    bg="white", 
+                    relief="solid", 
+                    bd=2,
+                    highlightbackground=border_color, 
+                    highlightthickness=2
+                )
         except Exception as e:
             logger.error(f"Error displaying image: {e}")
-            label.config(text="Unable to display image", bg="white", relief="solid", bd=1)
-            
+            label.config(
+                text="Unable to display image", 
+                bg="white", 
+                relief="solid", 
+                bd=1
+            )
     def start_export(self):
         """Start the export process"""
         try:
@@ -1410,9 +1468,8 @@ class AnomaVisionGUI:
             if not os.path.exists(model_path):
                 messagebox.showwarning("Warning", "Model file does not exist")
                 return
-            if not os.path.exists(output_dir):
-                messagebox.showwarning("Warning", "Output directory does not exist")
-                return
+            # Create output directory if it doesn't exist (new requirement)
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
             # Get configuration from UI
             config = {
                 "resize": eval(self.resize_var.get()) if self.resize_var.get() else [224, 224],
