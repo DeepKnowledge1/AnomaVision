@@ -45,7 +45,7 @@ from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.inference.modelType import ModelType
 from anomavision.padim import Padim
 from anomavision.utils import get_logger
-
+from PIL import Image, ImageTk
 # -----------------------------------------------------------------------------
 # Global fast paths and helpers
 # -----------------------------------------------------------------------------
@@ -716,6 +716,12 @@ class AnomaVisionGUI:
 
     def __init__(self, root):
         self.root = root
+
+        try:
+            self.root.iconbitmap("av.ico")
+        except Exception:
+            print("Could not load icon – ensure av.ico is in the same folder.")
+
         self.root.title("AnomaVision — Anomaly Detection (Pro)")
         self.root.geometry("1366x860")
         self.root.minsize(1180, 760)
@@ -754,6 +760,12 @@ class AnomaVisionGUI:
         self.style.configure("TFrame", background=self.colors["bg"])
         self.style.configure(
             "TNotebook.Tab", padding=(12, 8, 12, 8), font=("Segoe UI", 10, "bold")
+        )
+        self.style.configure(
+            "Green.Horizontal.TProgressbar",
+            troughcolor=self.colors["panel"],
+            background="#10B981",      # ✅ green bar
+            thickness=14
         )
 
     def toggle_theme(self):
@@ -823,10 +835,15 @@ class AnomaVisionGUI:
         left.pack(side=tk.LEFT, fill=tk.Y)
 
         # --- Create logo image BEFORE using it (safe fallback if PIL font missing) ---
+
+
+
         try:
-            logo_img = make_logo(size=44, bg="#38BDF8", fg="#001225")
-            self.logo_tk = ImageTk.PhotoImage(logo_img)
+            icon_image = Image.open("av.png")  # use PNG for clean scaling; ICO also works
+            icon_image = icon_image.resize((44, 44), Image.LANCZOS)
+            self.logo_tk = ImageTk.PhotoImage(icon_image)
         except Exception:
+            # fallback to text icon if file missing
             self.logo_tk = None
 
         if self.logo_tk is not None:
@@ -1191,9 +1208,24 @@ class AnomaVisionGUI:
         )
         self.train_stop_button.pack(side=tk.LEFT, padx=8)
 
-        self.train_progress = ttk.Progressbar(cfg, mode="indeterminate")
+        self.train_progress_var = tk.IntVar(value=0)
+        self.train_progress = ttk.Progressbar(
+            cfg,
+            variable=self.train_progress_var,
+            maximum=100,
+            mode="determinate",
+            style="Green.Horizontal.TProgressbar"
+        )
         self.train_progress.pack(fill=tk.X, padx=14, pady=(0, 12))
         self.train_progress.pack_forget()
+        self.train_percent_label = tk.Label(cfg, text="0%", bg=self.colors["panel"], fg=self.colors["fg"])
+        self.train_percent_label.pack(anchor="w", padx=14)
+
+    def update_training_progress(self, value):
+        value = max(0, min(100, int(value)))
+        self.train_progress_var.set(value)
+        self.train_percent_label.config(text=f"{value}%")
+        self.train_progress.update_idletasks()
 
     def create_inference_tab(self):
         container = tk.Frame(self.inference_tab, bg=self.colors["bg"])
