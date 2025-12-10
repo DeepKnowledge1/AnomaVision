@@ -7,40 +7,58 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from ..utils import (
-    create_image_transform,
-    create_mask_transform,
-    standard_image_transform,
-    standard_mask_transform,
-)
+from ..utils import create_image_transform, create_mask_transform
 
-# URL =
-# 'ftp://guest:GU.205dldo@ftp.softronics.ch/mvtec_anomaly_detection/mvtec_anomaly_detection.tar.xz'
-CLASS_NAMES = [
-    "bottle",
-    "cable",
-    "capsule",
-    "carpet",
-    "grid",
-    "hazelnut",
-    "leather",
-    "metal_nut",
-    "pill",
-    "screw",
-    "tile",
-    "toothbrush",
-    "transistor",
-    "wood",
-    "zipper",
-]
+valid_exts = (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff")
+
+
+def get_class_names(
+    dataset_path: str, valid_classes: Optional[List[str]] = None
+) -> List[str]:
+    """
+    Discover valid class names inside dataset_path (MVTec-style format).
+
+    A valid class is any folder inside dataset_path that contains
+    at least a 'train/' or 'test/' subfolder.
+
+    Args:
+        dataset_path: Root of the dataset.
+        valid_classes: Optional list to restrict to known classes.
+
+    Returns:
+        Sorted list of valid class names.
+    """
+    classes = []
+    for d in os.listdir(dataset_path):
+        d_path = os.path.join(dataset_path, d)
+        if not os.path.isdir(d_path):
+            continue
+        # Accept only if it has train/ or test/
+        if any(os.path.isdir(os.path.join(d_path, sub)) for sub in ["train", "test"]):
+            classes.append(d)
+
+    if valid_classes is not None:
+        classes = [c for c in classes if c in valid_classes]
+
+    return sorted(classes)
 
 
 class MVTecDataset(Dataset):
+    """
+    Generic dataset loader for datasets following the MVTec format.
+
+    Compatible with:
+      - MVTec AD
+      - VISA
+      - BTAD
+      - Any dataset with the same directory structure
+    """
+
     def __init__(
         self,
-        dataset_path,
-        class_name,
-        is_train=True,
+        dataset_path: str,
+        class_name: str,
+        is_train: bool = True,
         image_transforms=None,
         mask_transforms=None,
         resize: Union[int, Tuple[int, int]] = 224,
@@ -51,62 +69,53 @@ class MVTecDataset(Dataset):
     ):
         """
         Args:
-            dataset_path: Path to MVTec dataset root
-            class_name: Name of the class (must be in CLASS_NAMES)
-            is_train: Whether to load training or test data
-            image_transforms: Optional pre-built image transforms. If None, creates from other parameters.
-            mask_transforms: Optional pre-built mask transforms. If None, creates from other parameters.
-            resize: Size to resize to. If int, resize shortest edge. If tuple (h, w), resize to exact dimensions.
-            crop_size: Size to crop to. If None, no cropping. If int, center crop to square. If tuple (h, w), crop to exact dimensions.
-            normalize: Whether to apply ImageNet normalization to images.
-            mean: Mean values for normalization.
-            std: Standard deviation values for normalization.
+            dataset_path: Path to dataset root (MVTec-style format).
+            class_name: Name of the class (must exist in dataset).
+            is_train: Load training or test split.
+            image_transforms: Optional custom image transforms.
+            mask_transforms: Optional custom mask transforms.
+            resize: Resize shortest edge (int) or to exact (h, w).
+            crop_size: Center crop or exact crop size.
+            normalize: Apply ImageNet normalization.
+            mean: Mean for normalization.
+            std: Std for normalization.
         """
 
-        assert class_name in CLASS_NAMES, "class_name: {}, should be in {}".format(
-            class_name, CLASS_NAMES
+        available_classes = get_class_names(dataset_path)
+        assert class_name in available_classes, (
+            f"class_name '{class_name}' not found in dataset. "
+            f"Available: {available_classes}"
         )
+
         self.dataset_path = dataset_path
         self.class_name = class_name
         self.is_train = is_train
 
-        # load dataset
+        # Load samples
         self.x, self.y, self.mask = self.load_dataset_folder()
 
-        # Use provided transforms or create new ones with configurable parameters
-        if image_transforms is not None:
-            self.image_transforms = image_transforms
-        else:
-            self.image_transforms = create_image_transform(
-                resize=resize,
-                crop_size=crop_size,
-                normalize=normalize,
-                mean=mean,
-                std=std,
-            )
-
-        if mask_transforms is not None:
-            self.mask_transforms = mask_transforms
-        else:
-            self.mask_transforms = create_mask_transform(
-                resize=resize, crop_size=crop_size
-            )
+        # Transforms
+        self.image_transforms = image_transforms or create_image_transform(
+            resize=resize, crop_size=crop_size, normalize=normalize, mean=mean, std=std
+        )
+        self.mask_transforms = mask_transforms or create_mask_transform(
+            resize=resize, crop_size=crop_size
+        )
 
     def __getitem__(self, idx):
-        batch, image_classification, mask = self.x[idx], self.y[idx], self.mask[idx]
+        img_path, label, mask_path = self.x[idx], self.y[idx], self.mask[idx]
 
-        batch = Image.open(batch).convert("RGB")
-        image = np.array(batch)
-        image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-        batch = self.image_transforms(batch)
+        img_pil = Image.open(img_path).convert("RGB")
+        img_np = cv.cvtColor(np.array(img_pil), cv.COLOR_BGR2RGB)
+        img_tensor = self.image_transforms(img_pil)
 
-        if image_classification == 0:
-            mask = torch.zeros([1, batch.shape[1], batch.shape[2]])
+        if label == 0 or mask_path is None:
+            mask = torch.zeros([1, img_tensor.shape[1], img_tensor.shape[2]])
         else:
-            mask = Image.open(mask)
+            mask = Image.open(mask_path)
             mask = self.mask_transforms(mask)
 
-        return batch, image, image_classification, mask
+        return img_tensor, img_np, label, mask
 
     def __len__(self):
         return len(self.x)
@@ -118,23 +127,22 @@ class MVTecDataset(Dataset):
         img_dir = os.path.join(self.dataset_path, self.class_name, phase)
         gt_dir = os.path.join(self.dataset_path, self.class_name, "ground_truth")
 
+        if not os.path.isdir(img_dir):
+            raise RuntimeError(f"Missing directory: {img_dir}")
+
         img_types = sorted(os.listdir(img_dir))
         for img_type in img_types:
-
-            # load images
             img_type_dir = os.path.join(img_dir, img_type)
             if not os.path.isdir(img_type_dir):
                 continue
+
             img_fpath_list = sorted(
-                [
-                    os.path.join(img_type_dir, f)
-                    for f in os.listdir(img_type_dir)
-                    if f.endswith(".png")
-                ]
+                os.path.join(img_type_dir, f)
+                for f in os.listdir(img_type_dir)
+                if f.lower().endswith(valid_exts)
             )
             x.extend(img_fpath_list)
 
-            # load gt labels
             if img_type == "good":
                 y.extend([0] * len(img_fpath_list))
                 mask.extend([None] * len(img_fpath_list))
@@ -144,12 +152,19 @@ class MVTecDataset(Dataset):
                 img_fname_list = [
                     os.path.splitext(os.path.basename(f))[0] for f in img_fpath_list
                 ]
-                gt_fpath_list = [
-                    os.path.join(gt_type_dir, img_fname + "_mask.png")
-                    for img_fname in img_fname_list
-                ]
+
+                gt_fpath_list = []
+                for fname in img_fname_list:
+                    candidates = [
+                        os.path.join(gt_type_dir, f"{fname}_mask.png"),
+                        os.path.join(gt_type_dir, f"{fname}.png"),
+                        os.path.join(gt_type_dir, f"{fname}_gt.png"),
+                    ]
+                    gt_file = next((c for c in candidates if os.path.exists(c)), None)
+                    gt_fpath_list.append(gt_file)
+
                 mask.extend(gt_fpath_list)
 
-        assert len(x) == len(y), "number of x and y should be same"
+        assert len(x) == len(y), "number of images and labels must match"
 
         return list(x), list(y), list(mask)
