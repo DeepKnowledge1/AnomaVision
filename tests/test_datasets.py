@@ -162,7 +162,7 @@ class TestMVTecDataset:
 
     def test_mvtec_invalid_class(self, mvtec_structure):
         """Test MVTec dataset with invalid class name."""
-        with pytest.raises(AssertionError, match="should be in"):
+        with pytest.raises(AssertionError, match="not found in dataset"):
             anomavision.MVTecDataset(
                 str(mvtec_structure), class_name="invalid_class", is_train=True
             )
