@@ -5,6 +5,7 @@ import sys
 import time
 from pathlib import Path
 
+
 import torch
 from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
@@ -12,7 +13,7 @@ from torch.utils.data import DataLoader
 import anomavision
 from anomavision.config import load_config
 from anomavision.general import GitStatusChecker, increment_path
-from anomavision.utils import get_logger, merge_config, save_args_to_yaml, setup_logging
+from anomavision.utils import get_logger, merge_config, save_args_to_yaml, setup_logging,save_args_to_yaml_auto_comments
 
 checker = GitStatusChecker()
 checker.check_status()
@@ -130,12 +131,16 @@ def parse_args():
         default=None,
         help="Logging level (default: INFO).",
     )
+    args = parser.parse_args()
 
-    return parser.parse_args()
+    return parser, args
+
 
 
 def main():
-    args = parse_args()
+
+    parser, args = parse_args()
+
     cfg = load_config(args.config)
 
     # Merge config with CLI args
@@ -231,7 +236,6 @@ def main():
             logger.warning("saving slim statistics failed: %s", e)
 
         # snapshot the effective configuration
-        # save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
         save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
 
         logger.info(

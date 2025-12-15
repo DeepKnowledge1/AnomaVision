@@ -1,5 +1,5 @@
 # =========================
-# Dataset / preprocessing (shared by train, detect, eval)
+# Dataset / preprocessing (shared by train, detect, eval, stream)
 # =========================
 dataset_path: "D:/01-DATA"               # Root dataset folder (MVTec-style: contains train/test subfolders)
 class_name: "bottle"                     # Class name for MVTec dataset
@@ -65,3 +65,43 @@ fp32: false                             # Export in FP32 precision (false => FP1
 output_path: null                       # Optional explicit output filename
 half: false                             # Reserved (not actively used)
 int8: false                             # Reserved (not actively used)
+
+# =========================
+# Streaming Configuration
+# =========================
+stream_mode: false                       # true = real-time streaming, false = static dataset
+
+stream_source:
+  type: "webcam"                         # webcam | video | mqtt | tcp
+
+  # Webcam settings (type: webcam)
+  camera_id: 0                           # Camera device index
+
+  # Video file settings (type: video)
+  video_path: "path/to/video.mp4"        # Path to video file
+  loop: false                            # Loop video when it ends
+
+  # MQTT settings (type: mqtt)
+  broker: "localhost"                    # MQTT broker hostname/IP
+  port: 1883                             # MQTT broker port
+  topic: "camera/frames"                 # Topic to subscribe to
+  client_id: null                        # Optional client ID
+  keepalive: 60                          # Keepalive interval (seconds)
+  qos: 0                                 # QoS level (0, 1, or 2)
+  max_queue_size: 10                     # Max buffered frames
+  read_timeout: 1.0                      # Timeout for reading frames (seconds)
+
+  # TCP settings (type: tcp)
+  host: "192.168.1.100"                  # TCP server hostname/IP
+  port: 8080                             # TCP server port (matches code)
+  recv_timeout: 1.0                      # Socket timeout for recv (seconds)
+  header_size: 4                         # Length header size in bytes
+  max_message_size: 10485760             # Max payload size (10MB)
+
+
+# Streaming processing settings
+stream_max_frames: null                  # Max frames to process (null = infinite)
+stream_display_fps: true                 # Show FPS during streaming
+stream_save_detections: true             # Save detected anomalies to disk
+stream_detection_dir: "./stream_detections/"  # Directory for saved detections
+
