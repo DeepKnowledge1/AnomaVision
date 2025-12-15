@@ -1,93 +1,149 @@
-
 from anomavision.datasets.StreamSource import StreamSource
 
-from typing import Optional, Tuple, Union, List
-
 import cv2
+import threading
+import queue
+import time
 import numpy as np
-import torch
-from torch.utils.data import IterableDataset
-from PIL import Image
+from typing import Optional
 
 
 class VideoSource(StreamSource):
-    def __init__(self, video_path: str, loop: bool = False):
+    """
+    Video file source with internal frame queue and background capture thread.
+
+    - Capture runs in a separate thread
+    - read_frame() consumes from a bounded queue
+    - If queue is full, oldest frame is dropped
+    - Supports optional looping
+    """
+
+    def __init__(
+        self,
+        video_path: str,
+        loop: bool = False,
+        queue_size: int = 5,
+        capture_fps: Optional[float] = None,
+    ):
         """
         Args:
-            video_path: Path to the video file.
-            loop: If True, restart from the beginning when the video ends.
+            video_path: Path to video file
+            loop: Restart video when EOF is reached
+            queue_size: Max number of frames to buffer
+            capture_fps: Optional FPS limit for capture thread
         """
         self.video_path = video_path
         self.loop = loop
-        self.cap: Optional[cv2.VideoCapture] = None
-        self.frame_index: int = 0
-        self.num_frames: Optional[int] = None
+        self.queue_size = queue_size
+        self.capture_fps = capture_fps
 
-    def connect(self):
-        """Open the video file."""
-        if self.cap is not None and self.cap.isOpened():
-            return  # already opened
+        self.cap: Optional[cv2.VideoCapture] = None
+        self.frame_queue: queue.Queue = queue.Queue(maxsize=queue_size)
+
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+        self._connected = False
+
+    # ===================== LIFECYCLE =====================
+
+    def connect(self) -> None:
+        if self._connected:
+            return
 
         self.cap = cv2.VideoCapture(self.video_path)
         if not self.cap.isOpened():
-            if self.cap is not None:
-                self.cap.release()
-                self.cap = None
+            self.cap.release()
+            self.cap = None
             raise RuntimeError(f"Failed to open video: {self.video_path}")
 
-        # Optionally store total number of frames (may be -1 on some codecs)
-        total = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.num_frames = total if total > 0 else None
-        self.frame_index = 0
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._capture_loop,
+            daemon=True,
+        )
+        self._thread.start()
 
-    def _restart_if_looping(self) -> bool:
-        """
-        When loop=True and we reach the end of the video,
-        restart from the first frame. Returns True if restarted,
-        False if not (e.g., loop is False or restart failed).
-        """
-        if not self.loop or self.cap is None:
-            return False
+        self._connected = True
 
-        # Seek back to first frame
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        self.frame_index = 0
-        return True
+    def disconnect(self) -> None:
+        self._stop_event.set()
 
-    def read_frame(self):
-        """
-        Read a single frame from the video.
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None
 
-        Returns:
-            frame_rgb: np.ndarray (H, W, C) in RGB format,
-                       or None if no more frames / read failed.
-        """
-        if self.cap is None or not self.cap.isOpened():
-            return None
-
-        ret, frame_bgr = self.cap.read()
-        if not ret or frame_bgr is None:
-            # End of file or read error
-            if self._restart_if_looping():
-                ret, frame_bgr = self.cap.read()
-                if not ret or frame_bgr is None:
-                    return None
-            else:
-                return None
-
-        self.frame_index += 1
-
-        # OpenCV gives BGR; convert to RGB to match typical PyTorch pipelines
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        return frame_rgb
-
-    def disconnect(self):
-        """Release the video capture."""
         if self.cap is not None:
             if self.cap.isOpened():
                 self.cap.release()
             self.cap = None
 
+        with self.frame_queue.mutex:
+            self.frame_queue.queue.clear()
+
+        self._connected = False
+
     def is_connected(self) -> bool:
-        """Check if the video capture is opened."""
-        return self.cap is not None and self.cap.isOpened()
+        return self._connected and not self._stop_event.is_set()
+
+    # ===================== CAPTURE THREAD =====================
+
+    def _restart_video(self) -> bool:
+        if not self.loop or self.cap is None:
+            return False
+
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        return True
+
+    def _capture_loop(self) -> None:
+        sleep_time = 0.0
+        if self.capture_fps and self.capture_fps > 0:
+            sleep_time = 1.0 / self.capture_fps
+
+        while not self._stop_event.is_set():
+            if self.cap is None or not self.cap.isOpened():
+                break
+
+            ret, frame_bgr = self.cap.read()
+            if not ret or frame_bgr is None:
+                # End of video
+                if self._restart_video():
+                    continue
+                else:
+                    break
+
+            # Convert BGR -> RGB
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
+            # Queue management: drop oldest frame if full
+            if self.frame_queue.full():
+                try:
+                    self.frame_queue.get_nowait()
+                except queue.Empty:
+                    pass
+
+            try:
+                self.frame_queue.put_nowait(frame_rgb)
+            except queue.Full:
+                pass
+
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+        # Stop stream when capture loop ends
+        self._connected = False
+
+    # ===================== CONSUMER =====================
+
+    def read_frame(self):
+        """
+        Returns:
+            np.ndarray (H, W, C) in RGB format,
+            or None if no frame available.
+        """
+        if not self.is_connected():
+            return None
+
+        try:
+            return self.frame_queue.get(timeout=0.5)
+        except queue.Empty:
+            return None

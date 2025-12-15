@@ -311,30 +311,27 @@ def main():
                 )
             else:
                 # Streaming dataset (webcam / video / MQTT / TCP)
-                # Build the same image transform logic used by the normal datasets
-                image_tf = create_image_transform(
+
+                source = StreamSourceFactory.create(config.stream_source)
+                source.connect()
+
+                test_dataset = StreamDataset(
+                    source=source,
                     resize=resize,
                     crop_size=crop_size,
                     normalize=normalize,
                     mean=config.norm_mean,
                     std=config.norm_std,
-                )
-
-                # Create the stream source from config, then wrap it as a dataset
-                source = StreamSourceFactory.create(config.stream_source)
-                test_dataset = StreamDataset(
-                    source,
-                    image_transforms=image_tf,
                     max_frames=config.get("stream_max_frames"),
                 )
 
-            test_dataloader = DataLoader(
-                test_dataset,
-                batch_size=config.batch_size,
-                num_workers=config.num_workers,
-                pin_memory=config.pin_memory,
-                persistent_workers=config.num_workers > 0 and not stream_mode,  # NEW: safer for IterableDataset
-            )
+                test_dataloader = DataLoader(
+                    test_dataset,
+                    batch_size=config.batch_size,
+                    num_workers=0,        # MUST be 0
+                    pin_memory=False,
+                )
+
 
             # Try to log sizes (streaming may not have __len__)
             try:
@@ -613,13 +610,6 @@ def main():
 
     if avg_inference_time > 0:
         logger.info(f"Average inference time:    {avg_inference_time:.2f} ms/batch")
-
-    # Additional useful metrics
-    if batch_count > 0:
-        images_per_batch = total_images / batch_count
-        logger.info(
-            f"Throughput:                {inference_fps * images_per_batch:.1f} images/sec (batch size: {config.batch_size})"
-        )
 
     # Additional useful metrics
     if batch_count > 0:

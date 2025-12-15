@@ -1,22 +1,26 @@
-
-from anomavision.datasets.StreamSource import StreamSource
 from typing import Optional, Tuple, Union, List
 
-import cv2
 import numpy as np
 import torch
-from torch.utils.data import IterableDataset
 from PIL import Image
+from torch.utils.data import IterableDataset
 
-
-
-
+from anomavision.datasets.StreamSource import StreamSource
+from anomavision.utils import (
+    create_image_transform,
+    create_mask_transform,
+)
 
 
 class StreamDataset(IterableDataset):
     """
-    Real-time streaming dataset for any StreamSource (e.g. WebcamSource).
-    Yields (image_tensor, image_np, label, mask).
+    Streaming dataset with preprocessing identical to AnodetDataset.
+
+    Yields:
+        batch: torch.Tensor (C, H, W)
+        image: np.ndarray (H, W, C) RGB
+        image_classification: int
+        mask: torch.Tensor (1, H, W)
     """
 
     def __init__(
@@ -33,54 +37,54 @@ class StreamDataset(IterableDataset):
     ):
         self.source = source
         self.max_frames = max_frames
-        self.image_transforms = image_transforms
-        self.mask_transforms = mask_transforms
-        # resize / crop / normalize args kept for consistency if you plug in your own transforms
+
+        # === Image preprocessing (same logic as AnodetDataset) ===
+        if image_transforms is not None:
+            self.image_transforms = image_transforms
+        else:
+            self.image_transforms = create_image_transform(
+                resize=resize,
+                crop_size=crop_size,
+                normalize=normalize,
+                mean=mean,
+                std=std,
+            )
+
+        # === Mask preprocessing ===
+        if mask_transforms is not None:
+            self.mask_transforms = mask_transforms
+        else:
+            self.mask_transforms = create_mask_transform(
+                resize=resize,
+                crop_size=crop_size,
+            )
 
     def __iter__(self):
-        """
-        Iterate through frames from the stream.
-        Yields:
-            image_tensor: transformed tensor (if transforms are provided)
-            image_np: original numpy RGB frame
-            label: int (default 0)
-            mask: tensor mask (default zeros, shape [1, H, W])
-        """
-        self.source.connect()
         frame_count = 0
 
-        try:
-            while self.source.is_connected():
-                if self.max_frames is not None and frame_count >= self.max_frames:
-                    break
+        while self.source.is_connected():
+            if self.max_frames is not None and frame_count >= self.max_frames:
+                break
 
-                frame = self.source.read_frame()
-                if frame is None:
-                    break
+            frame = self.source.read_frame()
+            if frame is None:
+                continue
 
-                image_np = frame  # np.ndarray (H, W, C), RGB
+            # frame: np.ndarray (H, W, C) RGB
+            image_np = frame
 
-                # Convert to PIL for typical torchvision-style transforms
-                img_pil = Image.fromarray(image_np)
+            # Convert to PIL (same as offline)
+            image_pil = Image.fromarray(image_np)
 
-                if self.image_transforms is not None:
-                    image_tensor = self.image_transforms(img_pil)
-                else:
-                    # Fallback: convert to tensor manually (C, H, W), [0,1]
-                    image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).float() / 255.0
+            # Apply preprocessing
+            batch = self.image_transforms(image_pil)
 
-                # Default label & mask for streaming (no anomaly / no mask)
-                label = 0
-                _, H, W = image_tensor.shape
-                if self.mask_transforms is not None:
-                    # If you later have masks, use mask_transforms here
-                    mask = self.mask_transforms(Image.fromarray(np.zeros((H, W), dtype=np.uint8)))
-                else:
-                    mask = torch.zeros((1, H, W), dtype=torch.float32)
+            # Streaming = no GT anomaly
+            image_classification = 0
 
-                frame_count += 1
-                yield image_tensor, image_np, label, mask
+            # Empty mask (same shape logic as AnodetDataset)
+            _, H, W = batch.shape
+            mask = torch.zeros((1, H, W), dtype=torch.float32)
 
-        finally:
-            self.source.disconnect()
-
+            frame_count += 1
+            yield batch, image_np, image_classification, mask
