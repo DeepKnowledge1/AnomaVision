@@ -22,6 +22,9 @@ from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
 
 import anomavision
+from anomavision.datasets.StreamDataset import StreamDataset
+from anomavision.datasets.StreamSourceFactory import StreamSourceFactory
+
 from anomavision.config import _shape, load_config
 from anomavision.general import Profiler, determine_device, increment_path
 from anomavision.inference.model.wrapper import ModelWrapper
@@ -31,6 +34,8 @@ from anomavision.utils import (
     get_logger,
     merge_config,
     setup_logging,
+    create_image_transform,
+
 )
 
 matplotlib.use("Agg")  # non-interactive, faster PNG writing
@@ -67,7 +72,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.onnx",
+        default="padim_model.pt",
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
@@ -177,6 +182,8 @@ def main():
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
     logger = get_logger("anomavision.detect")  # Force it into anomavision hierarchy
 
+    stream_mode = config.get("stream_mode", False)  # NEW
+    logger.info(f"Streaming mode: {stream_mode}")
     # Parse visualization color
     try:
         viz_color = tuple(map(int, config.viz_color.split(",")))
@@ -209,8 +216,8 @@ def main():
         )
 
     # Validation
-    if not config.get("img_path"):
-        logger.error("img_path is required (via --img_path or config)")
+    if not config.get("img_path") and not stream_mode:  # NEW
+        logger.error("img_path is required (via --img_path or config) when stream_mode is False")
         return 1
 
     if not config.get("model"):
@@ -233,11 +240,20 @@ def main():
 
     # AnomaVision setup phase
     with anomavision_profilers["setup"]:
-        DATASET_PATH = os.path.realpath(config.img_path)
+        if not stream_mode:  # NEW
+            DATASET_PATH = os.path.realpath(config.img_path)
+            logger.info(f"AnomaVision dataset path: {DATASET_PATH}")
+        else:
+            DATASET_PATH = None
+            src = config.get("stream_source", {})
+            logger.info(
+                f"AnomaVision streaming mode enabled with source type="
+                f"{src.get('type', 'unknown')}"
+            )
+
         MODEL_DATA_PATH = os.path.realpath(config.model_data_path)
         device_str = determine_device(config.device)
         logger.info(f"AnomaVision selected device: {device_str}")
-        logger.info(f"AnomaVision dataset path: {DATASET_PATH}")
         logger.info(f"AnomaVision model data path: {MODEL_DATA_PATH}")
 
         if device_str == "cuda" and torch.cuda.is_available():
@@ -281,37 +297,80 @@ def main():
 
     # AnomaVision data loading phase
     with anomavision_profilers["data_loading"]:
-        logger.info("Creating AnomaVision dataset and dataloader")
+        logger.info("Creating AnomaVision dataset / dataloader")
         try:
-            # Create dataset with configurable image processing parameters
-            test_dataset = anomavision.AnodetDataset(
-                DATASET_PATH,
-                resize=resize,
-                crop_size=crop_size,
-                normalize=normalize,
-                mean=config.norm_mean,
-                std=config.norm_std,
-            )
+            if not stream_mode:
+                # Offline dataset
+                test_dataset = anomavision.AnodetDataset(
+                    DATASET_PATH,
+                    resize=resize,
+                    crop_size=crop_size,
+                    normalize=normalize,
+                    mean=config.norm_mean,
+                    std=config.norm_std,
+                )
+            else:
+                # Streaming dataset (webcam / video / MQTT / TCP)
+                # Build the same image transform logic used by the normal datasets
+                image_tf = create_image_transform(
+                    resize=resize,
+                    crop_size=crop_size,
+                    normalize=normalize,
+                    mean=config.norm_mean,
+                    std=config.norm_std,
+                )
+
+                # Create the stream source from config, then wrap it as a dataset
+                source = StreamSourceFactory.create(config.stream_source)
+                test_dataset = StreamDataset(
+                    source,
+                    image_transforms=image_tf,
+                    max_frames=config.get("stream_max_frames"),
+                )
+
             test_dataloader = DataLoader(
                 test_dataset,
                 batch_size=config.batch_size,
                 num_workers=config.num_workers,
                 pin_memory=config.pin_memory,
-                persistent_workers=config.num_workers > 0,
+                persistent_workers=config.num_workers > 0 and not stream_mode,  # NEW: safer for IterableDataset
             )
-            logger.info(
-                f"AnomaVision dataset created successfully. Total images: {len(test_dataset)}"
-            )
-            logger.info(
-                f"AnomaVision batch size: {config.get('batch_size', 1)}, Number of batches: {len(test_dataloader)}"
-            )
+
+            # Try to log sizes (streaming may not have __len__)
+            try:
+                total_images = len(test_dataset)  # NEW
+                logger.info(
+                    f"AnomaVision dataset created successfully. Total images: {total_images}"
+                )
+            except TypeError:
+                total_images = None  # unknown / streaming
+                logger.info("AnomaVision streaming dataset created (unknown length).")
+
+            try:
+                num_batches = len(test_dataloader)  # NEW
+                logger.info(
+                    f"AnomaVision batch size: {config.get('batch_size', 1)}, "
+                    f"Number of batches: {num_batches}"
+                )
+            except TypeError:
+                num_batches = None
+                logger.info(
+                    f"AnomaVision batch size: {config.get('batch_size', 1)}, "
+                    "Number of batches: unknown (streaming)."
+                )
+
         except Exception as e:
             logger.error(f"Failed to create AnomaVision dataset/dataloader: {e}")
             raise
 
-    logger.info(
-        f"Processing {len(test_dataset)} images using AnomaVision {model_type.value.upper()}"
-    )
+    if not stream_mode and total_images is not None:
+        logger.info(
+            f"Processing {total_images} images using AnomaVision {model_type.value.upper()}"
+        )
+    else:
+        logger.info(
+            f"Processing streaming input using AnomaVision {model_type.value.upper()}"
+        )
 
     # ---- Warm-up
     try:
@@ -335,13 +394,21 @@ def main():
 
     # AnomaVision batch processing pipeline
     batch_count = 0
+    image_counter = 0 # Track number of images for streaming stats
     try:
         for batch_idx, (batch, images, _, _) in enumerate(test_dataloader):
 
             batch_count += 1
-            logger.debug(
-                f"Processing AnomaVision batch {batch_idx + 1}/{len(test_dataloader)}"
-            )
+            image_counter += batch.shape[0]  # NEW: track images seen
+
+            if not stream_mode:
+                logger.debug(
+                    f"Processing AnomaVision batch {batch_idx + 1}/{len(test_dataloader)}"
+                )
+            else:
+                logger.debug(
+                    f"Processing AnomaVision batch {batch_idx + 1} (streaming)"
+                )
 
             # AnomaVision core inference phase
             if device_str == "cuda":
@@ -528,8 +595,14 @@ def main():
     logger.info("=" * 60)
 
     # AnomaVision performance metrics (focusing on meaningful metrics)
-    total_images = len(test_dataset)
-    inference_fps = anomavision_profilers["inference"].get_fps(total_images)
+
+    # AnomaVision performance metrics (focusing on meaningful metrics)
+    try:
+        total_images_final = len(test_dataset) if not stream_mode else image_counter
+    except TypeError:
+        total_images_final = image_counter
+
+    inference_fps = anomavision_profilers["inference"].get_fps(total_images_final)
     avg_inference_time = anomavision_profilers["inference"].get_avg_time_ms(batch_count)
 
     logger.info("=" * 60)
@@ -544,6 +617,13 @@ def main():
     # Additional useful metrics
     if batch_count > 0:
         images_per_batch = total_images / batch_count
+        logger.info(
+            f"Throughput:                {inference_fps * images_per_batch:.1f} images/sec (batch size: {config.batch_size})"
+        )
+
+    # Additional useful metrics
+    if batch_count > 0:
+        images_per_batch = total_images_final / batch_count
         logger.info(
             f"Throughput:                {inference_fps * images_per_batch:.1f} images/sec (batch size: {config.batch_size})"
         )
