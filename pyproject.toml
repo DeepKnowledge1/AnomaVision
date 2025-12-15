@@ -39,6 +39,7 @@ torchaudio = ">=2.4.0"
 # GPU (optional, via extras)
 onnxruntime-gpu = { version = ">=1.16.0", optional = true }
 tqdm = "^4.67.1"
+ruamel-yaml = "^0.18.16"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.0.2"
