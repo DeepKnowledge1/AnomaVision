@@ -11,7 +11,7 @@ import requests
 import streamlit as st
 from PIL import Image
 
-# streamlit run src/streamlit_app.py -- --port 8080
+# streamlit run apps/ui/streamlit_app.py -- --port 8080
 
 
 # -----------------------------

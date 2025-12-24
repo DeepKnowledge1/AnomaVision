@@ -379,4 +379,5 @@ if __name__ == "__main__":
     # Alternative: Run directly without reload
     # uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
 
-    # To run from command line: uvicorn fastapi_app:app --host 0.0.0.0 --port 8000
+    # To run from command line: uvicorn apps/api/fastapi_app.py:app --host 0.0.0.0 --port 8000
+    # or  python apps/api/fastapi_app.py --host 0.0.0.0 --port 8000
