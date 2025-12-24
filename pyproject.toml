@@ -17,7 +17,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.13"
+python = ">=3.10,<3.13"
 matplotlib = "3.8.3"
 numpy = "1.26.4"
 openvino-dev = ">=2024.0"
@@ -40,6 +40,14 @@ torchaudio = ">=2.4.0"
 onnxruntime-gpu = { version = ">=1.16.0", optional = true }
 tqdm = "^4.67.1"
 ruamel-yaml = "^0.18.16"
+
+
+# API and Inference Serving
+fastapi = "^0.127.0"                     # REST API for model serving
+uvicorn = "^0.30.0"  # ASGI server for FastAPI
+pydantic = "^2.12.5"
+python-multipart = "0.0.20"
+streamlit = "^1.52.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.0.2"
