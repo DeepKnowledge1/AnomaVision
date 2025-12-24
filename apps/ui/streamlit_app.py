@@ -643,15 +643,22 @@ def run_inference_on_current():
                     "_error": f"Invalid JSON response: {str(e)}",
                     "_filename": current_file.name,
                 }
+
         else:
-            error_msg = (
-                "Connection error" if resp is None else f"HTTP {resp.status_code}"
-            )
+            if resp is None:
+                error_msg = "Connection error"
+            else:
+                # Try to show FastAPI's real error detail
+                try:
+                    j = resp.json()
+                    error_msg = j.get("detail", resp.text)
+                except Exception:
+                    error_msg = resp.text or f"HTTP {resp.status_code}"
+
             st.session_state.results_cache[cache_key] = {
                 "_error": error_msg,
-                "_filename": current_file.name,
+                "_filename": current_file.name
             }
-
 
 # Run inference on current image
 if st.session_state.image_files and api_online:
