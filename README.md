@@ -29,13 +29,48 @@
 * 📦 **Multi-backend exports**: PyTorch, ONNX, TorchScript, OpenVINO, TorchRT,INT8 Quantization
 * 🎨 **Visualizations**: anomaly heatmaps, bounding boxes, ROC curves
 * 🖥️ **Unified Python + CLI workflows**
-* 🌍 **Edge-first design** with compact `.pth` models
-* ⚡**C++ inference** runtime for edge deployment
-
-
+* 🌐 **Edge-first design** with compact `.pth` models
+* ⚡ **C++ inference** runtime for edge deployment
+* 🎯 **Interactive Streamlit Demo** — Upload images and see real-time anomaly detection instantly!**New!**
+* 🚀 **FastAPI Backend** — Production-ready REST API for seamless integration **New!**
 
 ---
 
+# 🎨 AnomaVision — Real-Time, Explainable Visual Anomaly Detection!
+
+**Experience AnomaVision in action with our Streamlit web interface!**
+
+### 🌟 Demo Highlights
+
+<div align="left">
+  <img src="docs/images/streamlit.png" alt="AnomaVision Streamlit Demo Interface" width="50%">
+  <p><em>Real-time anomaly detection with explainable heatmaps and interactive controls</em></p>
+</div>
+
+* ⚡ **Real-time anomaly detection** — Upload images and get instant results
+* 🎯 **Explainable AI** — Visual heatmaps show exactly where anomalies occur
+* 📊 **Interactive threshold control** — Adjust sensitivity on the fly
+* 📁 **Batch processing** — Upload multiple images from folders
+* 🖼️ **Side-by-side visualization** — Compare original, heatmap, and boundary images
+* 💾 **Export results** — Download JSON reports for further analysis
+* 🎮 **No coding required** — Intuitive interface for instant testing
+
+### 🚀 Quick Start Demo
+
+```bash
+# 1. Start the FastAPI backend
+uvicorn apps.api.fastapi_app:app --host 0.0.0.0 --port 8000
+
+# 2. Launch the Streamlit demo (in a new terminal)
+streamlit run apps/ui/streamlit_app.py -- --port 8000
+```
+
+Then open your browser to `http://localhost:8501` and start detecting anomalies!
+
+
+> 💡 **Perfect for**: Quick testing, demonstrations, onboarding new users, and showcasing your anomaly detection models!
+
+---
 
 <h2 align="left" style="color:red;">🆚 Why AnomaVision over Anomalib?</h2>
 
@@ -44,10 +79,11 @@
 * 🎯 **Higher AUROC** across most classes on **both MVTec AD and Visa datasets**
 * 🌍 **Edge-first design** → optimized for ONNX, TorchScript, and OpenVINO
 * 🛡️ **Production-ready** with clean API, CLI, and deployment options
+* 🎨 **Interactive demo** — Instant visual feedback without writing code
 
 ### ⚡ **Speed Comparison (CPU Mode)**
 
-| Metric | 🟢 **AnomaVision** | 🔵 **Anomalib** | 🔺 **Difference** | 🏆 **Winner** |
+| Metric | 🟢 **AnomaVision** | 🔵 **Anomalib** | 📊 **Difference** | 🏆 **Winner** |
 |:--|:--:|:--:|:--:|:--:|
 | 🧮 **Training Time (s)** | **8.38** | 13.07 | **-35.9%** | 🟢 AV |
 | 🚀 **Inference FPS** | **43.41** | 13.03 | **+233%** | 🟢 AV |
@@ -61,7 +97,7 @@
 
 ### ⚡ **Speed Comparison (CUDA Mode)**
 
-| Metric | 🟢 **AnomaVision** | 🔵 **Anomalib** | 🔺 **Difference** | 🏆 **Winner** |
+| Metric | 🟢 **AnomaVision** | 🔵 **Anomalib** | 📊 **Difference** | 🏆 **Winner** |
 |:--|:--:|:--:|:--:|:--:|
 | 🧮 **Training Time (s)** | **8.38** | 13.07 | **-35.9%** | 🟢 AV |
 | 🚀 **Inference FPS** | **547.46** | 355.72 | **+53.9%** | 🟢 AV |
@@ -79,14 +115,27 @@
 
 ## 🖥️ C++ Inference with ONNX
 
-AnomaVision isn’t just Python 🚀 — it also provides a **C++ implementation** for **ONNX Runtime + OpenCV**.
+AnomaVision isn't just Python 🚀 — it also provides a **C++ implementation** for **ONNX Runtime + OpenCV**.
 
 * 🖼️ **Full pipeline**: preprocessing → inference → postprocessing → visualization
 * 📦 **Modular design** (Config, Preprocessor, ONNXModel, Postprocessor, Visualizer, App)
-* 🌍 Perfect for **edge devices** and **production environments** without Python
+* 🌐 Perfect for **edge devices** and **production environments** without Python
 
 👉 See full guide: [Quickstart — C++ Inference](docs/cpp/README.md)
 
+---
+
+## 🚀 Complete Deployment Options
+
+AnomaVision provides multiple deployment paths to fit your needs:
+
+| Deployment Method | Best For | Key Benefits |
+|:------------------|:---------|:-------------|
+| 🎨 **Streamlit Demo** | Demos, testing, onboarding | Zero-code UI, instant feedback |
+| 🔌 **FastAPI Backend** | Production APIs, microservices | REST endpoints, scalable |
+| 🖥️ **C++ Runtime** | Edge devices, embedded systems | No Python dependency, ultra-fast |
+| 💻 **Python CLI** | Batch processing, automation | Scriptable, configurable |
+| 📦 **PyPI Package** | Custom integration | Import as library |
 
 ---
 
@@ -96,20 +145,20 @@ AnomaVision isn’t just Python 🚀 — it also provides a **C++ implementation
 
 * [Installation](docs/installation.md)
 * [Quick Start](docs/quickstart.md)
+* [Streamlit Demo Guide](docs/streamlit_demo.md) ⭐ **New!**
+* [FastAPI Backend Setup](docs/fastapi_backend.md) ⭐ **New!**
 * [CLI Reference](docs/cli.md)
 * [API Reference](docs/api.md)
 * [Configuration Guide](docs/config.md)
 * [Benchmarks](docs/benchmark.md)
 * [Troubleshooting & FAQ](docs/troubleshooting.md) → Common issues and fixes
 * [Contributing](docs/contributing.md)
-*
 
 ---
 
 ## Installation
 
-Quick Install:
-using [Pyenv and Poetry](https://youtu.be/ocVk_B-ivHQ)
+Quick Install using [Pyenv and Poetry](https://youtu.be/ocVk_B-ivHQ):
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
@@ -123,6 +172,7 @@ pip install AnomaVision
 ```
 
 ➡ For detailed installation options, see [Installation Guide](docs/installation.md).
+---
 
 ## ⚡ Quick Example
 
@@ -156,6 +206,23 @@ Export to ONNX:
 python export.py --config export_config.yml
 ```
 
+### 🔌 API Usage
+
+```python
+import requests
+
+# Predict anomaly
+with open("test_image.jpg", "rb") as f:
+    response = requests.post(
+        "http://localhost:8000/predict",
+        files={"file": f},
+        params={"include_visualizations": True}
+    )
+    result = response.json()
+    print(f"Anomaly Score: {result['anomaly_score']}")
+    print(f"Is Anomaly: {result['is_anomaly']}")
+```
+
 ➡ For more examples, see [Quick Start](docs/quickstart.md).
 
 ---
@@ -175,6 +242,19 @@ python export.py --config export_config.yml
 * **FPS**: AV 45 ↑ vs AL 13
 
 📊 Full tables & plots → [Benchmarks](docs/benchmark.md)
+
+---
+
+## 🎯 Use Cases
+
+AnomaVision is perfect for:
+
+* 🏭 **Manufacturing Quality Control** — Detect defects in real-time on production lines
+* 🔬 **Medical Imaging** — Identify anomalies in X-rays, MRIs, and microscopy
+* 🏗️ **Infrastructure Inspection** — Spot cracks, corrosion, and damage in structures
+* 📱 **PCB Inspection** — Find soldering defects and component issues
+* 🌾 **Agricultural Monitoring** — Detect plant diseases and crop anomalies
+* 🚗 **Automotive QA** — Identify paint defects and assembly issues
 
 ---
 
