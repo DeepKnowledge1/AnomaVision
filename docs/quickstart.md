@@ -1,7 +1,6 @@
-
 # 🚀 Quick Start
 
-This guide shows how to **train, detect, evaluate, and export** with AnomaVision in just a few steps.
+This guide shows how to **train, detect, evaluate, export, and stream** with AnomaVision in just a few steps.
 
 ---
 
@@ -28,8 +27,6 @@ dataset/
 ```
 
 ---
-
-
 
 ## 2. Train a Model
 
@@ -84,19 +81,17 @@ python train.py --config config.yml
 
 * Train PaDiM on `dataset/bottle/train/good`
 * Save:
-
   * Full model → `padim_model.pt`
   * Compact stats-only model → `padim_model.pth`
   * Config snapshot → `config.yml`
 
 ---
 
-
----
-
 ## 3. Run Detection
 
-### Option A — CLI Arguments
+### Offline Detection (Static Images)
+
+#### Option A — CLI Arguments
 
 ```bash
 python detect.py \
@@ -105,6 +100,7 @@ python detect.py \
   --model padim_model.onnx \
   --device auto \
   --batch_size 8 \
+  --thresh 13.0 \
   --enable_visualization \
   --save_visualizations \
   --viz_output_dir ./results/
@@ -112,16 +108,18 @@ python detect.py \
 
 ---
 
-### Option B — Config File
+#### Option B — Config File
 
-Create a **`config.yml`** or use the one saved in the model’s directory.:
+Create a **`config.yml`** or use the one saved in the model's directory:
 
 ```yaml
+stream_mode: false
 img_path: ./dataset/bottle/test
 model_data_path: ./distributions/anomav_exp
 model: padim_model.onnx
 device: auto
 batch_size: 8
+thresh: 13.0
 enable_visualization: true
 save_visualizations: true
 viz_output_dir: ./results/
@@ -139,12 +137,96 @@ python detect.py --config config.yml
 
 ---
 
-➡ Both options will:
+### Real-Time Streaming Detection
 
-* Run inference on the **test dataset**
+AnomaVision supports multiple streaming sources: **webcam, video files, MQTT, and TCP**.
+
+#### Webcam Streaming
+
+```yaml
+stream_mode: true
+stream_source:
+  type: webcam
+  camera_id: 0
+
+model_data_path: ./distributions/anomav_exp
+model: padim_model.onnx
+batch_size: 1
+thresh: 13.0
+enable_visualization: true
+save_visualizations: true
+stream_max_frames: null  # null = infinite
+stream_display_fps: true
+stream_save_detections: true
+stream_detection_dir: ./stream_detections/
+```
+
+#### Video File Streaming
+
+```yaml
+stream_mode: true
+stream_source:
+  type: video
+  video_path: path/to/video.mp4
+  loop: false
+
+model_data_path: ./distributions/anomav_exp
+model: padim_model.onnx
+batch_size: 1
+thresh: 13.0
+```
+
+#### MQTT Streaming
+
+```yaml
+stream_mode: true
+stream_source:
+  type: mqtt
+  broker: localhost
+  port: 1883
+  topic: camera/frames
+  client_id: anomavision_client
+  keepalive: 60
+  qos: 0
+  max_queue_size: 10
+  read_timeout: 1.0
+
+model_data_path: ./distributions/anomav_exp
+model: padim_model.onnx
+batch_size: 1
+```
+
+#### TCP Streaming
+
+```yaml
+stream_mode: true
+stream_source:
+  type: tcp
+  host: 192.168.1.100
+  port: 8080
+  recv_timeout: 1.0
+  header_size: 4
+  max_message_size: 10485760
+
+model_data_path: ./distributions/anomav_exp
+model: padim_model.onnx
+batch_size: 1
+```
+
+Run streaming detection:
+
+```bash
+python detect.py --config config.yml
+```
+
+---
+
+➡ Detection will:
+
+* Run inference on the **test dataset** or **streaming source**
 * Log anomaly scores and classifications
-* Save **visualization images** (boundaries, heatmaps, highlighted anomalies) in `./visualization/`
-
+* Save **visualization images** (boundaries, heatmaps, highlighted anomalies) in `./visualizations/`
+* For streaming: continuously process frames until interrupted (Ctrl+C) or max frames reached
 
 ---
 
@@ -168,7 +250,7 @@ python eval.py \
 
 ### Option B — Config File
 
-Create a **`config.yml`** or use the one saved in the model’s directory.:
+Create a **`config.yml`** or use the one saved in the model's directory:
 
 ```yaml
 dataset_path: ./dataset
@@ -183,6 +265,7 @@ log_level: INFO
 normalize: true
 resize: [256, 192]
 crop_size: [224, 224]
+memory_efficient: true
 ```
 
 Run:
@@ -223,7 +306,7 @@ python export.py \
 
 ### Option B — Config File
 
-Create a **`config.yml`** or use the one saved in the model’s directory.:
+Create a **`config.yml`** or use the one saved in the model's directory:
 
 ```yaml
 model_data_path: ./distributions/anomav_exp
@@ -253,5 +336,56 @@ python export.py --config config.yml
 * Export the model in the selected format
 * Save artifacts in `./distributions/anomav_exp`
 * Optionally produce **quantized ONNX models** (dynamic or static INT8)
+
+---
+
+## Key Configuration Parameters
+
+### Common Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `batch_size` | Batch size for processing | 2 |
+| `device` | Device to run on | auto |
+| `thresh` | Anomaly detection threshold | 13.0 |
+| `normalize` | Apply normalization | true |
+| `resize` | Image resize dimensions [W, H] | [224, 224] |
+| `crop_size` | Crop dimensions [W, H] | null |
+
+### Streaming Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `stream_mode` | Enable streaming mode | false |
+| `stream_max_frames` | Max frames to process | null (infinite) |
+| `stream_display_fps` | Show FPS counter | true |
+| `stream_save_detections` | Save anomalies | true |
+| `stream_detection_dir` | Output directory | ./stream_detections/ |
+
+### Visualization Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `enable_visualization` | Enable visualizations | false |
+| `save_visualizations` | Save to disk | false |
+| `viz_alpha` | Heatmap transparency | 0.5 |
+| `viz_padding` | Border padding | 40 |
+| `viz_color` | Highlight color (RGB) | 128,0,128 |
+
+---
+
+## Important Notes
+
+⚠️ **Streaming Mode Requirements:**
+- `num_workers` must be 0 for streaming sources
+- `pin_memory` must be false for streaming sources
+- Batch size should typically be 1 for real-time processing
+- The dataloader cannot prefetch for streaming sources
+
+⚠️ **Performance Tips:**
+- Use ONNX or TensorRT models for faster inference
+- Enable GPU acceleration with `device: cuda`
+- Adjust batch size based on available memory
+- Use FP16 precision for better performance on GPUs
 
 ---
