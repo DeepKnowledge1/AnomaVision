@@ -309,6 +309,10 @@ def main():
                     mean=config.norm_mean,
                     std=config.norm_std,
                 )
+                # Offline can use workers + pin_memory
+                num_workers = int(config.get("num_workers", 0))
+                pin_memory = bool(config.get("pin_memory", False))
+
             else:
                 # Streaming dataset (webcam / video / MQTT / TCP)
 
@@ -324,13 +328,17 @@ def main():
                     std=config.norm_std,
                     max_frames=config.get("stream_max_frames"),
                 )
+                # Streaming MUST be single-process iteration
+                num_workers = 0
+                pin_memory = False
 
-                test_dataloader = DataLoader(
-                    test_dataset,
-                    batch_size=config.batch_size,
-                    num_workers=0,        # MUST be 0
-                    pin_memory=False,
-                )
+
+            test_dataloader = DataLoader(
+                test_dataset,
+                batch_size=config.batch_size,
+                num_workers=num_workers,        # MUST be 0
+                pin_memory=pin_memory,
+            )
 
 
             # Try to log sizes (streaming may not have __len__)
