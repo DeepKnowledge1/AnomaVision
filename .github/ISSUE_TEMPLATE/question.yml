@@ -1,0 +1,100 @@
+# AnomaVision 🔍 MIT License - https://github.com/DeepKnowledge1/AnomaVision
+
+name: ❓ Question
+description: Ask an AnomaVision question
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for asking an AnomaVision ❓ Question!
+
+  - type: checkboxes
+    attributes:
+      label: Search before asking
+      description: Please search existing resources to see if your question has already been answered
+      options:
+        - label: I have searched the [AnomaVision issues](https://github.com/DeepKnowledge1/AnomaVision/issues), [discussions](https://github.com/DeepKnowledge1/AnomaVision/discussions), and documentation and found no similar questions
+          required: true
+
+  - type: dropdown
+    attributes:
+      label: Question Category
+      description: What type of question is this?
+      options:
+        - Installation & Setup
+        - Training & Model Configuration
+        - Data Preparation & Preprocessing
+        - Anomaly Detection Methods
+        - Performance & Optimization
+        - Export & Deployment
+        - Integration & APIs
+        - Troubleshooting & Errors
+        - Best Practices & Recommendations
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Question
+      description: What would you like to know about AnomaVision?
+      placeholder: |
+        **Your Question:**
+        Be as specific as possible about what you're trying to achieve or understand.
+
+        **Context:**
+        - What are you working on?
+        - What have you tried so far?
+        - What results are you getting vs. what you expected?
+
+        💡 Include screenshots, code snippets, error messages, or logs for faster help!
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Environment
+      description: Your setup details (if relevant to the question)
+      placeholder: |
+        - AnomaVision version:
+        - OS:
+        - Python version:
+        - GPU/CPU:
+        - Dataset size/type:
+      value: |
+        - AnomaVision version:
+        - OS:
+        - Python version:
+        - GPU/CPU:
+        - Dataset size/type:
+
+  - type: textarea
+    attributes:
+      label: Code Example
+      description: Relevant code you're working with (if applicable)
+      placeholder: |
+        ```python
+        # Your code here
+        ```
+
+  - type: textarea
+    attributes:
+      label: Expected vs Actual Behavior
+      description: What did you expect vs what actually happened? (if applicable)
+      placeholder: |
+        **Expected:** What you thought would happen
+
+        **Actual:** What actually happened
+
+        **Error messages:** Any error messages or unexpected outputs
+
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Any other information that might help answer your question
+      placeholder: |
+        - Links to similar issues or discussions
+        - Screenshots or visualizations
+        - Relevant research papers or methods you're referencing
+        - Any other details that might be helpful

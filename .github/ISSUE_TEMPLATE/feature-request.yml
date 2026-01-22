@@ -1,0 +1,107 @@
+# AnomaVision 🔍 MIT License - https://github.com/DeepKnowledge1/AnomaVision
+
+name: 🚀 Feature Request
+description: Suggest an AnomaVision enhancement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting an AnomaVision 🚀 Feature Request!
+
+  - type: checkboxes
+    attributes:
+      label: Search before asking
+      description: Please search existing issues to avoid duplicates
+      options:
+        - label: I have searched the [AnomaVision issues](https://github.com/DeepKnowledge1/AnomaVision/issues) and found no similar feature requests
+          required: true
+
+  - type: dropdown
+    attributes:
+      label: Feature Category
+      description: Select the area where this feature would apply
+      options:
+        - Anomaly Detection Algorithms
+        - Training & Optimization
+        - Data Processing & Preprocessing
+        - Visualization & Reporting
+        - Model Export & Deployment
+        - Performance & Speed
+        - Integration & APIs
+        - Documentation & Examples
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Feature Description
+      description: Clearly describe the feature you'd like to see
+      placeholder: |
+        **What:** Brief summary of the feature
+
+        **Why:** What problem does this solve or what improvement does it provide?
+
+        **How:** Any ideas on implementation approach (optional)
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Use Case & Benefits
+      description: Describe how this feature would be used and who would benefit
+      placeholder: |
+        **Target Users:** Who would use this feature?
+
+        **Use Case:** Specific scenarios where this would be helpful
+
+        **Expected Benefits:** How would this improve AnomaVision?
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Proposed Solution
+      description: Describe your preferred solution or implementation approach
+      placeholder: |
+        If you have ideas about how this could be implemented, please share them here.
+        Include any relevant:
+        - Technical approaches
+        - Similar features in other tools
+        - Mockups or examples
+
+  - type: textarea
+    attributes:
+      label: Alternatives Considered
+      description: Describe alternative solutions or workarounds you've considered
+      placeholder: |
+        Have you found any workarounds? Are there alternative approaches that might also work?
+
+  - type: dropdown
+    attributes:
+      label: Priority
+      description: How important is this feature for your use case?
+      options:
+        - Low - Nice to have
+        - Medium - Would improve workflow
+        - High - Blocking current work
+        - Critical - Essential for production use
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Any other relevant information, screenshots, or references
+      placeholder: |
+        Add any other context, screenshots, links, or examples that help explain the feature request.
+
+  - type: checkboxes
+    attributes:
+      label: Contribution
+      description: Would you like to help implement this feature?
+      options:
+        - label: I'm willing to submit a PR to implement this feature
+        - label: I can help with testing and feedback
+        - label: I can provide domain expertise or requirements

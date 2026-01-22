@@ -1,0 +1,94 @@
+name: 🐛 Bug Report
+description: Report issues with AnomaVision
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the sections below to help us resolve the issue quickly.
+
+  - type: checkboxes
+    attributes:
+      label: Search before asking
+      description: Please search existing issues to avoid duplicates
+      options:
+        - label: I have searched the [AnomaVision issues](https://github.com/DeepKnowledge1/AnomaVision/issues) and found no similar bug report
+          required: true
+
+  - type: dropdown
+    attributes:
+      label: Component
+      description: Select the component where the bug occurs
+      multiple: true
+      options:
+        - Training
+        - Validation
+        - Detection
+        - Export
+        - Integrations
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Bug Description
+      description: Describe the bug and provide error messages, logs, or screenshots
+      placeholder: |
+        **What happened:**
+
+        **Expected behavior:**
+
+        **Error messages/logs:**
+        ```
+        Paste error logs here
+        ```
+
+        💡 Include screenshots, stack traces, and detailed error messages for faster resolution
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Environment
+      description: Specify your environment details
+      placeholder: |
+        - AnomaVision version:
+        - OS:
+        - Python version:
+        - GPU/CPU:
+        - Dependencies:
+      value: |
+        - AnomaVision version:
+        - OS:
+        - Python version:
+        - GPU/CPU:
+        - Dependencies:
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Minimal Reproducible Example
+      description: Provide code that reproduces the issue
+      placeholder: |
+        ```python
+        # Minimal code to reproduce the bug
+        import anomavision
+
+        # Your reproduction code here
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Any other relevant information, workarounds, or related issues
+
+  - type: checkboxes
+    attributes:
+      label: Contribution
+      description: Would you like to contribute a fix?
+      options:
+        - label: I'm willing to submit a PR to fix this issue

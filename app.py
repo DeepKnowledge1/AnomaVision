@@ -1,14 +1,16 @@
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-import torch
-import numpy as np
-import cv2
-from PIL import Image
-import matplotlib.pyplot as plt
 from io import BytesIO
-import anodet
-from anodet import classification, visualization, to_batch
+
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from fastapi import FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, StreamingResponse
+from PIL import Image
+
+import anomavision
+from anomavision import classification, to_batch, visualization
 
 THRESH = 13
 MODEL_PATH = "./distributions/padim_model.pt"
@@ -25,6 +27,7 @@ app.add_middleware(
 
 # Load model once at startup
 model = torch.load(MODEL_PATH)
+
 
 @app.get("/", response_class=HTMLResponse)
 def index():
@@ -73,6 +76,7 @@ def index():
     </html>
     """
 
+
 @app.post("/process")
 async def process_image(file: UploadFile = File(...)):
     contents = await file.read()
@@ -82,7 +86,7 @@ async def process_image(file: UploadFile = File(...)):
     np_image = np.array(image)
 
     # Preprocess and run inference
-    batch = to_batch([np_image], anodet.standard_image_transform, torch.device("cpu"))
+    batch = to_batch([np_image], anomavision.standard_image_transform, torch.device("cpu"))
     image_scores, score_maps = model.predict(batch)
 
     # Postprocess
@@ -111,7 +115,7 @@ async def process_image(file: UploadFile = File(...)):
     axs[3].set_title("Highlighted")
 
     for ax in axs:
-        ax.axis('off')
+        ax.axis("off")
 
     # Convert figure to PNG
     buf = BytesIO()
