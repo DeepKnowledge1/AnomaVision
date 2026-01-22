@@ -19,7 +19,6 @@ from anomavision.inference.modelType import ModelType
 
 matplotlib.use("Agg")  # non-interactive backend
 
-
 # -----------------------------
 # Globals / Config
 # -----------------------------

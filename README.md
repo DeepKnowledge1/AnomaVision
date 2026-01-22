@@ -1,6 +1,7 @@
 <img src="docs/images/banner.png" width="100%" alt="AnomaVision banner"/>
 
 # AnomaVision: Edge-Ready Visual Anomaly Detection
+AnomaVision is a production-ready **visual anomaly detection framework** built on **PaDiM** with **real-time inference (CPU/GPU)** and multiple deployment backends like **PyTorch, ONNX, and TensorRT**.
 
 <!-- Row 1: Language + Frameworks -->
 [![Python 3.9–3.12](https://img.shields.io/badge/python-3.9–3.12-blue.svg)](https://www.python.org/)
