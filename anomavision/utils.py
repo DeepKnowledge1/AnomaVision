@@ -691,8 +691,6 @@ def yaml_save(file="data.yaml", data={}):
     with open(file, "w") as yaml_file:
         yaml.dump(config_dict, yaml_file, default_flow_style=False)
 
-from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap
 
 def _argparse_help_map(parser) -> dict:
     """Return {dest: help_text} from an argparse.ArgumentParser."""
@@ -709,28 +707,6 @@ def _argparse_help_map(parser) -> dict:
         # Clean trailing punctuation a bit (optional)
         help_map[dest] = str(help_text).strip()
     return help_map
-
-
-def save_args_to_yaml_auto_comments(config: dict, output_path: str, parser, comment_col: int = 40):
-    """Dump config to YAML with inline comments auto-derived from argparse help."""
-    config = easydict_to_dict(config)
-
-    yaml = YAML()
-    yaml.default_flow_style = False
-    yaml.indent(mapping=2, sequence=4, offset=2)
-    yaml.preserve_quotes = True
-
-    data = CommentedMap(config)
-    help_map = _argparse_help_map(parser)
-
-    # Add inline comments for any matching keys
-    for k in list(data.keys()):
-        if k in help_map:
-            # Inline comment at the end of the line
-            data.yaml_add_eol_comment(help_map[k], key=k, column=comment_col)
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f)
 
 
 def adaptive_gaussian_blur(input_array, kernel_size=33, sigma=4):
