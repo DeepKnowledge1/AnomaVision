@@ -81,7 +81,6 @@ async def cleanup():
     model_type = None
     print("Model cleanup completed.")
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await load_model()
@@ -140,7 +139,9 @@ async def update_config(config: ConfigModel):
     global ANOMALY_THRESHOLD, RESIZE_SIZE
     ANOMALY_THRESHOLD = config.threshold
     RESIZE_SIZE = (config.resize_width, config.resize_height)
-    return {"message": f"Threshold updated to {ANOMALY_THRESHOLD}, Resize size set to {RESIZE_SIZE}"}
+    return {
+        "message": f"Threshold updated to {ANOMALY_THRESHOLD}, Resize size set to {RESIZE_SIZE}"
+    }
 
 
 def preprocess_image_from_upload(file_contents: bytes) -> np.ndarray:
@@ -170,11 +171,15 @@ def numpy_to_base64(image_array: np.ndarray, resize_to: tuple[int, int] = None) 
         return ""
 
 
-def create_visualizations(image_np: np.ndarray, score_maps: torch.Tensor, image_scores: torch.Tensor):
+def create_visualizations(
+    image_np: np.ndarray, score_maps: torch.Tensor, image_scores: torch.Tensor
+):
     """
     Mirror detect.py's visualization path.
     """
-    score_map_classifications = anomavision.classification(score_maps, ANOMALY_THRESHOLD)
+    score_map_classifications = anomavision.classification(
+        score_maps, ANOMALY_THRESHOLD
+    )
     image_classifications = anomavision.classification(image_scores, ANOMALY_THRESHOLD)
 
     test_images = np.array([image_np])
@@ -202,7 +207,9 @@ def create_visualizations(image_np: np.ndarray, score_maps: torch.Tensor, image_
 
 
 @app.post("/predict", response_model=PredictionResult)
-async def predict_anomaly(file: UploadFile = File(...), include_visualizations: bool = True):
+async def predict_anomaly(
+    file: UploadFile = File(...), include_visualizations: bool = True
+):
     if model is None:
         raise HTTPException(status_code=500, detail="No model loaded.")
 
@@ -214,8 +221,12 @@ async def predict_anomaly(file: UploadFile = File(...), include_visualizations: 
         image_np = preprocess_image_from_upload(contents)
 
         # --- Like detect.py: create batch using anomavision transforms
-        device_str = model.device  # ModelWrapper stores device string in detect.py usage
-        batch = anomavision.to_batch([image_np], anomavision.standard_image_transform, torch.device(device_str))
+        device_str = (
+            model.device
+        )  # ModelWrapper stores device string in detect.py usage
+        batch = anomavision.to_batch(
+            [image_np], anomavision.standard_image_transform, torch.device(device_str)
+        )
 
         # detect.py uses half precision on cuda; do same
         if device_str == "cuda":
@@ -249,7 +260,9 @@ async def predict_anomaly(file: UploadFile = File(...), include_visualizations: 
         highlighted_image_base64 = ""
 
         if include_visualizations:
-            boundary_image, heatmap_image, highlighted_image = create_visualizations(image_np, score_maps, image_scores)
+            boundary_image, heatmap_image, highlighted_image = create_visualizations(
+                image_np, score_maps, image_scores
+            )
             boundary_image_base64 = numpy_to_base64(boundary_image, RESIZE_SIZE)
             heatmap_image_base64 = numpy_to_base64(heatmap_image, RESIZE_SIZE)
             highlighted_image_base64 = numpy_to_base64(highlighted_image, RESIZE_SIZE)
