@@ -39,13 +39,20 @@ def test_save_visualization_single_and_batch(tmp_path):
     assert len(files) == 3
 
 
+
 def test_parse_args_defaults(monkeypatch):
+    """Test parse_args with no CLI args to get the defaults."""
     # Run parse_args with no CLI args to get the defaults
     monkeypatch.setenv("PYTHONHASHSEED", "0")
     old = sys.argv[:]
     sys.argv = [old[0]]
     try:
-        args = detect.parse_args()
+        parser, args = detect.parse_args()
+        # parse_args returns (parser, args) tuple
+        # When called as a script, args will be populated
+        # When not called as __main__, it returns (parser, None)
+        # So we need to actually parse to get args
+        args = parser.parse_args([])
     finally:
         sys.argv = old
 
@@ -66,10 +73,12 @@ def test_main_with_missing_model_file_raises(tmp_path, monkeypatch):
     sys.argv = [old[0], "--model", "does_not_exist.pt", "--device", "cpu"]
 
     try:
-        # If detect's global imports (e.g., anomavision) aren't available,
-        # importing detect would already have failed. But if we're here,
-        # guard runtime errors unrelated to "file not found" by catching and skipping.
-        with pytest.raises(FileNotFoundError):
+        # detect.main() catches exceptions and calls exit(1), which raises SystemExit
+        # So we expect SystemExit with code 1
+        with pytest.raises(SystemExit) as exc_info:
             detect.main()
+
+        # Verify it exited with code 1 (error), not 0 (success)
+        assert exc_info.value.code == 1
     finally:
         sys.argv = old
