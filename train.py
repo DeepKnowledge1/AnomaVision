@@ -5,7 +5,6 @@ import sys
 import time
 from pathlib import Path
 
-
 import torch
 from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
@@ -15,6 +14,7 @@ from anomavision.config import load_config
 from anomavision.general import GitStatusChecker, increment_path
 from anomavision.utils import get_logger, merge_config, save_args_to_yaml, setup_logging
 
+# Check git status at module level (optional, can be moved to main if preferred)
 checker = GitStatusChecker()
 checker.check_status()
 
@@ -131,16 +131,28 @@ def parse_args():
         default=None,
         help="Logging level (default: INFO).",
     )
-    args = parser.parse_args()
 
-    return parser, args
+    # We define args inside this function scope, but typically we return the parser
+    # so calling scripts can extend it, or we parse immediately if run as main.
+    # To support both, we return both.
+    args, unknown = parser.parse_known_args() if __name__ == "__main__" else (None, None)
+
+    return parser
 
 
+def run_training(args):
+    """
+    Executes the training pipeline.
 
-def main():
+    Args:
+        args: Namespace object containing command line arguments.
 
-    parser, args = parse_args()
-
+    Returns:
+        padim (AnomaVision.Padim): The trained model object.
+        config (edict): The final merged configuration.
+        run_dir (Path): The directory where artifacts were saved.
+        dataloaders (dict): Dictionary containing the 'train' DataLoader.
+    """
     cfg = load_config(args.config)
 
     # Merge config with CLI args
@@ -149,99 +161,123 @@ def main():
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
     logger = get_logger("anomavision.train")  # Force it into anomavision hierarchy
 
-
     if not config.dataset_path:
-        logger.error(
-            "dataset.path is required (via --dataset_path or config.common.dataset_path)"
-        )
-        sys.exit(1)
+        error_msg = "dataset.path is required (via --dataset_path or config.common.dataset_path)"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
 
     t0 = time.perf_counter()
-    try:
+
+    logger.info(
+        "Image processing: resize=%s, crop_size=%s, normalize=%s",
+        config.resize,
+        config.crop_size,
+        config.normalize,
+    )
+    if config.normalize:
         logger.info(
-            "Image processing: resize=%s, crop_size=%s, normalize=%s",
-            config.resize,
-            config.crop_size,
-            config.normalize,
-        )
-        if config.normalize:
-            logger.info(
-                "Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std
-            )
-
-        # Resolve output run dir once
-        run_dir = increment_path(
-            Path(config.model_data_path) / config.run_name, exist_ok=True, mkdir=True
+            "Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std
         )
 
-        # === Dataset ===
-        root = os.path.join(
-            os.path.realpath(config.dataset_path), config.class_name, "train", "good"
-        )
-        if not os.path.isdir(root):
+    # Resolve output run dir once
+    run_dir = increment_path(
+        Path(config.model_data_path) / config.run_name, exist_ok=True, mkdir=True
+    )
+
+    # === Dataset ===
+    # Handle the 'class_name' logic safely.
+    # If dataset_path ends with the class name, use parent?
+    # Original logic assumes dataset_path is the container of class folders OR the class folder itself?
+    # Original code: os.path.join(realpath(dataset_path), config.class_name, "train", "good")
+    # This implies dataset_path is the root (e.g. MVTec root) and config.class_name is "bottle"
+
+    root = os.path.join(
+        os.path.realpath(config.dataset_path), config.class_name, "train", "good"
+    )
+
+    if not os.path.isdir(root):
+        # Fallback check: maybe dataset_path ALREADY points to the class folder?
+        # This makes it more robust for different input styles
+        potential_root = os.path.join(os.path.realpath(config.dataset_path), "train", "good")
+        if os.path.isdir(potential_root):
+             root = potential_root
+        else:
             logger.error('Expected folder "%s" does not exist.', root)
-            sys.exit(1)
+            raise FileNotFoundError(f"Dataset root not found: {root}")
 
-        ds = anomavision.AnodetDataset(
-            root,
-            resize=config.resize,
-            crop_size=config.crop_size,
-            normalize=config.normalize,
-            mean=config.norm_mean,
-            std=config.norm_std,
-        )  # uses your existing dataset class signature.
+    ds = anomavision.AnodetDataset(
+        root,
+        resize=config.resize,
+        crop_size=config.crop_size,
+        normalize=config.normalize,
+        mean=config.norm_mean,
+        std=config.norm_std,
+    )
 
-        if len(ds) == 0:
-            logger.error("No training images found in %s", root)
-            sys.exit(1)
+    if len(ds) == 0:
+        error_msg = f"No training images found in {root}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
 
-        dl = DataLoader(ds, batch_size=int(config.batch_size), shuffle=False)
-        logger.info("dataset: %d images | batch_size=%d", len(ds), config.batch_size)
+    dl = DataLoader(ds, batch_size=int(config.batch_size), shuffle=False)
+    logger.info("dataset: %d images | batch_size=%d", len(ds), config.batch_size)
 
-        # === Device ===
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(
-            "device: %s (cuda_available=%s)", device.type, torch.cuda.is_available()
-        )
+    # === Device ===
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info(
+        "device: %s (cuda_available=%s)", device.type, torch.cuda.is_available()
+    )
 
-        # === Model & Train ===
-        logger.info(
-            "cfg: backbone=%s | layers=%s | feat_dim=%d",
-            config.backbone,
-            config.layer_indices,
-            config.feat_dim,
-        )
+    # === Model & Train ===
+    logger.info(
+        "cfg: backbone=%s | layers=%s | feat_dim=%d",
+        config.backbone,
+        config.layer_indices,
+        config.feat_dim,
+    )
 
-        padim = anomavision.Padim(
-            backbone=config.backbone,
-            device=device,
-            layer_indices=config.layer_indices,
-            feat_dim=int(config.feat_dim),
-        )
+    padim = anomavision.Padim(
+        backbone=config.backbone,
+        device=device,
+        layer_indices=config.layer_indices,
+        feat_dim=int(config.feat_dim),
+    )
 
-        t_fit = time.perf_counter()
-        padim.fit(dl)
-        logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
+    t_fit = time.perf_counter()
+    padim.fit(dl)
+    logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
 
-        # === Save ===
-        model_path = Path(run_dir) / config.output_model
-        torch.save(padim, str(model_path))
+    # === Save ===
+    model_path = Path(run_dir) / config.output_model
+    torch.save(padim, str(model_path))
 
-        # also save a compact stats-only artifact (anomalib-style) -> ".pth"
-        stats_path = model_path.with_suffix(".pth")
-        try:
-            padim.save_statistics(str(stats_path), half=True)
-            logger.info("saved: slim statistics=%s", stats_path)
-        except Exception as e:
-            logger.warning("saving slim statistics failed: %s", e)
+    # also save a compact stats-only artifact (anomalib-style) -> ".pth"
+    stats_path = model_path.with_suffix(".pth")
+    try:
+        padim.save_statistics(str(stats_path), half=True)
+        logger.info("saved: slim statistics=%s", stats_path)
+    except Exception as e:
+        logger.warning("saving slim statistics failed: %s", e)
 
-        # snapshot the effective configuration
-        save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
+    # snapshot the effective configuration
+    save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
 
-        logger.info(
-            "saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml"
-        )
-        logger.info("=== Training done in %.2fs ===", time.perf_counter() - t0)
+    logger.info(
+        "saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml"
+    )
+    logger.info("=== Training done in %.2fs ===", time.perf_counter() - t0)
+
+    # Return objects for external usage (e.g. MLOps pipeline)
+    return padim, config, run_dir, {'train': dl}
+
+
+def main():
+    try:
+        # In main execution, we parse args explicitly
+        parser= parse_args()
+        args = parser.parse_args()
+
+        run_training(args)
 
     except Exception:
         get_logger(__name__).exception("Fatal error during training.")
