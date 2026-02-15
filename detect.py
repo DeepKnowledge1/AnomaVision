@@ -1,6 +1,5 @@
 """
 Run Anomaly detection inference on images using various model formats.
-
 Usage - formats:
     $ python detect.py --model padim_model.pt                  # PyTorch
                                    padim_model.torchscript        # TorchScript
@@ -34,14 +33,9 @@ from anomavision.utils import (
     get_logger,
     merge_config,
     setup_logging,
-    create_image_transform,
-
 )
 
 matplotlib.use("Agg")  # non-interactive, faster PNG writing
-
-
-# Updated imports to use the inference modules
 
 
 def parse_args():
@@ -164,29 +158,42 @@ def parse_args():
         help="Enable detailed timing measurements.",
     )
 
-    return parser.parse_args()
+    # Return parser and args to support external extension
+    args, unknown = parser.parse_known_args() if __name__ == "__main__" else (None, None)
+    return parser, args
 
 
-def main():
-    args = parse_args()
+def run_inference(args):
+    """
+    Executes the inference pipeline.
 
+    Args:
+        args: Namespace object containing configuration.
+
+    Returns:
+        metrics (dict): Performance and timing metrics.
+        results (dict): Dictionary containing keys ['scores', 'classifications', 'images']
+                        (Only populated for offline mode to prevent OOM in streaming).
+    """
     if args.config is not None:
         cfg = load_config(str(args.config))
     else:
+        # Fallback to model directory config
         cfg = load_config(str(Path(args.model_data_path) / "config.yml"))
 
     # Merge config with CLI args
     config = edict(merge_config(args, cfg))
 
-    # Setup logging first
+    # Setup logging
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
-    logger = get_logger("anomavision.detect")  # Force it into anomavision hierarchy
+    logger = get_logger("anomavision.detect")
 
-    stream_mode = config.get("stream_mode", False)  # NEW
+    stream_mode = config.get("stream_mode", False)
     logger.info(f"Streaming mode: {stream_mode}")
+
     # Parse visualization color
     try:
-        viz_color = tuple(map(int, config.viz_color.split(",")))
+        viz_color = tuple(map(int, config.viz_color.split(","))) if config.viz_color else (128, 0, 128)
         if len(viz_color) != 3:
             raise ValueError
     except (ValueError, AttributeError):
@@ -198,92 +205,70 @@ def main():
     # Parse image processing arguments
     resize = _shape(config.resize)
     crop_size = _shape(config.crop_size)
-
     normalize = config.get("normalize", True)
 
-    # Log image processing configuration
-    logger.info(
-        "Image processing config: resize=%s, crop_size=%s, normalize=%s",
-        resize,
-        crop_size,
-        normalize,
-    )
-    if normalize:
-        logger.info(
-            "Normalization: mean=%s, std=%s",
-            config.get("norm_mean"),
-            config.get("norm_std"),
-        )
+    logger.info("Image processing: resize=%s, crop=%s, norm=%s", resize, crop_size, normalize)
 
     # Validation
-    if not config.get("img_path") and not stream_mode:  # NEW
-        logger.error("img_path is required (via --img_path or config) when stream_mode is False")
-        return 1
+    if not config.get("img_path") and not stream_mode:
+        raise ValueError("img_path is required (via --img_path or config) when stream_mode is False")
 
     if not config.get("model"):
-        logger.error("model is required (via --model or config)")
-        return 1
+        raise ValueError("model is required (via --model or config)")
 
-    # Initialize AnomaVision profilers for different pipeline stages
-    anomavision_profilers = {
+    # Profilers
+    profilers = {
         "setup": Profiler(),
         "model_loading": Profiler(),
         "data_loading": Profiler(),
-        "inference": Profiler(),  # Core anomaly detection timing
-        "postprocessing": Profiler(),  # Classification and scoring timing
-        "visualization": Profiler(),  # Anomaly visualization timing
+        "inference": Profiler(),
+        "postprocessing": Profiler(),
+        "visualization": Profiler(),
     }
-    logger.info("Starting AnomaVision anomaly detection inference process")
-    logger.info(f"Final config: {dict(config)}")
+
+    results_accumulator = {
+        "scores": [],
+        "classifications": [],
+        # We only store images/maps if needed for downstream tasks to avoid memory issues
+        "images": [] if not stream_mode else None
+    }
 
     total_start_time = time.time()
 
-    # AnomaVision setup phase
-    with anomavision_profilers["setup"]:
-        if not stream_mode:  # NEW
+    # --- Setup Phase ---
+    with profilers["setup"]:
+        if not stream_mode:
             DATASET_PATH = os.path.realpath(config.img_path)
-            logger.info(f"AnomaVision dataset path: {DATASET_PATH}")
+            logger.info(f"Dataset path: {DATASET_PATH}")
         else:
             DATASET_PATH = None
             src = config.get("stream_source", {})
-            logger.info(
-                f"AnomaVision streaming mode enabled with source type="
-                f"{src.get('type', 'unknown')}"
-            )
+            logger.info(f"Streaming source type: {src.get('type', 'unknown')}")
 
         MODEL_DATA_PATH = os.path.realpath(config.model_data_path)
         device_str = determine_device(config.device)
-        logger.info(f"AnomaVision selected device: {device_str}")
-        logger.info(f"AnomaVision model data path: {MODEL_DATA_PATH}")
+        logger.info(f"Device: {device_str}")
 
         if device_str == "cuda" and torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True
-            logger.info("AnomaVision CUDA available, enabled cuDNN benchmark")
-            logger.info(f"AnomaVision CUDA device: {torch.cuda.get_device_name()}")
-            logger.info(
-                f"AnomaVision CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB"
-            )
 
-    # AnomaVision model loading phase
-    with anomavision_profilers["model_loading"]:
+    # --- Model Loading Phase ---
+    with profilers["model_loading"]:
         model_path = os.path.join(MODEL_DATA_PATH, config.model)
-        logger.info(f"Loading AnomaVision model from: {model_path}")
+        logger.info(f"Loading model: {model_path}")
 
         if not os.path.exists(model_path):
-            logger.error(f"AnomaVision model file not found: {model_path}")
-            raise FileNotFoundError(f"AnomaVision model file not found: {model_path}")
+            raise FileNotFoundError(f"Model file not found: {model_path}")
 
         try:
             model = ModelWrapper(model_path, device_str)
             model_type = ModelType.from_extension(model_path)
-            logger.info(
-                f"AnomaVision model loaded successfully. Type: {model_type.value.upper()}"
-            )
+            logger.info(f"Model loaded: {model_type.value.upper()}")
         except Exception as e:
-            logger.error(f"Failed to load AnomaVision model: {e}")
+            logger.error(f"Failed to load model: {e}")
             raise
 
-    # Create output directory for AnomaVision visualizations if needed
+    # --- Viz Directory Setup ---
     RESULTS_PATH = None
     if config.get("save_visualizations", False):
         run_name = config.run_name
@@ -293,14 +278,12 @@ def main():
             exist_ok=config.get("overwrite", False),
             mkdir=True,
         )
-        logger.info(f"AnomaVision visualization output directory: {RESULTS_PATH}")
+        logger.info(f"Visualization output: {RESULTS_PATH}")
 
-    # AnomaVision data loading phase
-    with anomavision_profilers["data_loading"]:
-        logger.info("Creating AnomaVision dataset / dataloader")
+    # --- Data Loading Phase ---
+    with profilers["data_loading"]:
         try:
             if not stream_mode:
-                # Offline dataset
                 test_dataset = anomavision.AnodetDataset(
                     DATASET_PATH,
                     resize=resize,
@@ -309,16 +292,11 @@ def main():
                     mean=config.norm_mean,
                     std=config.norm_std,
                 )
-                # Offline can use workers + pin_memory
                 num_workers = int(config.get("num_workers", 0))
                 pin_memory = bool(config.get("pin_memory", False))
-
             else:
-                # Streaming dataset (webcam / video / MQTT / TCP)
-
                 source = StreamSourceFactory.create(config.stream_source)
                 source.connect()
-
                 test_dataset = StreamDataset(
                     source=source,
                     resize=resize,
@@ -328,320 +306,219 @@ def main():
                     std=config.norm_std,
                     max_frames=config.get("stream_max_frames"),
                 )
-                # Streaming MUST be single-process iteration
                 num_workers = 0
                 pin_memory = False
-
 
             test_dataloader = DataLoader(
                 test_dataset,
                 batch_size=config.batch_size,
-                num_workers=num_workers,        # MUST be 0
+                num_workers=num_workers,
                 pin_memory=pin_memory,
             )
 
-
-            # Try to log sizes (streaming may not have __len__)
+            # Log dataset stats
             try:
-                total_images = len(test_dataset)  # NEW
-                logger.info(
-                    f"AnomaVision dataset created successfully. Total images: {total_images}"
-                )
+                total_images = len(test_dataset)
+                logger.info(f"Total images: {total_images}")
             except TypeError:
-                total_images = None  # unknown / streaming
-                logger.info("AnomaVision streaming dataset created (unknown length).")
-
-            try:
-                num_batches = len(test_dataloader)  # NEW
-                logger.info(
-                    f"AnomaVision batch size: {config.get('batch_size', 1)}, "
-                    f"Number of batches: {num_batches}"
-                )
-            except TypeError:
-                num_batches = None
-                logger.info(
-                    f"AnomaVision batch size: {config.get('batch_size', 1)}, "
-                    "Number of batches: unknown (streaming)."
-                )
+                total_images = None
+                logger.info("Streaming mode (infinite/unknown length)")
 
         except Exception as e:
-            logger.error(f"Failed to create AnomaVision dataset/dataloader: {e}")
+            logger.error(f"Failed to create dataloader: {e}")
             raise
 
-    if not stream_mode and total_images is not None:
-        logger.info(
-            f"Processing {total_images} images using AnomaVision {model_type.value.upper()}"
-        )
-    else:
-        logger.info(
-            f"Processing streaming input using AnomaVision {model_type.value.upper()}"
-        )
-
-    # ---- Warm-up
+    # --- Warm-up ---
     try:
-        first = next(iter(test_dataloader))  # (batch, images, _, _)
+        first = next(iter(test_dataloader))
         first_batch = first[0]
         if device_str == "cuda":
             first_batch = first_batch.half()
-
         first_batch = first_batch.to(device_str)
-
         model.warmup(batch=first_batch, runs=2)
-        logger.info(
-            "AnomaVision warm-up done with first batch %s.", tuple(first_batch.shape)
-        )
+        logger.info("Warm-up complete.")
     except StopIteration:
         logger.warning("Dataset empty; skipping warm-up.")
     except Exception as e:
-        logger.warning(f"Warm-up skipped due to error: {e}")
+        logger.warning(f"Warm-up skipped: {e}")
 
-    # ---- End warm-up
-
-    # AnomaVision batch processing pipeline
+    # --- Inference Loop ---
     batch_count = 0
-    image_counter = 0 # Track number of images for streaming stats
+    image_counter = 0
+
     try:
         for batch_idx, (batch, images, _, _) in enumerate(test_dataloader):
-
             batch_count += 1
-            image_counter += batch.shape[0]  # NEW: track images seen
+            image_counter += batch.shape[0]
 
-            if not stream_mode:
-                logger.debug(
-                    f"Processing AnomaVision batch {batch_idx + 1}/{len(test_dataloader)}"
-                )
-            else:
-                logger.debug(
-                    f"Processing AnomaVision batch {batch_idx + 1} (streaming)"
-                )
-
-            # AnomaVision core inference phase
             if device_str == "cuda":
                 batch = batch.half()
-
             batch = batch.to(device_str)
-            with anomavision_profilers["inference"] as inference_prof:
+
+            # 1. Inference
+            with profilers["inference"]:
                 try:
                     image_scores, score_maps = model.predict(batch)
-
-                    logger.debug(
-                        f"AnomaVision image scores shape: {image_scores.shape}, Score maps shape: {score_maps.shape}"
-                    )
                 except Exception as e:
-                    logger.error(
-                        f"AnomaVision inference failed for batch {batch_idx}: {e}"
-                    )
+                    logger.error(f"Inference failed batch {batch_idx}: {e}")
                     continue
 
-            logger.info(
-                f"AnomaVision batch shape: {batch.shape}, Inference completed in {inference_prof.elapsed_time * 1000:.2f} ms"
-            )
-
-            # AnomaVision postprocessing phase - anomaly classification
-            with anomavision_profilers["postprocessing"]:
+            # 2. Post-processing
+            with profilers["postprocessing"]:
                 try:
-                    score_maps = adaptive_gaussian_blur(
-                        score_maps, kernel_size=33, sigma=4
-                    )
+                    score_maps = adaptive_gaussian_blur(score_maps, kernel_size=33, sigma=4)
 
-                    score_map_classifications = anomavision.classification(
-                        score_maps, config.thresh
-                    )
-                    image_classifications = anomavision.classification(
-                        image_scores, config.thresh
-                    )
-
-                    # Convert for AnomaVision logging
-                    if isinstance(image_scores, np.ndarray):
-                        image_scores_list = image_scores.tolist()
-                        image_classifications_list = (
-                            image_classifications.numpy().tolist()
-                            if hasattr(image_classifications, "numpy")
-                            else image_classifications.tolist()
-                        )
+                    # Classify
+                    if config.thresh is not None:
+                        is_anomaly = anomavision.classification(image_scores, config.thresh)
                     else:
-                        image_scores_list = image_scores.tolist()
-                        image_classifications_list = image_classifications.tolist()
+                        is_anomaly = np.zeros_like(image_scores)
 
-                    logger.debug(
-                        f"AnomaVision batch {batch_idx + 1}: Scores: {image_scores_list}, Classifications: {image_classifications_list}"
-                    )
+                    # Accumulate Results (Offline only)
+                    if not stream_mode:
+                        results_accumulator["scores"].extend(image_scores.tolist())
+                        results_accumulator["classifications"].extend(is_anomaly.tolist())
+                        results_accumulator["images"].extend(images)
+
                 except Exception as e:
-                    logger.error(
-                        f"AnomaVision postprocessing failed for batch {batch_idx}: {e}"
-                    )
+                    logger.error(f"Postprocessing failed batch {batch_idx}: {e}")
                     continue
 
-            # AnomaVision visualization phase
+            # 3. Visualization
             if config.enable_visualization:
-                with anomavision_profilers["visualization"]:
+                with profilers["visualization"]:
                     try:
                         test_images = np.array(images)
 
-                        # Convert classifications to numpy for AnomaVision visualization
-                        score_map_classifications_np = (
-                            score_map_classifications.numpy()
-                            if hasattr(score_map_classifications, "numpy")
-                            else score_map_classifications
-                        )
-                        image_classifications_np = (
-                            image_classifications.numpy()
-                            if hasattr(image_classifications, "numpy")
-                            else image_classifications
-                        )
-                        score_maps_np = (
-                            score_maps
-                            if isinstance(score_maps, np.ndarray)
-                            else score_maps.numpy()
-                        )
-
-                        # Generate AnomaVision visualization outputs
                         boundary_images = (
                             anomavision.visualization.framed_boundary_images(
                                 test_images,
-                                score_map_classifications_np,
-                                image_classifications_np,
+                                anomavision.classification(score_maps, config.thresh)if config.thresh else np.zeros_like(score_maps),
+                                is_anomaly,
                                 padding=config.get("viz_padding", 40),
                             )
                         )
+
                         heatmap_images = anomavision.visualization.heatmap_images(
                             test_images,
-                            score_maps_np,
+                            score_maps,
                             alpha=config.get("viz_alpha", 0.5),
                         )
-                        highlighted_images = (
-                            anomavision.visualization.highlighted_images(
-                                [images[i] for i in range(len(images))],
-                                score_map_classifications_np,
-                                color=viz_color,
-                            )
+                        highlighted_images = anomavision.visualization.highlighted_images(
+                            [images[i] for i in range(len(images))],
+                            # Dummy mask if threshold not set
+                            anomavision.classification(score_maps, config.thresh) if config.thresh else np.zeros_like(score_maps),
+                            color=viz_color,
                         )
 
-                        # Display AnomaVision results
+                        # Save/Show
                         for img_id in range(len(images)):
-                            try:
-                                fig, axs = plt.subplots(1, 4, figsize=(16, 8))
-                                fig.suptitle(
-                                    f"AnomaVision Detection Results - Batch {img_id + 1}",
-                                    fontsize=14,
-                                )
+                            # Only save if explicitly requested
+                            if config.save_visualizations and RESULTS_PATH:
+                                try:
+                                    fig, axs = plt.subplots(1, 4, figsize=(16, 8))
+                                    fig.suptitle(f"Result - Batch {batch_idx} Img {img_id}", fontsize=14)
 
-                                axs[0].imshow(images[img_id])
-                                axs[0].set_title("Original Image")
-                                axs[0].axis("off")
+                                    axs[0].imshow(images[img_id])
+                                    axs[0].set_title("Original")
+                                    axs[0].axis("off")
 
-                                axs[1].imshow(boundary_images[img_id])
-                                axs[1].set_title("AnomaVision Boundary Detection")
-                                axs[1].axis("off")
+                                    axs[1].imshow(boundary_images[img_id])
+                                    axs[1].set_title("Boundary")
+                                    axs[1].axis("off")
 
-                                axs[2].imshow(heatmap_images[img_id])
-                                axs[2].set_title("AnomaVision Anomaly Heatmap")
-                                axs[2].axis("off")
+                                    axs[2].imshow(heatmap_images[img_id])
+                                    axs[2].set_title("Heatmap")
+                                    axs[2].axis("off")
 
-                                axs[3].imshow(highlighted_images[img_id])
-                                axs[3].set_title("AnomaVision Highlighted Anomalies")
-                                axs[3].axis("off")
+                                    axs[3].imshow(highlighted_images[img_id])
+                                    axs[3].set_title("Highlighted")
+                                    axs[3].axis("off")
 
-                                if config.save_visualizations and RESULTS_PATH:
-                                    timestamp = img_id  # datetime.now().strftime("%Y%m%d_%H%M%S")
-                                    combined_filepath = os.path.join(
-                                        RESULTS_PATH,
-                                        f"anomavision_batch_{batch_idx}_{timestamp}.png",
-                                    )
-                                    plt.savefig(
-                                        combined_filepath, dpi=100, bbox_inches="tight"
-                                    )
-                                    logger.info(
-                                        f"AnomaVision visualization saved: {combined_filepath}"
-                                    )
-
-                                plt.close(fig)
-
-                            except Exception as e:
-                                logger.warning(
-                                    f"Failed to display AnomaVision visualization for batch {batch_idx}: {e}"
-                                )
+                                    save_path = os.path.join(RESULTS_PATH, f"batch_{batch_idx}_img_{img_id}.png")
+                                    plt.savefig(save_path, dpi=100, bbox_inches="tight")
+                                    plt.close(fig)
+                                except Exception as e:
+                                    logger.warning(f"Viz save failed: {e}")
 
                     except Exception as e:
-                        logger.error(
-                            f"AnomaVision visualization failed for batch {batch_idx}: {e}"
-                        )
+                        logger.error(f"Visualization failed batch {batch_idx}: {e}")
 
     finally:
-        logger.info("Closing AnomaVision model and freeing resources")
+        logger.info("Closing model...")
         model.close()
+        if stream_mode:
+             # Clean up stream source
+             try:
+                 test_dataset.close()
+             except: pass
 
-    # Calculate total AnomaVision pipeline time
+    # --- Metrics & Summary ---
     total_pipeline_time = time.time() - total_start_time
 
-    # Log AnomaVision timing summary
+    # Calculate FPS
+    final_count = total_images if (not stream_mode and total_images) else image_counter
+    fps = profilers["inference"].get_fps(final_count)
+    avg_ms = profilers["inference"].get_avg_time_ms(batch_count)
+
+    # 1. TIMING SUMMARY
     logger.info("=" * 60)
     logger.info("ANOMAVISION PERFORMANCE SUMMARY")
     logger.info("=" * 60)
-    logger.info(
-        f"Setup time:                {anomavision_profilers['setup'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Model loading time:        {anomavision_profilers['model_loading'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Data loading time:         {anomavision_profilers['data_loading'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Inference time:            {anomavision_profilers['inference'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Postprocessing time:       {anomavision_profilers['postprocessing'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Visualization time:        {anomavision_profilers['visualization'].accumulated_time * 1000:.2f} ms"
-    )
+    logger.info(f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms")
     logger.info(f"Total pipeline time:       {total_pipeline_time * 1000:.2f} ms")
     logger.info("=" * 60)
 
-    # AnomaVision performance metrics (focusing on meaningful metrics)
-
-    # AnomaVision performance metrics (focusing on meaningful metrics)
-    try:
-        total_images_final = len(test_dataset) if not stream_mode else image_counter
-    except TypeError:
-        total_images_final = image_counter
-
-    inference_fps = anomavision_profilers["inference"].get_fps(total_images_final)
-    avg_inference_time = anomavision_profilers["inference"].get_avg_time_ms(batch_count)
-
+    # 2. INFERENCE PERFORMANCE
     logger.info("=" * 60)
     logger.info("ANOMAVISION INFERENCE PERFORMANCE")
     logger.info("=" * 60)
-    if inference_fps > 0:
-        logger.info(f"Pure inference FPS:        {inference_fps:.2f} images/sec")
+    if fps > 0:
+        logger.info(f"Pure inference FPS:        {fps:.2f} images/sec")
+    if avg_ms > 0:
+        logger.info(f"Average inference time:    {avg_ms:.2f} ms/batch")
 
-    if avg_inference_time > 0:
-        logger.info(f"Average inference time:    {avg_inference_time:.2f} ms/batch")
-
-    # Additional useful metrics
     if batch_count > 0:
-        images_per_batch = total_images_final / batch_count
-        logger.info(
-            f"Throughput:                {inference_fps * images_per_batch:.1f} images/sec (batch size: {config.batch_size})"
-        )
-
+        batch_size = config.get('batch_size', 1) or 1
+        throughput = fps * (final_count / batch_count) if batch_count else 0
+        logger.info(f"Throughput:                {throughput:.1f} images/sec (batch size: {batch_size})")
     logger.info("=" * 60)
-    logger.info(
-        "AnomaVision anomaly detection inference process completed successfully"
-    )
-    return 0
+
+    metrics = {
+        "fps": fps,
+        "avg_inference_ms": avg_ms,
+        "total_time_s": total_pipeline_time,
+        "total_images": final_count
+    }
+
+    return metrics, results_accumulator
 
 
-if __name__ == "__main__":
+def main():
     try:
-        exit_code = main()
-        exit(exit_code)
+        parser, _ = parse_args()
+        args = parser.parse_args()
+
+        metrics, results = run_inference(args)
+
+        # If running as script, maybe we want to print summary or save results to file?
+        # For now, logging handles the output.
+
+        exit(0)
     except KeyboardInterrupt:
-        logger = get_logger(__name__)
+        logger = get_logger("anomavision.detect")
         logger.info("Process interrupted by user")
         exit(1)
     except Exception as e:
-        logger = get_logger(__name__)
-        logger.error(f"Process failed with error: {e}", exc_info=True)
+        logger = get_logger("anomavision.detect")
+        logger.error(f"Process failed: {e}", exc_info=True)
         exit(1)
+
+
+if __name__ == "__main__":
+    main()
