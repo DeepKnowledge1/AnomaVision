@@ -356,7 +356,7 @@ dataset/
 
 ## 🏗️ Architecture
 
-<img src="docs/images/archti.png" width="100%" alt="AnomaVision banner"/>
+<img src="docs/images/archti.png" width="100%" alt="AnomaVision archti"/>
 
 
 **Key design decisions:**
