@@ -1,94 +1,102 @@
-[tool.poetry]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
 name = "anomavision"
 version = "3.1.0"
-description = "Advanced Anomaly Detection Environment - Deep learning library for state-of-the-art anomaly detection algorithms"
-authors = ["Deep Knowledge <Deepp.Knowledge@gmail.com>"]
+description = "Advanced Anomaly Detection Environment - Production Ready"
+authors = [{ name = "Deep Knowledge", email = "Deepp.Knowledge@gmail.com" }]
 readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = { text = "MIT" }
+keywords = ["anomaly", "vision", "computer-vision", "anomaly-detection", "PaDim"]
 
-license = "MIT"
-keywords = ["anomaly", "vision", "computer-vision", "anomaly-detection","PaDim"]
-homepage = "https://github.com/DeepKnowledge1"
-repository = "https://github.com/DeepKnowledge1/AnomaVision"
-documentation = "https://github.com/DeepKnowledge1/AnomaVision/wiki"
-
-packages = [
-    {include = "anomavision"},
-    {include = "anodet"},  # Backward compatibility layer
+# --- Core Dependencies (Always Installed) ---
+dependencies = [
+    "numpy==1.26.4",
+    "matplotlib==3.8.3",
+    "scikit-learn>=1.2,<1.4",
+    "scikit-image==0.22.0",
+    "easydict==1.13",
+    "tqdm>=4.67.1",
+    "opencv-python>=4.6.0",
+    "onnx>=1.15.0",
+    "onnxruntime>=1.16.0,<1.18",
+    "openvino-dev>=2024.0",
+    "fastapi>=0.127.0",
+    "uvicorn>=0.30.0",
+    "pydantic>=2.12.5",
+    "python-multipart==0.0.20",
+    "streamlit>=1.52.2",
+    "gradio>=6.3.0"
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.10,<3.13"
-matplotlib = "3.8.3"
-numpy = "1.26.4"
-openvino-dev = ">=2024.0"
+# --- Hardware Modifiers (Triggered by Extras) ---
+[project.optional-dependencies]
+cpu = ["torch>=2.4.0", "torchvision>=0.19.0", "torchaudio>=2.4.0"]
+cu118 = ["torch>=2.4.0", "torchvision>=0.19.0", "torchaudio>=2.4.0"]
+cu121 = ["torch>=2.4.0", "torchvision>=0.19.0", "torchaudio>=2.4.0"]
+cu124 = ["torch>=2.4.0", "torchvision>=0.19.0", "torchaudio>=2.4.0"]
 
-easydict = "1.13"
-onnx = "^1.15.0"
-opencv-python = "^4.6.0"
-scikit-learn = ">=1.2,<1.4"
+# Dev tools bundled as an extra
+dev = ["pytest==8.0.2", "black==24.2.0", "flake8==7.0.0", "pre-commit==3.6.2"]
 
-scikit-image = "0.22.0"
-
-# Default (CPU)
-onnxruntime = ">=1.16.0,<1.18"
-
-torch = ">=2.4.0"
-torchvision = ">=0.19.0"
-torchaudio = ">=2.4.0"
-
-# GPU (optional, via extras)
-onnxruntime-gpu = { version = ">=1.16.0", optional = true }
-tqdm = "^4.67.1"
-
-
-# API and Inference Serving
-fastapi = "^0.127.0"                     # REST API for model serving
-uvicorn = "^0.30.0"  # ASGI server for FastAPI
-pydantic = "^2.12.5"
-python-multipart = "0.0.20"
-streamlit = "^1.52.2"
-gradio = "^6.3.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "8.0.2"
-black = "24.2.0"
-flake8 = "7.0.0"
-pre-commit = "3.6.2"
-
-[tool.poetry.extras]
-cpu   = ["torch", "torchvision", "torchaudio", "onnxruntime"]
-cu118 = ["torch", "torchvision", "torchaudio", "onnxruntime-gpu"]
-cu121 = ["torch", "torchvision", "torchaudio", "onnxruntime-gpu"]
-cu124 = ["torch", "torchvision", "torchaudio", "onnxruntime-gpu"]
-
-# Full install (all variants together)
-full  = ["torch", "torchvision", "torchaudio", "onnxruntime", "onnxruntime-gpu"]
-
-[[tool.poetry.source]]
-name = "torch-cu118"
-url = "https://download.pytorch.org/whl/cu118"
-priority = "supplemental"
-
-[[tool.poetry.source]]
-name = "torch-cu121"
-url = "https://download.pytorch.org/whl/cu121"
-priority = "supplemental"
-
-[[tool.poetry.source]]
-name = "torch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
-priority = "supplemental"
-
-[[tool.poetry.source]]
-name = "torch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-priority = "supplemental"
-
-[tool.poetry.scripts]
+[project.scripts]
 anomavision = "anomavision.cli:main"
 
+# ==========================================
+# UV HARDWARE ROUTING MATRIX
+# ==========================================
+[tool.uv]
+# Prevent users/CI from accidentally mixing CUDA versions in the same environment
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cu118" },
+        { extra = "cu121" },
+        { extra = "cu124" },
+    ],
+]
 
+# 1. Define the explicit registries
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+# 2. Map the PyTorch libraries to the correct registry based on the requested Extra
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu118", extra = "cu118" },
+    { index = "pytorch-cu121", extra = "cu121" },
+    { index = "pytorch-cu124", extra = "cu124" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu118", extra = "cu118" },
+    { index = "pytorch-cu121", extra = "cu121" },
+    { index = "pytorch-cu124", extra = "cu124" },
+]
+torchaudio = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu118", extra = "cu118" },
+    { index = "pytorch-cu121", extra = "cu121" },
+    { index = "pytorch-cu124", extra = "cu124" },
+]
