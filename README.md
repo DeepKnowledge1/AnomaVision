@@ -1,5 +1,5 @@
 <div align="center">
-<img src="docs/images/banner1.png" width="100%" alt="AnomaVision banner"/>
+<img src="docs/images/banner.png" width="100%" alt="AnomaVision banner"/>
 
 # AnomaVision 🔍
 
