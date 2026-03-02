@@ -6,10 +6,11 @@ on:
   pull_request:
     branches: [develop, main]
 
-# Temporarily commented out concurrency controls for debugging
-# concurrency:
-#   group: ${{ github.workflow }}-${{ github.ref }}
-#   cancel-in-progress: true
+# Concurrency controls restored.
+# Crucial for preventing cost blowouts when developers push multiple commits rapidly.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   tests:
@@ -17,62 +18,51 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9","3.10", "3.11", "3.12"]
+        # Architect Note: Removed "3.9". Your pyproject.toml explicitly requires ">=3.10".
+        # Attempting 3.9 will hard-fail the uv dependency solver.
+        python-version: ["3.10", "3.11", "3.12"]
+      fail-fast: false # Prevents the entire matrix from dying if one python version fails
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      # UV's official action natively handles downloading Python, installing uv,
+      # and caching the environment based on your uv.lock file.
+      - name: Install uv and Set up Python
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Regenerate lock file
-        run: poetry lock --no-cache --no-interaction
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies (CPU)
-        run: poetry install --with dev --extras "cpu"
+        # --locked is MANDATORY. This instantly fails the build if the lockfile drifted,
+        # preventing transient dependencies from sneaking into production.
+        run: uv sync --extra cpu --locked
 
       - name: Run tests
-        run: poetry run pytest -v
+        run: uv run pytest -v
 
-  # cuda-extras:
-  #   name: Verify CUDA Extras Install
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
+  cuda-matrix-check:
+    name: Verify CUDA Resolvers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-  #     - name: Set up Python 3.10
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: "3.10"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
 
-  #     - name: Install Poetry
-  #       run: pip install poetry
+      # Architect Note: We use --dry-run here. We only want to verify that the
+      # hardware routing matrix in pyproject.toml correctly resolves all dependencies
+      # without dependency conflicts. We DO NOT want to physically download 8GB of wheels.
+      - name: Verify cu118 resolution
+        run: uv sync --extra cu118 --locked --dry-run
 
-  #     - name: Regenerate lock file
-  #       run: poetry lock --no-cache --no-interaction
+      - name: Verify cu121 resolution
+        run: uv sync --extra cu121 --locked --dry-run
 
-  #     - name: Check cu118 install
-  #       run: poetry install --extras "cu118" --only-root
-
-  #     - name: Regenerate lock file
-  #       run: poetry lock --no-cache --no-interaction
-
-  #     - name: Check cu121 install
-  #       run: poetry install --extras "cu121" --only-root
-
-  #     - name: Regenerate lock file
-  #       run: poetry lock --no-cache --no-interaction
-
-  #     - name: Check cu124 install
-  #       run: poetry install --extras "cu124" --only-root
-
-  #     - name: Regenerate lock file
-  #       run: poetry lock --no-cache --no-interaction
-
-  #     - name: Check full install
-  #       run: poetry install --extras "full" --only-root
+      - name: Verify cu124 resolution
+        run: uv sync --extra cu124 --locked --dry-run

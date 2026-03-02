@@ -356,5 +356,6 @@ images/
 !docs/images/mvtec.png
 !docs/images/visa.png
 !docs/images/streamlit.png
+!docs/images/archti.png
 !docs/AnomaVision_vs_Anomalib.pdf
 poetry publish --build --username __toke.txt

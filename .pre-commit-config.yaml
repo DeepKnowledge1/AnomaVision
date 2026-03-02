@@ -40,6 +40,6 @@ repos:
     hooks:
       - id: pytest
         name: Run pytest
-        entry: poetry run pytest
+        # entry: poetry run pytest
         language: system
         pass_filenames: false

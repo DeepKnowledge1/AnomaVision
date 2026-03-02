@@ -57,7 +57,7 @@ memory_efficient: true                  # Use memory efficient evaluation mode
 # Export (export.py)
 # =========================
 format: "all"                           # Export format: onnx, torchscript, openvino, all
-opset: 17                               # ONNX opset version
+opset: 18                               # ONNX opset version
 dynamic_batch: true                     # Allow dynamic batch size in exported model
 static_batch: false                     # Disable dynamic batch size (if true)
 optimize: false                         # Enable mobile optimization for TorchScript

@@ -643,7 +643,7 @@ def parse_args():
         help="Precision for export. Auto uses FP16 for GPU, FP32 for CPU",
     )
 
-    parser.add_argument("--opset", type=int, default=17, help="ONNX opset version")
+    parser.add_argument("--opset", type=int, default=18, help="ONNX opset version")
     parser.add_argument(
         "--static-batch", action="store_true", help="Disable dynamic batch size"
     )
