@@ -52,9 +52,11 @@ anomavision = "anomavision.cli:main"
 [tool.uv]
 # Prevent users/CI from accidentally mixing CUDA versions in the same environment
 override-dependencies = [
-    "onnxruntime>=1.18.0",
-    "onnx>=1.16.0"
-]
+    # 1. Route Python 3.10 to the older ONNX Runtime that still publishes cp310 wheels
+    "onnxruntime>=1.16.0,<1.24.0 ; python_version == '3.10'",
+
+    # 2. Route Python 3.11+ to the latest ONNX Runtime
+    "onnxruntime>=1.24.0 ; python_version >= '3.11'",]
 conflicts = [
     [
         { extra = "cpu" },
