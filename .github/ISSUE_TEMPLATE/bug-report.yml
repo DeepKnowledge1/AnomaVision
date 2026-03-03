@@ -8,6 +8,7 @@ body:
         Thank you for reporting a bug! Please fill out the sections below to help us resolve the issue quickly.
 
   - type: checkboxes
+    id: search
     attributes:
       label: Search before asking
       description: Please search existing issues to avoid duplicates
@@ -16,6 +17,7 @@ body:
           required: true
 
   - type: dropdown
+    id: component
     attributes:
       label: Component
       description: Select the component where the bug occurs
@@ -31,6 +33,7 @@ body:
       required: true
 
   - type: textarea
+    id: description
     attributes:
       label: Bug Description
       description: Describe the bug and provide error messages, logs, or screenshots
@@ -48,26 +51,67 @@ body:
     validations:
       required: true
 
-  - type: textarea
+  # ==========================================
+  # STRICT ENVIRONMENT TRACING
+  # ==========================================
+  - type: markdown
     attributes:
-      label: Environment
-      description: Specify your environment details
-      placeholder: |
-        - AnomaVision version:
-        - OS:
-        - Python version:
-        - GPU/CPU:
-        - Dependencies:
       value: |
-        - AnomaVision version:
-        - OS:
-        - Python version:
-        - GPU/CPU:
-        - Dependencies:
+        ### 🖥️ Environment Configuration
+        Please specify exactly how your environment is configured. This is required to debug PyTorch/Hardware routing issues.
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Ubuntu / Debian / Linux
+        - Windows (Native)
+        - Windows (WSL2)
+        - macOS (Apple Silicon)
+        - macOS (Intel)
     validations:
       required: true
 
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      description: Which exact version of Python are you running?
+      placeholder: "e.g., 3.11.7"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: package-manager
+    attributes:
+      label: Package Manager Used
+      description: How did you install AnomaVision?
+      options:
+        - uv (e.g., uv pip install)
+        - pip (legacy)
+        - poetry
+        - Built from source (git clone)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Target Hardware / Extra Bracket
+      description: Which ML hardware bracket did you target during installation?
+      options:
+        - CPU Only (anomavision[cpu])
+        - CUDA 12.1 (anomavision[cu121])
+        - CUDA 12.4 (anomavision[cu124])
+        - CUDA 11.8 (anomavision[cu118])
+        - Custom / Other
+    validations:
+      required: true
+  # ==========================================
+
   - type: textarea
+    id: reproducible-example
     attributes:
       label: Minimal Reproducible Example
       description: Provide code that reproduces the issue
@@ -82,11 +126,13 @@ body:
       required: true
 
   - type: textarea
+    id: additional-context
     attributes:
       label: Additional Context
       description: Any other relevant information, workarounds, or related issues
 
   - type: checkboxes
+    id: contribution
     attributes:
       label: Contribution
       description: Would you like to contribute a fix?

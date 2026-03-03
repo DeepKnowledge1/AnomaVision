@@ -1,37 +1,35 @@
+## 🔗 Related Issue
+Fixes #
+
 ## 📝 Description
+-
+-
+-
 
-- Provide a concise summary of the changes and the issue addressed.
-- 🛠️ Fixes #<issue-number>
+## 🔄 Type of Change
+- [ ] 🐛 Bug fix (non-breaking change which fixes an issue)
+- [ ] 🚀 New feature (non-breaking change which adds functionality)
+- [ ] 💥 Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] 📖 Documentation update
+- [ ] 🏗️ Infrastructure / CI/CD update
 
----
+## 🧪 Hardware & Matrix Testing
+**I have successfully built and tested this code using `uv` on:**
+- [ ] `anomavision[cpu]` (Standard/Edge)
+- [ ] `anomavision[cu121]` (CUDA 12.1)
+- [ ] `anomavision[cu124]` (CUDA 12.4)
+- [ ] `anomavision[cu118]` (CUDA 11.8)
 
-## ✨ Changes
+**Host OS used for testing:**
+- [ ] Linux / Ubuntu
+- [ ] Windows (Native or WSL2)
+- [ ] macOS
 
-Select the type of change in this PR:
+## ✅ Developer Checklist
+- [ ] My code follows the core style guidelines of this project (Ruff/Black formatting).
+- [ ] I have run `uv run pytest` and all unit tests pass locally.
+- [ ] **Lockfile Guard:** If I added or modified a dependency in `pyproject.toml`, I have run `uv lock --python 3.10` and committed the updated `uv.lock` file.
+- [ ] I have added tests that prove my fix is effective or that my feature works.
+- [ ] I have updated the documentation accordingly (if applicable).
 
-- [ ] 🚀 New feature (adds functionality without breaking existing behavior)
-- [ ] 🐞 Bug fix (resolves an issue without breaking existing behavior)
-- [ ] 🔄 Refactor (improves code structure without changing behavior)
-- [ ] ⚡ Performance improvement
-- [ ] 🎨 Style update (formatting/code style only)
-- [ ] 🧪 Tests (add/modify tests)
-- [ ] 📚 Documentation update
-- [ ] 📦 Build system change
-- [ ] 🚧 CI/CD configuration
-- [ ] 🔧 Chore (maintenance tasks)
-- [ ] 🔒 Security update
-- [ ] 💥 Breaking change (feature or fix that changes existing behavior)
-
----
-
-## ✅ Checklist
-
-Before submitting, confirm the following:
-
-- [ ] 📚 Documentation updated (if applicable)
-- [ ] 🧪 Tests added/updated (if applicable)
-- [ ] 🏷️ PR title follows [conventional commits](https://www.conventionalcommits.org)
-
----
-
-🔍 For review guidelines, see the [Code Review Checklist](https://github.com/open-edge-platform/anomalib/blob/main/docs/source/markdown/guides/developer/contributing.md).
+## 📸 Screenshots / Visual Proof (Optional)
