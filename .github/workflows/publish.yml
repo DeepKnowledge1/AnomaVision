@@ -1,0 +1,39 @@
+name: Publish to PyPI and GitHub
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-publish:
+    name: Build and Publish Wheels
+    runs-on: ubuntu-latest
+
+    # SECURITY ENFORCEMENT: OIDC Auth
+    # This allows GitHub to securely authenticate with PyPI without you needing to store a password.
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build Package (sdist and wheel)
+        # uv natively replaces standard 'build' and 'twine'
+        run: uv build
+
+      - name: Publish to PyPI
+        # This uses PyPI's official Trusted Publisher standard (OIDC)
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Upload Artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

@@ -1,0 +1,75 @@
+name: Issue Triage and Routing
+
+on:
+  issues:
+    types: [opened]
+
+# Concurrency ensures we don't spam the API if a user opens multiple issues rapidly
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  triage-and-welcome:
+    name: Automated Issue Triage
+    runs-on: ubuntu-latest
+
+    # SECURITY ENFORCEMENT: Principle of Least Privilege
+    permissions:
+      issues: write
+
+    steps:
+      - name: Parse Issue and Generate Response
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const creator = issue.user.login;
+            const body = issue.body || "";
+            const labels = issue.labels.map(l => l.name);
+
+            // 1. Base Welcome Message
+            let reply = `👋 Hello @${creator}, thank you for opening this issue! Welcome to the **AnomaVision** community.\n\n`;
+
+            // 2. Context-Aware Routing based on the YAML Template used
+            if (labels.includes('bug')) {
+              reply += `Our triage bot has categorized this as a **Bug Report**. The engineering team will review your environment and hardware trace shortly.\n`;
+
+              // Smart validation: Check if they left the mandatory search box empty
+              if (body.includes('[ ] I have searched the')) {
+                reply += `\n> ⚠️ **Notice:** We noticed the "Search before asking" checkbox was left unchecked. Please take a moment to ensure this isn't a duplicate issue, as a fix might already be available!\n`;
+              }
+
+              // Smart validation: Remind them about the uv package manager
+              if (body.includes('pip (legacy)')) {
+                reply += `\n> 💡 **Tip:** We see you used legacy \`pip\`. If you are encountering hardware or PyTorch errors, please verify you followed the \`uv\` installation guidelines in our README.\n`;
+              }
+
+            } else if (labels.includes('enhancement')) {
+              reply += `Our triage bot has categorized this as a **Feature Request**. We love community ideas! We will evaluate the use case and priority you provided.\n`;
+
+            } else if (labels.includes('question')) {
+              reply += `Our triage bot has categorized this as a **Question**. A community member or maintainer will jump in to help as soon as possible.\n`;
+            } else {
+              reply += `Our triage bot will route this to the maintainers for review.\n`;
+            }
+
+            reply += `\n*Please hold tight while we route this to the right team member.* 🚀`;
+
+            // 3. Post the Comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: reply
+            });
+
+            // 4. Always add a 'needs-triage' label for your internal Kanban boards
+            if (!labels.includes('needs-triage')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['needs-triage']
+              });
+            }

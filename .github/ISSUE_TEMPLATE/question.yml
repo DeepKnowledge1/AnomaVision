@@ -10,6 +10,7 @@ body:
         Thank you for asking an AnomaVision ❓ Question!
 
   - type: checkboxes
+    id: search
     attributes:
       label: Search before asking
       description: Please search existing resources to see if your question has already been answered
@@ -18,6 +19,7 @@ body:
           required: true
 
   - type: dropdown
+    id: category
     attributes:
       label: Question Category
       description: What type of question is this?
@@ -36,6 +38,7 @@ body:
       required: true
 
   - type: textarea
+    id: question
     attributes:
       label: Question
       description: What would you like to know about AnomaVision?
@@ -52,24 +55,70 @@ body:
     validations:
       required: true
 
-  - type: textarea
+  # ==========================================
+  # STRICT ENVIRONMENT TRACING
+  # ==========================================
+  - type: markdown
     attributes:
-      label: Environment
-      description: Your setup details (if relevant to the question)
-      placeholder: |
-        - AnomaVision version:
-        - OS:
-        - Python version:
-        - GPU/CPU:
-        - Dataset size/type:
       value: |
-        - AnomaVision version:
-        - OS:
-        - Python version:
-        - GPU/CPU:
-        - Dataset size/type:
+        ### 🖥️ Environment Configuration
+        If your question is related to Installation, Errors, or Performance, please specify your environment setup.
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Ubuntu / Debian / Linux
+        - Windows (Native)
+        - Windows (WSL2)
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - N/A (Not relevant to my question)
+    validations:
+      required: false
+
+  - type: dropdown
+    id: package-manager
+    attributes:
+      label: Package Manager Used
+      description: How did you install AnomaVision?
+      options:
+        - uv (e.g., uv pip install)
+        - pip (legacy)
+        - poetry
+        - Built from source
+        - N/A
+    validations:
+      required: false
+
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Target Hardware / Extra Bracket
+      description: Which ML hardware bracket did you target during installation?
+      options:
+        - CPU Only (anomavision[cpu])
+        - CUDA 12.1 (anomavision[cu121])
+        - CUDA 12.4 (anomavision[cu124])
+        - CUDA 11.8 (anomavision[cu118])
+        - Custom / Other
+        - N/A
+    validations:
+      required: false
+
+  - type: input
+    id: dataset
+    attributes:
+      label: Dataset Size/Type
+      description: Only fill this out if your question involves training or data processing.
+      placeholder: "e.g., 50GB Custom Image Dataset, MVTec AD, etc."
+    validations:
+      required: false
+  # ==========================================
 
   - type: textarea
+    id: code-example
     attributes:
       label: Code Example
       description: Relevant code you're working with (if applicable)
@@ -79,6 +128,7 @@ body:
         ```
 
   - type: textarea
+    id: expected-behavior
     attributes:
       label: Expected vs Actual Behavior
       description: What did you expect vs what actually happened? (if applicable)
@@ -90,6 +140,7 @@ body:
         **Error messages:** Any error messages or unexpected outputs
 
   - type: textarea
+    id: additional-context
     attributes:
       label: Additional Context
       description: Any other information that might help answer your question
