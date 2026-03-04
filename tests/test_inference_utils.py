@@ -39,7 +39,6 @@ def test_save_visualization_single_and_batch(tmp_path):
     assert len(files) == 3
 
 
-
 def test_parse_args_defaults(monkeypatch):
     """Test parse_args with no CLI args to get the defaults."""
     # Run parse_args with no CLI args to get the defaults

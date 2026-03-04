@@ -130,4 +130,3 @@ By contributing, you agree that your contributions will be licensed under the [M
 ## 🙏 Acknowledgments
 
 Big thanks to all contributors who help make AnomaVision better for the community! 🚀
-

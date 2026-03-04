@@ -657,8 +657,9 @@ def run_inference_on_current():
 
             st.session_state.results_cache[cache_key] = {
                 "_error": error_msg,
-                "_filename": current_file.name
+                "_filename": current_file.name,
             }
+
 
 # Run inference on current image
 if st.session_state.image_files and api_online:

@@ -1,11 +1,10 @@
-from typing import Dict, Any
-
-from anomavision.datasets.StreamDataset import StreamDataset
-from anomavision.datasets.StreamSource import StreamSource
+from typing import Any, Dict
 
 from torch.utils.data import IterableDataset
 
 from anomavision.datasets.MQTTSource import MQTTSource
+from anomavision.datasets.StreamDataset import StreamDataset
+from anomavision.datasets.StreamSource import StreamSource
 from anomavision.datasets.TCPsource import TCPSource
 from anomavision.datasets.VideoSource import VideoSource
 from anomavision.datasets.WebcamSource import WebcamSource

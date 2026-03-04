@@ -135,7 +135,9 @@ def parse_args():
     # We define args inside this function scope, but typically we return the parser
     # so calling scripts can extend it, or we parse immediately if run as main.
     # To support both, we return both.
-    args, unknown = parser.parse_known_args() if __name__ == "__main__" else (None, None)
+    args, unknown = (
+        parser.parse_known_args() if __name__ == "__main__" else (None, None)
+    )
 
     return parser
 
@@ -175,9 +177,7 @@ def run_training(args):
         config.normalize,
     )
     if config.normalize:
-        logger.info(
-            "Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std
-        )
+        logger.info("Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std)
 
     # Resolve output run dir once
     run_dir = increment_path(
@@ -198,9 +198,11 @@ def run_training(args):
     if not os.path.isdir(root):
         # Fallback check: maybe dataset_path ALREADY points to the class folder?
         # This makes it more robust for different input styles
-        potential_root = os.path.join(os.path.realpath(config.dataset_path), "train", "good")
+        potential_root = os.path.join(
+            os.path.realpath(config.dataset_path), "train", "good"
+        )
         if os.path.isdir(potential_root):
-             root = potential_root
+            root = potential_root
         else:
             logger.error('Expected folder "%s" does not exist.', root)
             raise FileNotFoundError(f"Dataset root not found: {root}")
@@ -262,19 +264,17 @@ def run_training(args):
     # snapshot the effective configuration
     save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
 
-    logger.info(
-        "saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml"
-    )
+    logger.info("saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml")
     logger.info("=== Training done in %.2fs ===", time.perf_counter() - t0)
 
     # Return objects for external usage (e.g. MLOps pipeline)
-    return padim, config, run_dir, {'train': dl}
+    return padim, config, run_dir, {"train": dl}
 
 
 def main():
     try:
         # In main execution, we parse args explicitly
-        parser= parse_args()
+        parser = parse_args()
         args = parser.parse_args()
 
         run_training(args)

@@ -81,6 +81,7 @@ async def cleanup():
     model_type = None
     print("Model cleanup completed.")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await load_model()

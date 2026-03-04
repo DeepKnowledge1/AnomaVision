@@ -31,6 +31,6 @@ outputs:
   model_output:
     type: uri_folder
     mode: rw_mount
-    # path: azureml://datastores/workspaceblobstore/paths/models/anomavision/    
+    # path: azureml://datastores/workspaceblobstore/paths/models/anomavision/
 
 compute: azureml:compute-anomavision  # ← from COMPUTE_NAME

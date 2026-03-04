@@ -344,8 +344,6 @@ def split_tensor_and_run_function(
     return output_tensor
 
 
-
-
 def setup_logging(
     log_level: str = "INFO",
     log_to_file: bool = False,

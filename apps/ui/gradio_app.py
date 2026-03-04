@@ -1,11 +1,12 @@
-import gradio as gr
-import requests
 import base64
 import io
 import json
 import time
-from PIL import Image
 from typing import Optional, Tuple
+
+import gradio as gr
+import requests
+from PIL import Image
 
 # Configuration
 FASTAPI_URL = "http://localhost:8000"
@@ -13,17 +14,24 @@ PREDICT_ENDPOINT = f"{FASTAPI_URL}/predict"
 HEALTH_ENDPOINT = f"{FASTAPI_URL}/health"
 CONFIG_ENDPOINT = f"{FASTAPI_URL}/config"
 
+
 def safe_get(url: str, timeout: int = 5):
     try:
         return requests.get(url, timeout=timeout)
     except:
         return None
 
-def safe_post(url: str, *, json_payload=None, files=None, params=None, timeout: int = 30):
+
+def safe_post(
+    url: str, *, json_payload=None, files=None, params=None, timeout: int = 30
+):
     try:
-        return requests.post(url, json=json_payload, files=files, params=params, timeout=timeout)
+        return requests.post(
+            url, json=json_payload, files=files, params=params, timeout=timeout
+        )
     except:
         return None
+
 
 def decode_base64_image(base64_str: str) -> Optional[Image.Image]:
     if not base64_str:
@@ -34,6 +42,7 @@ def decode_base64_image(base64_str: str) -> Optional[Image.Image]:
     except:
         return None
 
+
 def check_backend():
     resp = safe_get(HEALTH_ENDPOINT)
     if resp and resp.status_code == 200:
@@ -41,20 +50,24 @@ def check_backend():
         return data.get("status") == "healthy"
     return False
 
+
 def run_inference(image, threshold, resize_w, resize_h, viz):
     if image is None:
         return "Please upload an image", None, None
 
     # Update config
-    safe_post(CONFIG_ENDPOINT, json_payload={
-        "threshold": float(threshold),
-        "resize_width": int(resize_w),
-        "resize_height": int(resize_h)
-    })
+    safe_post(
+        CONFIG_ENDPOINT,
+        json_payload={
+            "threshold": float(threshold),
+            "resize_width": int(resize_w),
+            "resize_height": int(resize_h),
+        },
+    )
 
     # Prepare image
     img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
+    image.save(img_byte_arr, format="PNG")
     img_byte_arr.seek(0)
 
     # Predict
@@ -79,11 +92,14 @@ def run_inference(image, threshold, resize_w, resize_h, viz):
 
     return "Error: Backend offline", None, None
 
+
 # Create interface
 with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
 
     gr.Markdown("# 🔍 MVTec Anomaly Detection Demo")
-    gr.Markdown("Upload an image to detect anomalies using state-of-the-art deep learning models.")
+    gr.Markdown(
+        "Upload an image to detect anomalies using state-of-the-art deep learning models."
+    )
 
     with gr.Tabs() as tabs:
 
@@ -96,14 +112,22 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
                     input_img = gr.Image(type="pil", label="Input Image")
 
                     with gr.Row():
-                        threshold = gr.Slider(0.1, 50.0, 13.0, step=0.1, label="Threshold")
+                        threshold = gr.Slider(
+                            0.1, 50.0, 13.0, step=0.1, label="Threshold"
+                        )
 
                     with gr.Row():
-                        resize_w = gr.Number(value=224, label="Width", minimum=32, maximum=2048)
-                        resize_h = gr.Number(value=224, label="Height", minimum=32, maximum=2048)
+                        resize_w = gr.Number(
+                            value=224, label="Width", minimum=32, maximum=2048
+                        )
+                        resize_h = gr.Number(
+                            value=224, label="Height", minimum=32, maximum=2048
+                        )
 
                     viz_check = gr.Checkbox(value=True, label="Generate Visualizations")
-                    analyze_btn = gr.Button("🔍 Analyze Image", variant="primary", size="lg")
+                    analyze_btn = gr.Button(
+                        "🔍 Analyze Image", variant="primary", size="lg"
+                    )
 
                 with gr.Column(scale=1):
                     result_text = gr.Textbox(label="Results", lines=4)
@@ -115,17 +139,19 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
             analyze_btn.click(
                 fn=run_inference,
                 inputs=[input_img, threshold, resize_w, resize_h, viz_check],
-                outputs=[result_text, heatmap_out, boundary_out]
+                outputs=[result_text, heatmap_out, boundary_out],
             )
 
         # TAB 2: Draw Defects (placeholder)
         with gr.Tab("🎨 Draw Defects", id=1):
             gr.Markdown("## Draw Artificial Defects")
-            gr.Markdown("""
+            gr.Markdown(
+                """
             1. Upload a GOOD image (normal, without defects)
             2. Use the brush to draw artificial defects (scratches, stains, cracks, etc.)
             3. Click Analyze to see if the heatmap detects your drawn defects
-            """)
+            """
+            )
 
             # Image editor would go here (requires canvas/drawing functionality)
             gr.Markdown("*Drawing editor coming soon - use Upload Image tab for now*")
@@ -139,7 +165,8 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
         with gr.Tab("📚 Learn About Models", id=3):
             gr.Markdown("## Understanding Anomaly Detection Models")
 
-            gr.Markdown("""
+            gr.Markdown(
+                """
             ### 🧩 PatchCore
 
             **Approach:** Memory Bank + K-Nearest Neighbors
@@ -180,14 +207,18 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
             **Weaknesses:**
             - Requires calculation of covariance matrices
             - Performance depends on quality of feature extraction
-            """)
+            """
+            )
 
         # TAB 5: Model Metrics
         with gr.Tab("📈 Model Metrics", id=4):
             gr.Markdown("## Training Metrics & Performance")
-            gr.Markdown("This section shows the performance metrics of all trained models across different MVTec categories.")
+            gr.Markdown(
+                "This section shows the performance metrics of all trained models across different MVTec categories."
+            )
 
-            gr.Markdown("""
+            gr.Markdown(
+                """
             ### 🏆 Best Performers
 
             | Metric | Best Model | Category | Value |
@@ -199,7 +230,8 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue")) as demo:
             ### 📊 All Metrics
 
             *Performance metrics table would be dynamically loaded from backend*
-            """)
+            """
+            )
 
 if __name__ == "__main__":
     demo.launch(server_name="localhost", server_port=7860, share=False)

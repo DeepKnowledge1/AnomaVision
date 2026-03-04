@@ -1,33 +1,23 @@
 repos:
-  # Black: auto-format Python code (fixes E501 line too long)
+  # Ensure the uv.lock file is up-to-date
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.6.2
+    hooks:
+      - id: uv-lock
+
+  # Black: auto-format Python code
   - repo: https://github.com/psf/black
     rev: 24.3.0
     hooks:
       - id: black
         args: [--line-length=88]
 
-  # isort: automatically sort and group imports (fixes E402)
+  # isort: automatically sort and group imports
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
       - id: isort
         args: [--profile=black]
-
-  # # flake8: linting for style & errors
-  # - repo: https://github.com/pycqa/flake8
-  #   rev: 7.0.0
-  #   hooks:
-  #     - id: flake8
-  #       additional_dependencies: [
-  #         flake8-bugbear,
-  #         flake8-comprehensions
-  #       ]
-
-  # # mypy: static type checking
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.8.0
-  #   hooks:
-  #     - id: mypy
 
   # Basic cleanup hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -36,10 +26,11 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
 
+  # Local hooks for testing
   - repo: local
     hooks:
       - id: pytest
         name: Run pytest
-        # entry: poetry run pytest
+        entry: uv run pytest
         language: system
         pass_filenames: false

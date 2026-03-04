@@ -41,7 +41,14 @@ cu121 = ["torch>=2.4.0", "torchvision>=0.19.0", "torchaudio>=2.4.0"]
 cu124 = ["torch>=2.4.0", "torchvision>=0.19.0", "torchaudio>=2.4.0"]
 
 # Dev tools bundled as an extra
-dev = ["pytest==8.0.2", "black==24.2.0", "flake8==7.0.0", "pre-commit==3.6.2"]
+dev = [
+    "pytest==8.0.2",
+    "black==24.2.0",
+    "flake8==7.0.0",
+    "pre-commit==3.6.2",
+    "pip-audit>=2.10.0",
+    "ruff>=0.15.4",
+]
 
 [project.scripts]
 anomavision = "anomavision.cli:main"
@@ -107,3 +114,16 @@ torchaudio = [
     { index = "pytorch-cu121", extra = "cu121" },
     { index = "pytorch-cu124", extra = "cu124" },
 ]
+
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+# Enable Pyflakes (F), Autopep8 (E, W), and Isort (I)
+select = ["E", "F", "W", "I", "B"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["anomavision"]

@@ -24,11 +24,12 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Now we can import the scripts from project root
-import train
-import export
 import detect
 import eval as eval_module  # 'eval' is a Python builtin, so alias it
+import export
+
+# Now we can import the scripts from project root
+import train
 
 
 def create_parser():
@@ -453,29 +454,29 @@ def dispatch_train(args):
 
     if args.config:
         sys.argv.extend(["--config", args.config])
-    if hasattr(args, 'dataset_path') and args.dataset_path:
+    if hasattr(args, "dataset_path") and args.dataset_path:
         sys.argv.extend(["--dataset_path", args.dataset_path])
-    if hasattr(args, 'resize') and args.resize:
+    if hasattr(args, "resize") and args.resize:
         sys.argv.extend(["--resize"] + [str(x) for x in args.resize])
-    if hasattr(args, 'crop_size') and args.crop_size:
+    if hasattr(args, "crop_size") and args.crop_size:
         sys.argv.extend(["--crop_size"] + [str(x) for x in args.crop_size])
-    if hasattr(args, 'normalize') and args.normalize:
+    if hasattr(args, "normalize") and args.normalize:
         sys.argv.append("--normalize")
-    if hasattr(args, 'backbone') and args.backbone:
+    if hasattr(args, "backbone") and args.backbone:
         sys.argv.extend(["--backbone", args.backbone])
-    if hasattr(args, 'batch_size') and args.batch_size:
+    if hasattr(args, "batch_size") and args.batch_size:
         sys.argv.extend(["--batch_size", str(args.batch_size)])
-    if hasattr(args, 'feat_dim') and args.feat_dim:
+    if hasattr(args, "feat_dim") and args.feat_dim:
         sys.argv.extend(["--feat_dim", str(args.feat_dim)])
-    if hasattr(args, 'layer_indices') and args.layer_indices:
+    if hasattr(args, "layer_indices") and args.layer_indices:
         sys.argv.extend(["--layer_indices"] + [str(x) for x in args.layer_indices])
-    if hasattr(args, 'output_model') and args.output_model:
+    if hasattr(args, "output_model") and args.output_model:
         sys.argv.extend(["--output_model", args.output_model])
-    if hasattr(args, 'run_name') and args.run_name:
+    if hasattr(args, "run_name") and args.run_name:
         sys.argv.extend(["--run_name", args.run_name])
-    if hasattr(args, 'model_data_path') and args.model_data_path:
+    if hasattr(args, "model_data_path") and args.model_data_path:
         sys.argv.extend(["--model_data_path", args.model_data_path])
-    if hasattr(args, 'log_level') and args.log_level:
+    if hasattr(args, "log_level") and args.log_level:
         sys.argv.extend(["--log_level", args.log_level])
 
     train.main()

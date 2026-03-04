@@ -1,11 +1,12 @@
-from anomavision.datasets.StreamSource import StreamSource
+import queue
+import threading
+import time
+from typing import Optional
 
 import cv2
-import threading
-import queue
-import time
 import numpy as np
-from typing import Optional
+
+from anomavision.datasets.StreamSource import StreamSource
 
 
 class VideoSource(StreamSource):
