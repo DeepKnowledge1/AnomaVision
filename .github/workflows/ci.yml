@@ -18,8 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Architect Note: Removed "3.9". Your pyproject.toml explicitly requires ">=3.10".
-        # Attempting 3.9 will hard-fail the uv dependency solver.
         python-version: ["3.10", "3.11", "3.12"]
       fail-fast: false # Prevents the entire matrix from dying if one python version fails
 
@@ -53,7 +51,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-          enable-cache: true
+          enable-cache: false # Caching isn't needed since we're only doing dry-runs
 
       # Architect Note: We use --dry-run here. We only want to verify that the
       # hardware routing matrix in pyproject.toml correctly resolves all dependencies
