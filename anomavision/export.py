@@ -587,11 +587,12 @@ class ModelExporter:
             return None
 
 
-def parse_args():
+def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     """Command line interface."""
     parser = argparse.ArgumentParser(
         description="Export PaDiM models to ONNX, TorchScript, and OpenVINO (with optional quantization)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        add_help=add_help,
     )
 
     # Config file
@@ -603,7 +604,7 @@ def parse_args():
     parser.add_argument(
         "--model_data_path",
         type=str,
-        default="./distributions/train_exp",
+        default="./distributions/anomav_exp",
         help="Directory containing model and output location",
     )
 
@@ -681,12 +682,12 @@ def parse_args():
         help="Logging level",
     )
 
-    return parser.parse_args()
+    return parser
 
 
 def main(args=None):
     if args is None:
-        args = parse_args()
+        args = create_parser().parse_args()
 
     if args.config is not None:
         cfg = load_config(str(args.config))

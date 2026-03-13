@@ -45,7 +45,7 @@ anomavision train [options]
 | `--feat_dim`        | int      | 50              | Number of random features                            |
 | `--layer_indices`   | int list | [0]             | Backbone layer indices                               |
 | `--output_model`    | str      | padim_model.pt  | Model filename (`.pt`)                               |
-| `--run_name`        | str      | train_exp       | Experiment name                                      |
+| `--run_name`        | str      | anomav_exp       | Experiment name                                      |
 | `--model_data_path` | str      | ./distributions | Output directory                                     |
 | `--log_level`       | str      | INFO            | Logging level                                        |
 
@@ -71,7 +71,7 @@ anomavision detect [options]
 | ------------------------ | ----- | ------------------------- | -------------------------------------- |
 | `--config`               | str   | None                      | Path to config file                    |
 | `--img_path`             | str   | None                      | Path to test images                    |
-| `--model_data_path`      | str   | ./distributions/train_exp | Directory with model files             |
+| `--model_data_path`      | str   | ./distributions/anomav_exp | Directory with model files             |
 | `--model`                | str   | padim_model.pt            | Model file (`.pt`, `.onnx`, `.engine`) |
 | `--device`               | str   | auto                      | Device (`cpu`, `cuda`, `auto`)         |
 | `--batch_size`           | int   | 1                         | Batch size                             |
@@ -110,7 +110,7 @@ anomavision eval [options]
 | `--config`               | str  | None                      | Path to config file        |
 | `--dataset_path`         | str  | None                      | Root dataset path          |
 | `--class_name`           | str  | bottle                    | Class name (MVTec style)   |
-| `--model_data_path`      | str  | ./distributions/train_exp | Directory with model files |
+| `--model_data_path`      | str  | ./distributions/anomav_exp | Directory with model files |
 | `--model`                | str  | padim_model.onnx          | Model file                 |
 | `--device`               | str  | auto                      | Device (`cpu`, `cuda`)     |
 | `--batch_size`           | int  | 32                        | Batch size                 |
@@ -143,7 +143,7 @@ anomavision export [options]
 | Argument             | Type | Default                   | Description                                              |
 | -------------------- | ---- | ------------------------- | -------------------------------------------------------- |
 | `--config`           | str  | None                      | Path to config file                                      |
-| `--model_data_path`  | str  | ./distributions/train_exp | Directory with model & outputs                           |
+| `--model_data_path`  | str  | ./distributions/anomav_exp | Directory with model & outputs                           |
 | `--model`            | str  | *(required)*              | Model file (`.pt`)                                       |
 | `--format`           | str  | *(required)*              | Export format (`onnx`, `torchscript`, `openvino`, `all`) |
 | `--device`           | str  | auto                      | Export device                                            |
@@ -160,7 +160,7 @@ anomavision export [options]
 
 ```bash
 anomavision export \
-  --model_data_path ./distributions/train_exp \
+  --model_data_path ./distributions/anomav_exp \
   --model padim_model.pt \
   --format onnx \
   --precision fp16 \

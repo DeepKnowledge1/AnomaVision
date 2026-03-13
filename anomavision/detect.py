@@ -38,9 +38,10 @@ from anomavision.utils import (
 matplotlib.use("Agg")  # non-interactive, faster PNG writing
 
 
-def parse_args():
+def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run anomaly detection inference using trained models."
+        description="Run anomaly detection inference using trained models.",
+        add_help=add_help,
     )
 
     # Config file
@@ -158,9 +159,7 @@ def parse_args():
         help="Enable detailed timing measurements.",
     )
 
-    # Return parser and args to support external extension
-    args, unknown = parser.parse_known_args() if __name__ == "__main__" else (None, None)
-    return parser, args
+    return parser
 
 
 def run_inference(args):
@@ -501,10 +500,8 @@ def run_inference(args):
 
 def main(args=None):
     try:
-
         if args is None:
-            parser, _ = parse_args()
-            args = parser.parse_args()
+            args = create_parser().parse_args()
 
         metrics, results = run_inference(args)
 

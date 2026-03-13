@@ -41,27 +41,18 @@ def test_save_visualization_single_and_batch(tmp_path):
 
 
 def test_parse_args_defaults(monkeypatch):
-    """Test parse_args with no CLI args to get the defaults."""
-    # Run parse_args with no CLI args to get the defaults
+    """Test create_parser with no CLI args to get the defaults."""
     monkeypatch.setenv("PYTHONHASHSEED", "0")
     old = sys.argv[:]
     sys.argv = [old[0]]
     try:
-        parser, args = detect.parse_args()
-        # parse_args returns (parser, args) tuple
-        # When called as a script, args will be populated
-        # When not called as __main__, it returns (parser, None)
-        # So we need to actually parse to get args
-        args = parser.parse_args([])
+        args = detect.create_parser().parse_args([])
     finally:
         sys.argv = old
-
-    # Check that args object exists and has expected attributes
     assert hasattr(args, "batch_size")
     assert hasattr(args, "thresh")
     assert hasattr(args, "device")
     assert hasattr(args, "enable_visualization")
-
 
 def test_main_with_missing_model_file_raises(tmp_path, monkeypatch):
     """
