@@ -8,8 +8,8 @@ import torch
 
 # Import from your detect script
 # If your file is named differently, adjust this import.
-import detect
-
+# import anomavision.detect
+from anomavision import detect
 
 def test_determine_device_basic_roundtrip():
     assert detect.determine_device("cpu") == "cpu"
