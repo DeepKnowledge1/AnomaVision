@@ -1,4 +1,3 @@
-
 ---
 
 # 📦 Installation
@@ -12,32 +11,33 @@ cd AnomaVision
 
 ## 2. Install Dependencies
 
-### Poetry (Recommended)
+### uv (Recommended)
 
-**CPU-only (default):**
+**Create and activate a virtual environment:**
 
 ```bash
-poetry install
+uv venv --python 3.11 .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
 ```
 
-**GPU (choose one backend):**
+**CPU-only:**
 
 ```bash
-poetry install --extras "cu118"   # CUDA 11.8
-poetry install --extras "cu121"   # CUDA 12.1
-poetry install --extras "cu124"   # CUDA 12.4
+uv sync --extra cpu
 ```
 
-**Full install (CPU + GPU support):**
+**GPU (choose your CUDA version):**
 
 ```bash
-poetry install --extras "full"
+uv sync --extra cu118   # CUDA 11.8
+uv sync --extra cu121   # CUDA 12.1
+uv sync --extra cu124   # CUDA 12.4
 ```
 
-Then activate:
+**Install the package in editable mode** (registers the `anomavision` CLI command):
 
 ```bash
-poetry shell
+uv pip install -e .
 ```
 
 ---
@@ -45,7 +45,7 @@ poetry shell
 ### pip (Basic CPU-only)
 
 ```bash
-pip install git+https://github.com/DeepKnowledge1/AnomaVision.git
+pip install anomavision
 ```
 
 ### Development Mode
@@ -53,7 +53,7 @@ pip install git+https://github.com/DeepKnowledge1/AnomaVision.git
 For contributors:
 
 ```bash
-pip install -e .[dev]
+uv pip install -e ".[dev]"
 ```
 
 ---
@@ -88,10 +88,14 @@ pip install -e .[dev]
 Run a quick test to confirm everything is available:
 
 ```bash
-python train.py --help
-python detect.py --help
-python eval.py --help
-python export.py --help
+python -c "import anomavision, torch; print('✅ Ready —', torch.__version__)"
+
+# Confirm the CLI is registered
+anomavision --help
+anomavision train --help
+anomavision detect --help
+anomavision eval --help
+anomavision export --help
 ```
 
 ---

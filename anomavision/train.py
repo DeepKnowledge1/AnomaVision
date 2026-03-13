@@ -271,18 +271,17 @@ def run_training(args):
     return padim, config, run_dir, {'train': dl}
 
 
-def main():
+def main(args=None):
     try:
-        # In main execution, we parse args explicitly
-        parser= parse_args()
-        args = parser.parse_args()
+        if args is None:
+            parser = parse_args()
+            args = parser.parse_args()
 
         run_training(args)
 
     except Exception:
         get_logger(__name__).exception("Fatal error during training.")
         sys.exit(1)
-
-
+        
 if __name__ == "__main__":
     main()

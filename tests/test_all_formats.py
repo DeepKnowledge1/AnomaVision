@@ -15,7 +15,7 @@ from anomavision.utils import (
     merge_config,
     setup_logging,
 )
-from export import ModelExporter
+from anomavision.export import ModelExporter
 
 
 class TestAllFormats:

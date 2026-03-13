@@ -8,7 +8,7 @@ from anomavision.utils import get_logger, setup_logging
 
 # Adjust this import to your actual exporter module filename if needed
 # e.g., from export import ModelExporter, _ExportWrapper
-from export import ModelExporter, _ExportWrapper  # noqa: F401
+from anomavision.export import ModelExporter, _ExportWrapper  # noqa: F401
 
 setup_logging("INFO")
 logger = get_logger(__name__)

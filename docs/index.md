@@ -1,4 +1,3 @@
-
 # 📖 AnomaVision Documentation
 
 Welcome to the official documentation for **AnomaVision** —
@@ -33,25 +32,28 @@ AnomaVision is designed for **fast, lightweight, and accurate anomaly detection*
 
 ## 🚀 Get Started
 
-Install with **Poetry (recommended)**:
+Install with **uv (recommended)**:
 
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
-poetry install --extras "full"
-poetry shell
+
+uv venv --python 3.11 .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
+uv sync --extra cpu
+uv pip install -e .
 ```
 
 Train your first model:
 
 ```bash
-python train.py --config config.yml
+anomavision train --config config.yml
 ```
 
 Run inference:
 
 ```bash
-python detect.py --config detect_config.yml
+anomavision detect --config config.yml
 ```
 
 ---

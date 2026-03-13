@@ -409,10 +409,11 @@ def run_evaluation(args):
     return metrics, raw_results
 
 
-def main():
+def main(args=None):
     try:
-        parser, _ = parse_args()
-        args = parser.parse_args()
+        if args is None:
+            parser = parse_args()
+            args = parser.parse_args()
 
         run_evaluation(args)
 

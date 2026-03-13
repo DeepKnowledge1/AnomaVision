@@ -33,7 +33,7 @@ dataset/
 ### Option A — CLI Arguments
 
 ```bash
-python train.py \
+anomavision train \
   --dataset_path ./dataset \
   --class_name bottle \
   --backbone resnet18 \
@@ -72,7 +72,7 @@ log_level: INFO
 Then run:
 
 ```bash
-python train.py --config config.yml
+anomavision train --config config.yml
 ```
 
 ---
@@ -94,7 +94,7 @@ python train.py --config config.yml
 #### Option A — CLI Arguments
 
 ```bash
-python detect.py \
+anomavision detect \
   --img_path ./dataset/bottle/test \
   --model_data_path ./distributions/anomav_exp \
   --model padim_model.onnx \
@@ -132,7 +132,7 @@ log_level: INFO
 Run:
 
 ```bash
-python detect.py --config config.yml
+anomavision detect --config config.yml
 ```
 
 ---
@@ -216,7 +216,7 @@ batch_size: 1
 Run streaming detection:
 
 ```bash
-python detect.py --config config.yml
+anomavision detect --config config.yml
 ```
 
 ---
@@ -235,7 +235,7 @@ python detect.py --config config.yml
 ### Option A — CLI Arguments
 
 ```bash
-python eval.py \
+anomavision eval \
   --dataset_path ./dataset \
   --class_name bottle \
   --model_data_path ./distributions/anomav_exp \
@@ -271,7 +271,7 @@ memory_efficient: true
 Run:
 
 ```bash
-python eval.py --config config.yml
+anomavision eval --config config.yml
 ```
 
 ---
@@ -294,7 +294,7 @@ Quantization (INT8) is also supported.
 ### Option A — CLI Arguments
 
 ```bash
-python export.py \
+anomavision export \
   --model_data_path ./distributions/anomav_exp \
   --model padim_model.pt \
   --format onnx \
@@ -326,7 +326,7 @@ log_level: INFO
 Run:
 
 ```bash
-python export.py --config config.yml
+anomavision export --config config.yml
 ```
 
 ---

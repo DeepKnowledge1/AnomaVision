@@ -603,7 +603,7 @@ def parse_args():
     parser.add_argument(
         "--model_data_path",
         type=str,
-        default="./distributions/anomav_exp",
+        default="./distributions/train_exp",
         help="Directory containing model and output location",
     )
 
@@ -662,7 +662,7 @@ def parse_args():
     )
     parser.add_argument(
         "--quantize-static",
-        action="store_false",
+        action="store_true",
         help="Also export static INT8 quantized ONNX model (requires --calib-samples)",
     )
     parser.add_argument(
@@ -684,8 +684,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
+def main(args=None):
+    if args is None:
+        args = parse_args()
 
     if args.config is not None:
         cfg = load_config(str(args.config))

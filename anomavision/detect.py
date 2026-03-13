@@ -499,10 +499,12 @@ def run_inference(args):
     return metrics, results_accumulator
 
 
-def main():
+def main(args=None):
     try:
-        parser, _ = parse_args()
-        args = parser.parse_args()
+
+        if args is None:
+            parser, _ = parse_args()
+            args = parser.parse_args()
 
         metrics, results = run_inference(args)
 
