@@ -19,7 +19,7 @@ def test_exporter_loads_stats_pth_and_wraps(tmp_path, make_stats, patch_extracto
     pth_path = tmp_path / "model_stats.pth"
     torch.save(stats, pth_path)
 
-    from export import ModelExporter, _ExportWrapper
+    from anomavision.export import ModelExporter, _ExportWrapper
 
     exp = ModelExporter(model_path=pth_path, output_dir=tmp_path, logger=logger,device="cpu")
     m = exp._load_model()  # should be _ExportWrapper(PadimLite)
