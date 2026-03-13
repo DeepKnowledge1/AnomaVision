@@ -31,15 +31,8 @@ AnomaVision delivers **visual anomaly detection** optimized for production deplo
 
 The result: a 15 MB model that runs at **43 FPS on CPU** and **547 FPS on GPU**, with higher AUROC than the existing best-in-class baseline.
 
-```python
-import anomavision
 
-model = anomavision.Padim(backbone="resnet18", device="cuda")
-model.fit(train_loader)                   # train on normal images only
-scores, maps = model.predict(test_batch)  # anomaly score + heatmap per image
-```
 
----
 
 ## 🚀 Quickstart
 
@@ -112,35 +105,6 @@ uv pip install torch torchvision torchaudio --index-url https://download.pytorch
 python -c "import anomavision, torch; print('✅ Ready —', torch.__version__)"
 ```
 
-### Python API
-
-```python
-import torch
-import anomavision
-from anomavision import padim
-from torch.utils.data import DataLoader
-
-# Dataset (normal images only)
-dataset = anomavision.AnodetDataset(
-    image_directory_path="./dataset/bottle/train/good",
-    resize=(224, 224),
-    crop_size=(224, 224),
-    normalize=True,
-)
-loader = DataLoader(dataset, batch_size=16)
-
-# Train
-model = anomavision.Padim(backbone="resnet18", device="cpu", feat_dim=100)
-model.fit(loader)
-
-# Save
-torch.save(model, "padim_model.pt")                  # full model
-model.save_statistics("padim_model.pth", half=True)  # compact stats-only
-
-# Infer
-batch, *_ = next(iter(loader))
-scores, maps = model.predict(batch)
-```
 
 ### CLI
 
@@ -168,8 +132,71 @@ anomavision train --help
 anomavision export --help
 ```
 
-### REST API
+---
 
+<details>
+<summary><strong>🐍 Python API</strong></summary>
+<br>
+
+Use the Python API when you want to embed AnomaVision into a larger pipeline,
+run it inside a notebook, or integrate it with your own data loading logic.
+```python
+import torch
+import anomavision
+from torch.utils.data import DataLoader
+
+# --- 1. Dataset ---
+# AnodetDataset reads normal images from a folder and applies preprocessing.
+# You only need train/good/ — no labels, no anomalous images required.
+dataset = anomavision.AnodetDataset(
+    image_directory_path="./dataset/bottle/train/good",
+    resize=(224, 224),     # resize before crop
+    crop_size=(224, 224),  # center crop to this size
+    normalize=True,        # ImageNet mean/std normalization
+)
+loader = DataLoader(dataset, batch_size=16)
+
+# --- 2. Train ---
+# fit() does a single forward pass — no gradient updates, no epochs.
+# Fits a multivariate Gaussian at each spatial position of the feature map.
+# Typical training time: under 10 seconds on CPU for ~200 images.
+model = anomavision.Padim(
+    backbone="resnet18",  # or "wide_resnet50" for higher accuracy
+    device="cpu",         # or "cuda"
+    feat_dim=100,         # number of random feature dimensions to keep
+)
+model.fit(loader)
+
+# --- 3. Save ---
+torch.save(model, "padim_model.pt")                  # full model (for export or further use)
+model.save_statistics("padim_model.pth", half=True)  # stats-only (smaller, faster to load)
+
+# --- 4. Infer ---
+# scores: (batch_size,)      — scalar anomaly score per image. Higher = more anomalous.
+# maps:   (batch_size, H, W) — spatial heatmap showing *where* the anomaly is.
+#                              Pass directly to matplotlib.imshow() to visualize.
+batch, *_ = next(iter(loader))
+scores, maps = model.predict(batch)
+```
+
+See the [FAQ](#-faq) for how to pick a classification threshold from `scores`.
+
+</details>
+
+
+<details>
+<summary><strong>🌐 REST API</strong></summary>
+<br>
+
+Use the REST API when you want to integrate AnomaVision into an existing service,
+call it from any language, or expose it on a network without installing Python on the client.
+
+First, start the FastAPI server (keep this terminal open):
+```bash
+uvicorn apps.api.fastapi_app:app --host 0.0.0.0 --port 8000
+```
+
+Then send images from any client:
 ```python
 import requests
 
@@ -180,9 +207,14 @@ print(r.json()["anomaly_score"])   # e.g. 14.3
 print(r.json()["is_anomaly"])      # True / False
 ```
 
----
+Full docs at **http://localhost:8000/docs** once the server is running.
 
-## 📊 Models & Performance
+</details>
+
+<details>
+<summary><strong>📊 Models & Performance</strong></summary>
+<br>
+
 
 ### MVTec AD — Average over 15 Classes
 
@@ -257,7 +289,13 @@ anomavision export \
 
 ---
 
-## 📺 Streaming Sources
+</details>
+
+<details>
+<summary><strong>📺 Streaming Sources</strong></summary>
+<br>
+
+
 
 Run inference on **live sources** without changing your model or code — just update the config:
 
@@ -284,6 +322,11 @@ anomavision detect --config stream_config.yml
 ```
 
 ---
+</details>
+
+<details>
+<summary><strong>⚙️ Configuration</strong></summary>
+<br>
 
 ## ⚙️ Configuration
 
@@ -319,7 +362,13 @@ Full key reference: [`docs/config.md`](docs/config.md)
 
 ---
 
-## 🔌 Integrations
+</details>
+
+<details>
+<summary><strong>🔌 Integrations</strong></summary>
+<br>
+
+
 
 | Integration | Description |
 |---|---|
@@ -348,7 +397,13 @@ Open **http://localhost:8501**
 
 ---
 
-## 📂 Dataset Format
+</details>
+
+<details>
+<summary><strong>📂 Dataset Format</strong></summary>
+<br>
+
+
 
 AnomaVision uses [MVTec AD](https://www.mvtec.com/company/research/datasets/mvtec-ad) layout. Custom datasets work with the same structure:
 
@@ -378,6 +433,7 @@ dataset/
 **Adaptive Gaussian post-processing** is applied to score maps after inference. The kernel is sized relative to the image resolution, which is a key factor behind the Pixel AUROC gain over baseline.
 
 ---
+</details>
 
 ## 🛠️ Development
 
@@ -545,7 +601,6 @@ More: [`docs/troubleshooting.md`](docs/troubleshooting.md)
 ## 🗺️ Roadmap
 
 - [ ] Pre-trained model zoo for all 15 MVTec classes
-- [ ] Multi-class single-checkpoint model
 - [ ] Few-shot adaptation (5–10 anomalous examples)
 - [ ] Native TensorRT export in `export.py`
 - [ ] Pixel-level mask in REST `/predict` response
