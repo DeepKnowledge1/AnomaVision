@@ -19,8 +19,8 @@ checker = GitStatusChecker()
 checker.check_status()
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Train PaDiM (args OR config).")
+def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Train PaDiM (args OR config).", add_help=add_help)
     # meta
     parser.add_argument(
         "--config", type=str, default="config.yml", help="Path to config.yml/.json"
@@ -131,11 +131,6 @@ def parse_args():
         default=None,
         help="Logging level (default: INFO).",
     )
-
-    # We define args inside this function scope, but typically we return the parser
-    # so calling scripts can extend it, or we parse immediately if run as main.
-    # To support both, we return both.
-    args, unknown = parser.parse_known_args() if __name__ == "__main__" else (None, None)
 
     return parser
 
@@ -274,8 +269,7 @@ def run_training(args):
 def main(args=None):
     try:
         if args is None:
-            parser = parse_args()
-            args = parser.parse_args()
+            args = create_parser().parse_args()
 
         run_training(args)
 

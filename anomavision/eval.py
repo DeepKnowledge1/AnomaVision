@@ -24,9 +24,10 @@ from anomavision.utils import (
 )
 
 
-def parse_args():
+def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Evaluate AnomaVision anomaly detection model performance."
+        description="Evaluate AnomaVision anomaly detection model performance.",
+        add_help=add_help,
     )
 
     # Config file
@@ -127,8 +128,7 @@ def parse_args():
         help="Enable detailed timing measurements.",
     )
 
-    args, unknown = parser.parse_known_args() if __name__ == "__main__" else (None, None)
-    return parser, args
+    return parser
 
 
 def compute_metrics(labels, scores, thresh=None):
@@ -412,8 +412,7 @@ def run_evaluation(args):
 def main(args=None):
     try:
         if args is None:
-            parser = parse_args()
-            args = parser.parse_args()
+            args = create_parser().parse_args()
 
         run_evaluation(args)
 
