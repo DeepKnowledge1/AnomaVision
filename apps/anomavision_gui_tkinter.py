@@ -718,7 +718,7 @@ class AnomaVisionGUI:
         self.root = root
 
         try:
-            self.root.iconbitmap("av.ico")
+            self.root.iconbitmap("docs/images/av.ico")
         except Exception:
             print("Could not load icon – ensure av.ico is in the same folder.")
 
