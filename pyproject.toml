@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anomavision"
-version = "3.2.2"
+version = "3.3.0"
 description = "Advanced Anomaly Detection Environment - Production Ready"
 authors = [{ name = "Deep Knowledge", email = "Deepp.Knowledge@gmail.com" }]
 readme = "README.md"
