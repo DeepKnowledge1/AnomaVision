@@ -144,18 +144,28 @@ scores, maps = model.predict(batch)
 
 ### CLI
 
+AnomaVision ships a unified `anomavision` command — no need to run individual scripts directly.
+
 ```bash
 # Train
-python train.py --config config.yml
+anomavision train --config config.yml
 
 # Detect (images or folder)
-python detect.py --config config.yml --img_path ./test_images --thresh 13.0
+anomavision detect --config config.yml --img_path ./test_images --thresh 13.0
 
 # Evaluate on MVTec
-python eval.py --config config.yml --enable_visualization
+anomavision eval --config config.yml --enable_visualization
 
 # Export to ONNX / TorchScript / OpenVINO / all
-python export.py --config config.yml --format all --precision fp16
+anomavision export --model padim_model.pt --format all --precision fp16
+```
+
+Every command has full `--help`:
+
+```bash
+anomavision --help
+anomavision train --help
+anomavision export --help
 ```
 
 ### REST API
@@ -183,7 +193,7 @@ print(r.json()["is_anomaly"])      # True / False
 | Δ | **+4.9%** | **+2.2%** | **+233%** | **+54%** | **−25%** |
 
 > CPU: Intel Core i9 (single process). GPU: NVIDIA A100. Batch size 1.
-> Reproduce: `python eval.py --config config.yml`
+> Reproduce: `anomavision eval --config config.yml`
 
 ### VisA — Average over 12 Classes
 
@@ -237,7 +247,7 @@ print(r.json()["is_anomaly"])      # True / False
 | C++ ONNX Runtime | — | ✅ | ✅ | ✅ | — |
 
 ```bash
-python export.py \
+anomavision export \
   --model_data_path ./distributions/anomav_exp \
   --model padim_model.pt \
   --format onnx \
@@ -270,7 +280,7 @@ enable_visualization: true
 ```
 
 ```bash
-python detect.py --config stream_config.yml
+anomavision detect --config stream_config.yml
 ```
 
 ---
@@ -381,7 +391,12 @@ source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
 
 # Install with dev dependencies
 uv sync --extra cpu              # or --extra cu121 for GPU
-uv pip install -r requirements.txt
+
+# Install the package in editable mode (registers the `anomavision` CLI command)
+uv pip install -e .
+
+# Verify CLI is working
+anomavision --help
 
 # Test
 pytest tests/
@@ -487,7 +502,7 @@ Lower `resize` (e.g. `[128, 128]`), reduce `batch_size`, or use `--device cuda`.
 <details>
 <summary><strong>All anomaly scores are low / nothing detected</strong></summary>
 
-Run `eval.py` first to see the score distribution histogram. Set `--thresh` just above the peak of the normal score distribution. Typical values: 10–20 for ResNet18 with default preprocessing.
+Run `anomavision eval --config config.yml` first to see the score distribution histogram. Set `--thresh` just above the peak of the normal score distribution. Typical values: 10–20 for ResNet18 with default preprocessing.
 
 </details>
 
@@ -546,7 +561,7 @@ More: [`docs/troubleshooting.md`](docs/troubleshooting.md)
 | | |
 |---|---|
 | [Quick Start](docs/quickstart.md) | Train → detect → eval → export in 5 minutes |
-| [CLI Reference](docs/cli.md) | All arguments for all scripts |
+| [CLI Reference](docs/cli.md) | All arguments for all `anomavision` subcommands |
 | [Python API](docs/api.md) | Library usage and class reference |
 | [Config Guide](docs/config.md) | Every YAML key explained |
 | [Benchmarks](docs/benchmark.md) | Full per-class results vs Anomalib |

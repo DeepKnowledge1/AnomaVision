@@ -1,5 +1,3 @@
-
-
 # 🤝 Contributing to AnomaVision
 
 First off, thanks for taking the time to contribute! 🎉
@@ -17,9 +15,10 @@ We welcome all kinds of contributions — whether it’s bug reports, feature re
 2. **Install in development mode**:
 
    ```bash
-   poetry install --extras "full"
-   poetry shell
-   pip install -e .[dev]
+   uv venv --python 3.11 .venv
+   source .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
+   uv sync --extra cpu
+   uv pip install -e ".[dev]"
    ```
 3. **Write tests** for new functionality.
 4. **Run tests & linters** before pushing:
@@ -130,4 +129,3 @@ By contributing, you agree that your contributions will be licensed under the [M
 ## 🙏 Acknowledgments
 
 Big thanks to all contributors who help make AnomaVision better for the community! 🚀
-

@@ -31,7 +31,8 @@ Or clone from source:
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
-poetry install
+uv sync --extra cpu
+uv pip install -e .
 ```
 
 ### Launch the Server
@@ -493,7 +494,7 @@ Update: CORS_ORIGINS=["http://your-frontend-url.com"]
 **Issue: Slow inference**
 ```
 Solution: Use ONNX or TensorRT models for faster inference
-Export: python export.py --format onnx
+Export: anomavision export --model padim_model.pt --format onnx
 ```
 
 **Issue: Memory errors**
