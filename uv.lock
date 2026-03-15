@@ -70,7 +70,7 @@ wheels = [
 
 [[package]]
 name = "anomavision"
-version = "3.3.0"
+version = "3.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "easydict" },
@@ -135,7 +135,7 @@ requires-dist = [
     { name = "matplotlib", specifier = "==3.8.3" },
     { name = "numpy", specifier = "==1.26.4" },
     { name = "onnx", specifier = ">=1.15.0" },
-    { name = "onnxruntime", specifier = ">=1.16.0,<1.18" },
+    { name = "onnxruntime", specifier = ">=1.16.0" },
     { name = "onnxscript", specifier = ">=0.6.2" },
     { name = "opencv-python", specifier = ">=4.6.0" },
     { name = "openvino-dev", specifier = ">=2024.0" },
