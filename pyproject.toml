@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anomavision"
-version = "3.3.0"
+version = "3.3.3"
 description = "Advanced Anomaly Detection Environment - Production Ready"
 authors = [{ name = "Deep Knowledge", email = "Deepp.Knowledge@gmail.com" }]
 readme = "README.md"
@@ -22,7 +22,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "opencv-python>=4.6.0",
     "onnx>=1.15.0",
-    "onnxruntime>=1.16.0,<1.18",
+    "onnxruntime>=1.16.0",
     "openvino-dev>=2024.0",
     "fastapi>=0.127.0",
     "uvicorn>=0.30.0",
@@ -33,6 +33,7 @@ dependencies = [
     "onnxscript>=0.6.2",
     "pytest>=8.0.2",
 ]
+
 # --- Hardware Modifiers (Triggered by Extras) ---
 [project.optional-dependencies]
 cpu = ["torch>=2.4.0", "torchvision>=0.19.0", "torchaudio>=2.4.0"]
@@ -50,13 +51,13 @@ anomavision = "anomavision.cli:main"
 # UV HARDWARE ROUTING MATRIX
 # ==========================================
 [tool.uv]
-# Prevent users/CI from accidentally mixing CUDA versions in the same environment
 override-dependencies = [
-    # 1. Route Python 3.10 to the older ONNX Runtime that still publishes cp310 wheels
+    # Python 3.10: cap below 1.24 (no cp310 wheels published for 1.24+)
     "onnxruntime>=1.16.0,<1.24.0 ; python_version == '3.10'",
 
-    # 2. Route Python 3.11+ to the latest ONNX Runtime
-    "onnxruntime>=1.24.0 ; python_version >= '3.11'",]
+    # Python 3.11+: use latest (supports IR version 10 models)
+    "onnxruntime>=1.24.0 ; python_version >= '3.11'",
+]
 conflicts = [
     [
         { extra = "cpu" },
