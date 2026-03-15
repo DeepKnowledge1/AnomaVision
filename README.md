@@ -3,25 +3,43 @@
 
 # AnomaVision 🔍
 
-**high-performance visual anomaly detection. Fast, lightweight, production-ready.**
+**High-performance visual anomaly detection. Fast, lightweight, production-ready.**
 
 AnomaVision detects defects without ever seeing defective examples during training.
 <br>
 
 [![PyPI](https://img.shields.io/pypi/v/anomavision?label=PyPI&color=blue)](https://pypi.org/project/anomavision/)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/anomavision?color=blue)](https://pypi.org/project/anomavision/)
-[![Python](https://img.shields.io/badge/Python-3.9--3.12-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10--3.12-blue)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-red)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![ONNX](https://img.shields.io/badge/ONNX-Export%20Ready-orange)](https://onnx.ai/)
 [![TensorRT](https://img.shields.io/badge/TensorRT-Supported-76b900)](https://developer.nvidia.com/tensorrt)
 [![OpenVINO](https://img.shields.io/badge/OpenVINO-Supported-0071C5)](https://docs.openvino.ai/)
+[![HuggingFace](https://img.shields.io/badge/🤗%20Demo-Live-yellow)](https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection)
 
 <br>
 
-[**Docs**](docs/quickstart.md) · [**Quickstart**](#-quickstart) · [**Models**](#-models--performance) · [**Tasks**](#-tasks--modes) · [**Integrations**](#-integrations) · [**Issues**](https://github.com/DeepKnowledge1/AnomaVision/issues) · [**Discussions**](https://github.com/DeepKnowledge1/AnomaVision/discussions)
+[**Live Demo**](#-live-demo) · [**Docs**](docs/quickstart.md) · [**Quickstart**](#-quickstart) · [**Models**](#-models--performance) · [**Tasks**](#-tasks--modes) · [**Integrations**](#-integrations) · [**Issues**](https://github.com/DeepKnowledge1/AnomaVision/issues) · [**Discussions**](https://github.com/DeepKnowledge1/AnomaVision/discussions)
 
 </div>
+
+---
+
+## 🤗 Live Demo
+
+> **Try AnomaVision instantly — no installation required.**
+
+[![Open in Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-xl-dark.svg)](https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection)
+
+The live demo runs a **PaDiM model trained on MVTec bottle images** and shows:
+
+- 🌡️ **Anomaly Heatmap** — spatial score map highlighting defect regions
+- 🖼️ **Overlay** — original image with anomaly contours drawn
+- 🎭 **Predicted Mask** — binary segmentation of detected defects
+- ⚡ **Real-time inference** — results in milliseconds on CPU
+
+Upload your own bottle image or pick from the provided samples to see anomaly detection in action.
 
 ---
 
@@ -31,8 +49,7 @@ AnomaVision delivers **visual anomaly detection** optimized for production deplo
 
 The result: a 15 MB model that runs at **43 FPS on CPU** and **547 FPS on GPU**, with higher AUROC than the existing best-in-class baseline.
 
-
-
+---
 
 ## 🚀 Quickstart
 
@@ -47,6 +64,7 @@ pip install uv
 ```
 
 ---
+
 #### Option A — From Source (development)
 
 ```bash
@@ -84,7 +102,6 @@ uv pip install "anomavision[cu124]"   # CUDA 12.4
 
 ---
 
-
 #### Option C — Already installed without extras?
 
 If you're seeing `ModuleNotFoundError: No module named 'torch'`, add PyTorch into your current environment:
@@ -105,6 +122,7 @@ uv pip install torch torchvision torchaudio --index-url https://download.pytorch
 python -c "import anomavision, torch; print('✅ Ready —', torch.__version__)"
 ```
 
+---
 
 ### CLI
 
@@ -140,6 +158,7 @@ anomavision export --help
 
 Use the Python API when you want to embed AnomaVision into a larger pipeline,
 run it inside a notebook, or integrate it with your own data loading logic.
+
 ```python
 import torch
 import anomavision
@@ -211,10 +230,11 @@ Full docs at **http://localhost:8000/docs** once the server is running.
 
 </details>
 
+---
+
 <details>
 <summary><strong>📊 Models & Performance</strong></summary>
 <br>
-
 
 ### MVTec AD — Average over 15 Classes
 
@@ -256,6 +276,7 @@ Full docs at **http://localhost:8000/docs** once the server is running.
 | zipper | 0.914 | 0.979 | 0.972 | 0.971 | 41.0 |
 
 </details>
+</details>
 
 ---
 
@@ -289,15 +310,11 @@ anomavision export \
 
 ---
 
-</details>
-
 <details>
 <summary><strong>📺 Streaming Sources</strong></summary>
 <br>
 
-
-
-Run inference on **live sources** without changing your model or code — just update the config:
+Run inference on **live sources** without changing your model or code:
 
 | Source | `stream_source.type` | Use case |
 |---|---|---|
@@ -321,14 +338,11 @@ enable_visualization: true
 anomavision detect --config stream_config.yml
 ```
 
----
 </details>
 
 <details>
 <summary><strong>⚙️ Configuration</strong></summary>
 <br>
-
-## ⚙️ Configuration
 
 All scripts accept `--config config.yml` and CLI overrides. **CLI always wins.**
 
@@ -360,26 +374,21 @@ log_level:       INFO
 
 Full key reference: [`docs/config.md`](docs/config.md)
 
----
-
 </details>
 
 <details>
 <summary><strong>🔌 Integrations</strong></summary>
 <br>
 
-
-
 | Integration | Description |
 |---|---|
 | **FastAPI** | REST API — `/predict`, `/predict/batch`, Swagger UI at `/docs` |
 | **Streamlit** | Browser demo — heatmap overlay, threshold slider, batch upload |
+| **Gradio** | [Live HuggingFace Space](https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection) — try it instantly |
 | **C++ Runtime** | ONNX + OpenCV, no Python required — see [`docs/cpp/`](docs/cpp/README.md) |
 | **OpenVINO** | Intel CPU/VPU edge optimization |
 | **TensorRT** | NVIDIA GPU maximum throughput |
 | **INT8 Quantization** | Dynamic + static INT8 via ONNX Runtime |
-
-**Start the demo stack:**
 
 ```bash
 # Terminal 1 — backend
@@ -391,19 +400,11 @@ streamlit run apps/ui/streamlit_app.py -- --port 8000
 
 Open **http://localhost:8501**
 
-<div align="center">
-  <img src="docs/images/streamlit.png" alt="Streamlit Demo" width="65%"/>
-</div>
-
----
-
 </details>
 
 <details>
 <summary><strong>📂 Dataset Format</strong></summary>
 <br>
-
-
 
 AnomaVision uses [MVTec AD](https://www.mvtec.com/company/research/datasets/mvtec-ad) layout. Custom datasets work with the same structure:
 
@@ -417,12 +418,13 @@ dataset/
         └── <defect_name>/ ← anomalous test images (any subfolder name)
 ```
 
+</details>
+
 ---
 
 ## 🏗️ Architecture
 
-<img src="docs/images/archti.png" width="100%" alt="AnomaVision archti"/>
-
+<img src="docs/images/archti.png" width="100%" alt="AnomaVision architecture"/>
 
 **Key design decisions:**
 
@@ -433,7 +435,6 @@ dataset/
 **Adaptive Gaussian post-processing** is applied to score maps after inference. The kernel is sized relative to the image resolution, which is a key factor behind the Pixel AUROC gain over baseline.
 
 ---
-</details>
 
 ## 🛠️ Development
 
@@ -448,7 +449,7 @@ source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
 # Install with dev dependencies
 uv sync --extra cpu              # or --extra cu121 for GPU
 
-# Install the package in editable mode (registers the `anomavision` CLI command)
+# Install the package in editable mode
 uv pip install -e .
 
 # Verify CLI is working
@@ -481,50 +482,31 @@ PRs must pass `pytest` + `flake8` and include doc updates if behavior changes. S
 <summary><strong>Docker</strong></summary>
 
 ```dockerfile
-# Use a specific digest or version for reproducibility
 FROM python:3.11-slim
 
-# Install uv directly from the official binary to keep the image lean
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+RUN apt-get update && apt-get install -y \
+    git git-lfs libsm6 libxext6 libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set production environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+RUN useradd -m -u 1000 user
 
-WORKDIR /app
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir uv && \
+    uv pip install --system "anomavision[cpu]"
 
-# Install dependencies first (layer caching)
-# We use --no-install-project because we only want the libs here
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --extra cpu
+USER user
+ENV PATH="/home/user/.local/bin:/usr/local/bin:$PATH"
 
-# Copy the rest of the application
-COPY . .
+WORKDIR /home/user/app
+COPY --chown=user . .
 
-# Install the project itself
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --extra cpu
-
-    # GPU build? Replace --extra cpu with --extra cu121 (or your CUDA version)
-    # in both uv sync steps.
-
-
-# Place uv-installed binaries on the PATH
-ENV PATH="/app/.venv/bin:$PATH"
-
-EXPOSE 8000
-
-# Use the venv's uvicorn directly
-CMD ["uvicorn", "apps.api.fastapi_app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+EXPOSE 7860
+CMD ["python", "app.py"]
 ```
 
 ```bash
 docker build -t anomavision .
-docker run -p 8000:8000 -v $(pwd)/distributions:/app/distributions anomavision
+docker run -p 7860:7860 -v $(pwd)/distributions:/home/user/app/distributions anomavision
 ```
 
 </details>
@@ -631,6 +613,7 @@ More: [`docs/troubleshooting.md`](docs/troubleshooting.md)
 
 - 🐛 [Issues](https://github.com/DeepKnowledge1/AnomaVision/issues) — bug reports
 - 💡 [Discussions](https://github.com/DeepKnowledge1/AnomaVision/discussions) — questions, ideas, show & tell
+- 🤗 [Live Demo](https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection) — try it in your browser
 - 📧 [deepp.knowledge@gmail.com](mailto:deepp.knowledge@gmail.com) — direct contact
 
 ---
