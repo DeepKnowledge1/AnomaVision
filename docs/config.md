@@ -108,11 +108,11 @@ backbone: resnet18
 batch_size: 16
 feat_dim: 100
 layer_indices: [0, 1, 2]
-output_model: padim_model.pt
+output_model: model.pt
 run_name: exp1
-model_data_path: ./distributions/anomav_exp
+model_data_path: ./distributions/padim/bottle/anomav_exp
 
-model: padim_model.onnx
+model: model.onnx
 device: auto
 enable_visualization: true
 save_visualizations: true

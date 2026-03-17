@@ -34,13 +34,14 @@ dataset/
 
 ```bash
 anomavision train \
+  --config config.yml
   --dataset_path ./dataset \
   --class_name bottle \
   --backbone resnet18 \
   --batch_size 16 \
   --feat_dim 100 \
   --layer_indices 0 1 2 \
-  --output_model padim_model.pt \
+  --output_model model.pt \
   --run_name exp1 \
   --model_data_path ./distributions/anomav_exp
 ```
@@ -58,7 +59,7 @@ backbone: resnet18
 batch_size: 16
 feat_dim: 100
 layer_indices: [0, 1, 2]
-output_model: padim_model.pt
+output_model: model.pt
 run_name: exp1
 model_data_path: ./distributions/anomav_exp
 resize: [256, 192]
@@ -81,8 +82,8 @@ anomavision train --config config.yml
 
 * Train PaDiM on `dataset/bottle/train/good`
 * Save:
-  * Full model → `padim_model.pt`
-  * Compact stats-only model → `padim_model.pth`
+  * Full model → `model.pt`
+  * Compact stats-only model → `model.pth`
   * Config snapshot → `config.yml`
 
 ---
@@ -97,7 +98,7 @@ anomavision train --config config.yml
 anomavision detect \
   --img_path ./dataset/bottle/test \
   --model_data_path ./distributions/anomav_exp \
-  --model padim_model.onnx \
+  --model model.onnx \
   --device auto \
   --batch_size 8 \
   --thresh 13.0 \
@@ -116,7 +117,7 @@ Create a **`config.yml`** or use the one saved in the model's directory:
 stream_mode: false
 img_path: ./dataset/bottle/test
 model_data_path: ./distributions/anomav_exp
-model: padim_model.onnx
+model: model.onnx
 device: auto
 batch_size: 8
 thresh: 13.0
@@ -150,7 +151,7 @@ stream_source:
   camera_id: 0
 
 model_data_path: ./distributions/anomav_exp
-model: padim_model.onnx
+model: model.onnx
 batch_size: 1
 thresh: 13.0
 enable_visualization: true
@@ -171,7 +172,7 @@ stream_source:
   loop: false
 
 model_data_path: ./distributions/anomav_exp
-model: padim_model.onnx
+model: model.onnx
 batch_size: 1
 thresh: 13.0
 ```
@@ -192,7 +193,7 @@ stream_source:
   read_timeout: 1.0
 
 model_data_path: ./distributions/anomav_exp
-model: padim_model.onnx
+model: model.onnx
 batch_size: 1
 ```
 
@@ -209,7 +210,7 @@ stream_source:
   max_message_size: 10485760
 
 model_data_path: ./distributions/anomav_exp
-model: padim_model.onnx
+model: model.onnx
 batch_size: 1
 ```
 
@@ -239,7 +240,7 @@ anomavision eval \
   --dataset_path ./dataset \
   --class_name bottle \
   --model_data_path ./distributions/anomav_exp \
-  --model padim_model.onnx \
+  --model model.onnx \
   --batch_size 8 \
   --enable_visualization \
   --save_visualizations \
@@ -256,7 +257,7 @@ Create a **`config.yml`** or use the one saved in the model's directory:
 dataset_path: ./dataset
 class_name: bottle
 model_data_path: ./distributions/anomav_exp
-model: padim_model.onnx
+model: model.onnx
 batch_size: 8
 enable_visualization: true
 save_visualizations: true
@@ -296,7 +297,7 @@ Quantization (INT8) is also supported.
 ```bash
 anomavision export \
   --model_data_path ./distributions/anomav_exp \
-  --model padim_model.pt \
+  --model model.pt \
   --format onnx \
   --precision fp16 \
   --quantize-dynamic
@@ -310,7 +311,7 @@ Create a **`config.yml`** or use the one saved in the model's directory:
 
 ```yaml
 model_data_path: ./distributions/anomav_exp
-model: padim_model.pt
+model: model.pt
 format: onnx          # choices: onnx | torchscript | openvino | all
 precision: fp16       # fp32 | fp16 | auto
 opset: 17

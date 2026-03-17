@@ -604,8 +604,15 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "--model_data_path",
         type=str,
-        default="./distributions/anomav_exp",
+        default="./distributions",
         help="Directory containing model and output location",
+    )
+
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        default=None,
+        help="Algorithm name (e.g., padim, patchcore).",
     )
 
     parser.add_argument(
@@ -692,7 +699,22 @@ def main(args=None):
     if args.config is not None:
         cfg = load_config(str(args.config))
     else:
-        cfg = load_config(str(Path(args.model_data_path) / "config.yml"))
+        # Try to find config in structured path first
+        potential_paths = []
+        if args.model_data_path:
+            # Try to infer from model path if it follows structure
+            base_path = Path(args.model_data_path)
+            potential_paths.append(base_path / "config.yml")
+
+        # Use first existing config
+        cfg = {}
+        for path in potential_paths:
+            if path.exists():
+                cfg = load_config(str(path))
+                break
+
+        if not cfg:
+            cfg = {}
 
     config = edict(merge_config(args, cfg))
 
@@ -700,8 +722,8 @@ def main(args=None):
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
     logger = get_logger("anomavision.export")
 
-    model_path = Path(config.model_data_path) / config.model
-    output_dir = Path(config.model_data_path)
+    model_path = Path(config.model_data_path) / config.algorithm / config.class_name / config.run_name / config.model
+    output_dir = Path(config.model_data_path) / config.algorithm / config.class_name / config.run_name
     model_stem = Path(config.model).stem
 
     # Generate output names

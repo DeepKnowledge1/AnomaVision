@@ -53,10 +53,10 @@ model = anomavision.Padim(
 model.fit(loader)
 
 # Save full model
-model.save("padim_model.pt")
+model.save("model.pt")
 
 # Save compact stats-only artifact
-model.save_statistics("padim_model.pth", half=True)
+model.save_statistics("model.pth", half=True)
 ```
 
 ---
@@ -110,7 +110,7 @@ from anomavision.utils import get_logger
 logger = get_logger("anomavision.export")
 
 exporter = ModelExporter(
-    model_path=Path("./distributions/anomav_exp/padim_model.pt"),
+    model_path=Path("./distributions/anomav_exp/model.pt"),
     output_dir=Path("./exports"),
     logger=logger,
     device="cuda"

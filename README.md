@@ -139,7 +139,7 @@ anomavision detect --config config.yml --img_path ./test_images --thresh 13.0
 anomavision eval --config config.yml --enable_visualization
 
 # Export to ONNX / TorchScript / OpenVINO / all
-anomavision export --model padim_model.pt --format all --precision fp16
+anomavision export --config config.yml --model model.pt --format all --precision fp16
 ```
 
 Every command has full `--help`:
@@ -187,8 +187,8 @@ model = anomavision.Padim(
 model.fit(loader)
 
 # --- 3. Save ---
-torch.save(model, "padim_model.pt")                  # full model (for export or further use)
-model.save_statistics("padim_model.pth", half=True)  # stats-only (smaller, faster to load)
+torch.save(model, "model.pt")                  # full model (for export or further use)
+model.save_statistics("model.pth", half=True)  # stats-only (smaller, faster to load)
 
 # --- 4. Infer ---
 # scores: (batch_size,)      — scalar anomaly score per image. Higher = more anomalous.
@@ -302,7 +302,7 @@ Full docs at **http://localhost:8000/docs** once the server is running.
 ```bash
 anomavision export \
   --model_data_path ./distributions/anomav_exp \
-  --model padim_model.pt \
+  --model model.pt \
   --format onnx \
   --precision fp16 \
   --quantize-dynamic
@@ -329,7 +329,7 @@ stream_mode: true
 stream_source:
   type: webcam
   camera_id: 0
-model: padim_model.onnx
+model: model.onnx
 thresh: 13.0
 enable_visualization: true
 ```
@@ -361,11 +361,11 @@ backbone:        resnet18
 batch_size:      16
 feat_dim:        100
 layer_indices:   [0, 1, 2]
-output_model:    padim_model.pt
+output_model:    model.pt
 run_name:        exp1
 model_data_path: ./distributions/anomav_exp
 
-model:           padim_model.onnx
+model:           model.onnx
 device:          auto        # auto | cpu | cuda
 thresh:          13.0
 

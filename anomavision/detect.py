@@ -1,11 +1,11 @@
 """
 Run Anomaly detection inference on images using various model formats.
 Usage - formats:
-    $ python detect.py --model padim_model.pt                  # PyTorch
-                                   padim_model.torchscript        # TorchScript
-                                   padim_model.onnx               # ONNX Runtime
-                                   padim_model_openvino           # OpenVINO
-                                   padim_model.engine             # TensorRT
+    $ python detect.py --model model.pt                     # PyTorch
+                                   model.torchscript        # TorchScript
+                                   model.onnx               # ONNX Runtime
+                                   model_openvino           # OpenVINO
+                                   model.engine             # TensorRT
 """
 
 import argparse
@@ -61,13 +61,19 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "--model_data_path",
         type=str,
-        default="./distributions/anomav_exp",
+        default="./distributions",
         help="Directory containing model files.",
+    )
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        default=None,
+        help="Algorithm name (e.g., padim, patchcore).",
     )
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.pt",
+        default=None,
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
@@ -121,7 +127,7 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--run_name",
-        default="detect_exp",
+        default=None,
         help="experiment name for this inference run",
     )
     parser.add_argument(
@@ -178,7 +184,19 @@ def run_inference(args):
         cfg = load_config(str(args.config))
     else:
         # Fallback to model directory config
-        cfg = load_config(str(Path(args.model_data_path) / "config.yml"))
+        potential_paths = []
+        if args.model_data_path:
+            base_path = Path(args.model_data_path)
+            potential_paths.append(base_path / "config.yml")
+
+        cfg = {}
+        for path in potential_paths:
+            if path.exists():
+                cfg = load_config(str(path))
+                break
+
+        if not cfg:
+            cfg = {}
 
     # Merge config with CLI args
     config = edict(merge_config(args, cfg))
@@ -253,7 +271,7 @@ def run_inference(args):
 
     # --- Model Loading Phase ---
     with profilers["model_loading"]:
-        model_path = os.path.join(MODEL_DATA_PATH, config.model)
+        model_path = os.path.join(MODEL_DATA_PATH, config.algorithm, config.class_name, config.run_name, config.model)
         logger.info(f"Loading model: {model_path}")
 
         if not os.path.exists(model_path):
@@ -273,7 +291,7 @@ def run_inference(args):
         run_name = config.run_name
         viz_output_dir = config.get("viz_output_dir", "./visualizations/")
         RESULTS_PATH = increment_path(
-            Path(viz_output_dir) / model_type.value.upper() / run_name,
+            Path(viz_output_dir) / config.algorithm / config.class_name / model_type.value.upper() / run_name,
             exist_ok=config.get("overwrite", False),
             mkdir=True,
         )
