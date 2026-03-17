@@ -8,7 +8,7 @@ Environment variables (all optional):
     ANOMAVISION_MODEL_DATA_PATH   path that contains the model file
                                   (default: "distributions/anomav_exp")
     ANOMAVISION_MODEL_FILE        model filename
-                                  (default: "padim_model.onnx")
+                                  (default: "model.onnx")
     ANOMAVISION_DEVICE            "auto" | "cpu" | "cuda"   (default: "auto")
     ANOMAVISION_THRESHOLD         float anomaly threshold    (default: 13.0)
     ANOMAVISION_VIZ_PADDING       int, boundary-frame padding (default: 40)
@@ -41,8 +41,8 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL_DATA_PATH   = os.getenv("ANOMAVISION_MODEL_DATA_PATH", "distributions/anomav_exp")
-MODEL_FILE        = os.getenv("ANOMAVISION_MODEL_FILE",      "padim_model.onnx")
+MODEL_DATA_PATH   = os.getenv("ANOMAVISION_MODEL_DATA_PATH", "distributions/padim/bottle/anomav_exp")
+MODEL_FILE        = os.getenv("ANOMAVISION_MODEL_FILE",      "model.onnx")
 DEVICE_ENV        = os.getenv("ANOMAVISION_DEVICE",          "auto")
 THRESHOLD_DEFAULT = float(os.getenv("ANOMAVISION_THRESHOLD", "13.0"))
 VIZ_PADDING       = int(os.getenv("ANOMAVISION_VIZ_PADDING", "40"))

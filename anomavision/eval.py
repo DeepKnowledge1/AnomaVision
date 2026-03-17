@@ -68,7 +68,7 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.pt",
+        default=None,
         help="Model filename (.pt, .onnx, .engine)",
     )
     parser.add_argument(

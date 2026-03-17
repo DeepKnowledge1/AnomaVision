@@ -29,8 +29,8 @@ ANOMALY_THRESHOLD = 13.0
 RESIZE_SIZE = (224, 224)
 
 # You can override these via environment variables
-MODEL_DATA_PATH = os.getenv("ANOMAVISION_MODEL_DATA_PATH", "distributions/anomav_exp")
-MODEL_FILE = os.getenv("ANOMAVISION_MODEL_FILE", "padim_model.onnx")
+MODEL_DATA_PATH = os.getenv("ANOMAVISION_MODEL_DATA_PATH", "distributions/padim/bottle/anomav_exp")
+MODEL_FILE = os.getenv("ANOMAVISION_MODEL_FILE", "model.onnx")
 DEVICE = os.getenv("ANOMAVISION_DEVICE", "auto")  # "auto"|"cpu"|"cuda"
 
 # Visualization parameters (match detect.py defaults)

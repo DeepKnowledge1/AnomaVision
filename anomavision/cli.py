@@ -35,9 +35,9 @@ def create_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   %(prog)s train --config config.yml --dataset_path /data --class_name bottle
-  %(prog)s export --model padim_model.pt --format onnx --quantize-dynamic
-  %(prog)s detect --model padim_model.onnx --img_path ./test --enable_visualization
-  %(prog)s eval --model padim_model.pt --class_name bottle --dataset_path /data
+  %(prog)s export --model model.pt --format onnx --quantize-dynamic
+  %(prog)s detect --model model.onnx --img_path ./test --enable_visualization
+  %(prog)s eval --model model.pt --class_name bottle --dataset_path /data
 
 For detailed help on each command:
   %(prog)s train --help

@@ -1,11 +1,11 @@
 """
 Run Anomaly detection inference on images using various model formats.
 Usage - formats:
-    $ python detect.py --model padim_model.pt                  # PyTorch
-                                   padim_model.torchscript        # TorchScript
-                                   padim_model.onnx               # ONNX Runtime
-                                   padim_model_openvino           # OpenVINO
-                                   padim_model.engine             # TensorRT
+    $ python detect.py --model model.pt                     # PyTorch
+                                   model.torchscript        # TorchScript
+                                   model.onnx               # ONNX Runtime
+                                   model_openvino           # OpenVINO
+                                   model.engine             # TensorRT
 """
 
 import argparse
@@ -73,7 +73,7 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         type=str,
-        default="padim_model.pt",
+        default=None,
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(

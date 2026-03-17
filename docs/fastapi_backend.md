@@ -239,7 +239,7 @@ Create a `.env` file in your project root:
 
 ```bash
 # Model Configuration
-MODEL_PATH=./models/padim_model.pth
+MODEL_PATH=./models/model.pth
 CONFIG_PATH=./config.yml
 
 # Server Configuration
@@ -494,7 +494,7 @@ Update: CORS_ORIGINS=["http://your-frontend-url.com"]
 **Issue: Slow inference**
 ```
 Solution: Use ONNX or TensorRT models for faster inference
-Export: anomavision export --model padim_model.pt --format onnx
+Export: anomavision export --config config.yml --model model.pt --format onnx
 ```
 
 **Issue: Memory errors**
