@@ -11,9 +11,9 @@ Usage:
 
 Examples:
     anomavision train --config config.yml
-    anomavision export --model padim_model.pt --format onnx
-    anomavision detect --model padim_model.onnx --img_path ./test_images
-    anomavision eval --model padim_model.pt --class_name bottle
+    anomavision export --config config.yml --model model.pt --format onnx
+    anomavision detect --config config.yml --model model.onnx --img_path ./test_images
+    anomavision eval --config config.yml --model model.pt --class_name bottle
 """
 
 import argparse

@@ -125,6 +125,12 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="Directory to save model distributions and PT file.",
     )
     parser.add_argument(
+        "--algorithm",
+        type=str,
+        default=None,
+        help="Algorithm name (e.g., padim, patchcore).",
+    )
+    parser.add_argument(
         "--log_level",
         type=str,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -176,7 +182,7 @@ def run_training(args):
 
     # Resolve output run dir once
     run_dir = increment_path(
-        Path(config.model_data_path) / config.run_name, exist_ok=True, mkdir=True
+        Path(config.model_data_path) / config.algorithm / config.class_name / config.run_name, exist_ok=True, mkdir=True
     )
 
     # === Dataset ===

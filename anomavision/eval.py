@@ -21,6 +21,9 @@ from anomavision.utils import (
     get_logger,
     merge_config,
     setup_logging,
+    find_best_threshold_f1,
+    compute_metrics,
+    find_optimal_threshold
 )
 
 
@@ -40,7 +43,6 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         "--dataset_path",
         default=None,
         type=str,
-        required=False,
         help="Path to the dataset folder containing test images.",
     )
     parser.add_argument(
@@ -54,8 +56,14 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "--model_data_path",
         type=str,
-        default="./distributions/anomav_exp",
+        default=None,
         help="Directory containing AnomaVision model files.",
+    )
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        default=None,
+        help="Algorithm name (e.g., padim, patchcore).",
     )
     parser.add_argument(
         "--model",
@@ -110,7 +118,7 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "--viz_output_dir",
         type=str,
-        default="./eval_visualizations/",
+        default=None,
         help="Directory to save visualization images.",
     )
 
@@ -129,38 +137,6 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     )
 
     return parser
-
-
-def compute_metrics(labels, scores, thresh=None):
-    """
-    Calculate standard anomaly detection metrics.
-    """
-    metrics = {}
-
-    # AUROC
-    try:
-        metrics['auc_score'] = float(roc_auc_score(labels, scores))
-    except ValueError:
-        metrics['auc_score'] = 0.0
-
-    # PR-AUC
-    try:
-        precision, recall, _ = precision_recall_curve(labels, scores)
-        metrics['pr_auc'] = float(auc(recall, precision))
-    except ValueError:
-        metrics['pr_auc'] = 0.0
-
-    # Statistics
-    metrics['mean_anomaly_score'] = float(np.mean(scores))
-    metrics['std_anomaly_score'] = float(np.std(scores))
-
-    # Accuracy (if thresh provided)
-    if thresh is not None:
-        predictions = (scores > thresh).astype(int)
-        metrics['accuracy'] = float(np.mean(predictions == labels))
-        metrics['thresh'] = thresh
-
-    return metrics
 
 
 def evaluate_model_with_wrapper(
@@ -263,7 +239,7 @@ def run_evaluation(args):
 
     # Load Model Phase
     with profilers["model_loading"]:
-        model_path = os.path.join(MODEL_DATA_PATH, config.model)
+        model_path = os.path.join(MODEL_DATA_PATH, config.algorithm, config.class_name, config.run_name, config.model)
         logger.info(f"Loading model: {model_path}")
 
         if not os.path.exists(model_path):
@@ -323,7 +299,12 @@ def run_evaluation(args):
         model_wrapper.close()
 
     # Compute Metrics
-    metrics = compute_metrics(labels, scores, thresh=config.thresh)
+    if config.thresh is None:
+        best_thresh, _ = find_optimal_threshold(labels, scores)
+    else:
+        best_thresh = config.thresh
+
+    metrics = compute_metrics(labels, scores, thresh=best_thresh)
 
     # Add timing metrics
     total_images = len(test_dataset)
@@ -368,7 +349,7 @@ def run_evaluation(args):
     logger.info(f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms")
     logger.info(f"Evaluation time:           {profilers['evaluation'].accumulated_time * 1000:.2f} ms")
     logger.info(f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms")
-    logger.info("=" * 60)
+    # logger.info("=" * 60)
 
     # 2. PERFORMANCE METRICS
     logger.info("=" * 60)
@@ -382,7 +363,7 @@ def run_evaluation(args):
     if len(test_dataloader) > 0:
         images_per_batch = total_images / len(test_dataloader)
         logger.info(f"Evaluation throughput:     {evaluation_fps * images_per_batch:.1f} images/sec (batch size: {batch_size})")
-    logger.info("=" * 60)
+    # logger.info("=" * 60)
 
     # 3. EVALUATION SUMMARY
     logger.info("=" * 60)
@@ -393,6 +374,18 @@ def run_evaluation(args):
     logger.info(f"Model type: {model_type.value.upper() if model_type else 'UNKNOWN'}")
     logger.info(f"Device: {device_str}")
     logger.info(f"Image processing: resize={config.resize}, crop_size={config.crop_size}, normalize={config.normalize}")
+    # logger.info("=" * 60)
+
+    logger.info("=" * 60)
+    logger.info("ANOMAVISION DETECTION METRICS")
+    logger.info("=" * 60)
+
+    for k, v in metrics.items():
+        if isinstance(v, float):
+            logger.info(f"{k.replace('_',' ').title():<28} {v:.6f}")
+        else:
+            logger.info(f"{k.replace('_',' ').title():<28} {v}")
+
     logger.info("=" * 60)
 
     logger.info("AnomaVision anomaly detection model evaluation completed successfully")
