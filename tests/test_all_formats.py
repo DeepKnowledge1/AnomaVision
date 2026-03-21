@@ -2,6 +2,7 @@
 """
 Simple test to compare predictions across all model formats.
 """
+
 from pathlib import Path
 
 import numpy as np

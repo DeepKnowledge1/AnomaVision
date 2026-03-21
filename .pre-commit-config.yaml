@@ -1,25 +1,25 @@
 repos:
   # Black: auto-format Python code
   - repo: https://github.com/psf/black
-    rev: 24.3.0
+    rev: 26.3.1
     hooks:
       - id: black
         args: [--line-length=88]
 
   # isort: automatically sort and group imports
   - repo: https://github.com/pycqa/isort
-      rev: 5.13.2
-      hooks:
-        - id: isort
-          args:
-            - --profile=black
-            - --line-length=88
-            - --force-single-line-imports  # This might help too
+    rev: 8.0.1  # FIXED: was indented too far
+    hooks:
+      - id: isort
+        args:
+          - --profile=black
+          - --line-length=88
+          - --force-single-line-imports
 
   # flake8: ONLY block on critical errors (F811 redefinitions)
   # All other warnings are ignored to allow legacy code to pass
   - repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
+    rev: 7.3.0
     hooks:
       - id: flake8
         args:
@@ -31,7 +31,7 @@ repos:
 
   # Basic cleanup hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
