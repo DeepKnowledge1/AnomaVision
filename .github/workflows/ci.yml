@@ -20,32 +20,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv and Set up Python
-        uses: astral-sh/setup-uv@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
 
       - name: Install dependencies with dev extras
         run: uv sync --extra dev --extra cpu --locked
 
-      # Run Black (formatting check, not auto-fix)
-      - name: Check Black formatting
+      - name: Check formatting with Black
         run: uv run black --check --diff .
 
-      # Run isort (import sorting check)
-      - name: Check isort
+      - name: Check import sorting with isort
         run: uv run isort --check-only --diff .
 
-      # Run flake8 (linting) - using lenient config
-      - name: Run flake8
+      - name: Lint with flake8
         run: |
           uv run flake8 \
             --max-line-length=88 \
             --extend-ignore=E203,E501,W503,E402,F401,F403,F841,B006,B007,B008,B009,C416,E262 \
-            anomavision/ anodet/ apps/ tests/ *.py
-        continue-on-error: false
+            anomavision/ anodet/ apps/ tests/
 
   tests:
     name: Tests (Python ${{ matrix.python-version }})
