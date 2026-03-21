@@ -13,9 +13,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # NEW JOB: Code Quality Enforcement
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies with dev extras
+        run: uv sync --extra dev --extra cpu --locked
+
+      - name: Check formatting with Black
+        run: uv run black --check --diff .
+
+      # - name: Check import sorting with isort
+      #   run: uv run --with isort isort --check-only --diff .
+
+      - name: Lint with flake8
+        run: |
+          uv run flake8 \
+            --max-line-length=88 \
+            --extend-ignore=E203,E501,W503,E402,F401,F403,F841,B006,B007,B008,B009,C416,E262 \
+            anomavision/ anodet/ apps/ tests/
+
   tests:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    # Run tests only after code quality passes
+    needs: code-quality
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
@@ -44,6 +79,8 @@ jobs:
   cuda-matrix-check:
     name: Verify CUDA Resolvers
     runs-on: ubuntu-latest
+    # Run CUDA checks only after code quality passes
+    needs: code-quality
     steps:
       - uses: actions/checkout@v4
 

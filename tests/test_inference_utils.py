@@ -11,6 +11,7 @@ import torch
 # import anomavision.detect
 from anomavision import detect
 
+
 def test_determine_device_basic_roundtrip():
     assert detect.determine_device("cpu") == "cpu"
     assert detect.determine_device("cuda") == "cuda"
@@ -39,7 +40,6 @@ def test_save_visualization_single_and_batch(tmp_path):
     assert len(files) == 3
 
 
-
 def test_parse_args_defaults(monkeypatch):
     """Test create_parser with no CLI args to get the defaults."""
     monkeypatch.setenv("PYTHONHASHSEED", "0")
@@ -53,6 +53,7 @@ def test_parse_args_defaults(monkeypatch):
     assert hasattr(args, "thresh")
     assert hasattr(args, "device")
     assert hasattr(args, "enable_visualization")
+
 
 def test_main_with_missing_model_file_raises(tmp_path, monkeypatch):
     """

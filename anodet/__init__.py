@@ -278,7 +278,7 @@ try:
 except ImportError as e:
     print(f"❌ FATAL: Failed to import from anomavision: {e}")
     raise ImportError(
-        f"Failed to import from 'anomavision' package. "
+        "Failed to import from 'anomavision' package. "
         f"Please ensure AnomaVision is properly installed: {e}"
     ) from e
 

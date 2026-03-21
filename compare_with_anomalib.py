@@ -278,7 +278,8 @@ class BenchmarkRunner:
                 model.save_statistics(str(stats_path))
                 stats_size = stats_path.stat().st_size / (1024 * 1024)
                 print(f"   Statistics file size: {stats_size:.2f} MB")
-            except:
+            except Exception:
+
                 pass
 
             # === 4. Export Sizes ===
@@ -1071,7 +1072,7 @@ def main():
         print("\n" + "=" * 60)
         print("COMPARISON COMPLETE!")
         print("=" * 60)
-        print(f"Results saved in: benchmark_results/")
+        print("Results saved in: benchmark_results/")
 
 
 def generate_summary_report(all_results: Dict):

@@ -12,10 +12,8 @@ import numpy as np
 import torch
 import yaml
 from PIL import Image
+from sklearn.metrics import auc, precision_recall_curve, roc_auc_score, roc_curve
 from torchvision import transforms as T
-
-from sklearn.metrics import roc_curve
-from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
 # Default standard transforms - kept for backward compatibility
 standard_image_transform = T.Compose(
@@ -345,8 +343,6 @@ def split_tensor_and_run_function(
     output_tensor = torch.cat(tensors_list)
 
     return output_tensor
-
-
 
 
 def setup_logging(
@@ -790,6 +786,7 @@ def adaptive_gaussian_blur(input_array, kernel_size=33, sigma=4):
     except ImportError:
         raise ImportError("SciPy is required when PyTorch is not available")
 
+
 def find_best_threshold_f1(labels, scores):
     precision, recall, thresholds = precision_recall_curve(labels, scores)
 
@@ -798,7 +795,6 @@ def find_best_threshold_f1(labels, scores):
 
     return thresholds[best_idx], f1[best_idx]
 
-from sklearn.metrics import roc_curve
 
 def find_best_threshold_roc(labels, scores):
     fpr, tpr, thresholds = roc_curve(labels, scores)
@@ -825,6 +821,7 @@ def find_best_threshold_accuracy(labels, scores):
 
     return best_thresh, best_acc
 
+
 def compute_metrics(labels, scores, thresh=None):
     """
     Calculate standard anomaly detection metrics.
@@ -833,26 +830,26 @@ def compute_metrics(labels, scores, thresh=None):
 
     # AUROC
     try:
-        metrics['auc_score'] = float(roc_auc_score(labels, scores))
+        metrics["auc_score"] = float(roc_auc_score(labels, scores))
     except ValueError:
-        metrics['auc_score'] = 0.0
+        metrics["auc_score"] = 0.0
 
     # PR-AUC
     try:
         precision, recall, _ = precision_recall_curve(labels, scores)
-        metrics['pr_auc'] = float(auc(recall, precision))
+        metrics["pr_auc"] = float(auc(recall, precision))
     except ValueError:
-        metrics['pr_auc'] = 0.0
+        metrics["pr_auc"] = 0.0
 
     # Statistics
-    metrics['mean_anomaly_score'] = float(np.mean(scores))
-    metrics['std_anomaly_score'] = float(np.std(scores))
+    metrics["mean_anomaly_score"] = float(np.mean(scores))
+    metrics["std_anomaly_score"] = float(np.std(scores))
 
     # Accuracy (if thresh provided)
     if thresh is not None:
         predictions = (scores > thresh).astype(int)
-        metrics['accuracy'] = float(np.mean(predictions == labels))
-        metrics['thresh'] = thresh
+        metrics["accuracy"] = float(np.mean(predictions == labels))
+        metrics["thresh"] = thresh
 
     return metrics
 

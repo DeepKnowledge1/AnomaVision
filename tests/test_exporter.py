@@ -4,11 +4,10 @@ from pathlib import Path
 import pytest
 import torch
 
-from anomavision.utils import get_logger, setup_logging
-
 # Adjust this import to your actual exporter module filename if needed
 # e.g., from export import ModelExporter, _ExportWrapper
 from anomavision.export import ModelExporter, _ExportWrapper  # noqa: F401
+from anomavision.utils import get_logger, setup_logging
 
 setup_logging("INFO")
 logger = get_logger(__name__)
@@ -55,7 +54,7 @@ def _save_tiny_model(tmp_path: Path) -> Path:
 
 def test_export_onnx_creates_file(tmp_path):
     model_path = _save_tiny_model(tmp_path)
-    exporter = ModelExporter(str(model_path), str(tmp_path), logger,device="cpu")
+    exporter = ModelExporter(str(model_path), str(tmp_path), logger, device="cpu")
 
     out = exporter.export_onnx(
         input_shape=(1, 3, 16, 16),
@@ -71,7 +70,7 @@ def test_export_onnx_creates_file(tmp_path):
 
 def test_export_torchscript_creates_file_and_loads(tmp_path):
     model_path = _save_tiny_model(tmp_path)
-    exporter = ModelExporter(str(model_path), str(tmp_path), logger,device="cpu")
+    exporter = ModelExporter(str(model_path), str(tmp_path), logger, device="cpu")
 
     out = exporter.export_torchscript(
         input_shape=(1, 3, 16, 16),
@@ -92,7 +91,7 @@ def test_export_openvino_returns_none_if_not_installed(tmp_path, monkeypatch):
     and return None. If it IS installed, we still accept a valid export.
     """
     model_path = _save_tiny_model(tmp_path)
-    exporter = ModelExporter(str(model_path), str(tmp_path), logger,device="cpu")
+    exporter = ModelExporter(str(model_path), str(tmp_path), logger, device="cpu")
 
     try:
         import openvino  # noqa: F401

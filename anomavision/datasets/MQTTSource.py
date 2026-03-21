@@ -1,12 +1,12 @@
-from anomavision.datasets.StreamSource import StreamSource
-
-from typing import Optional
 import threading
 import time
-from queue import Queue, Empty, Full
+from queue import Empty, Full, Queue
+from typing import Optional
 
 import cv2
 import numpy as np
+
+from anomavision.datasets.StreamSource import StreamSource
 
 try:
     import paho.mqtt.client as mqtt

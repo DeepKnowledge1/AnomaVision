@@ -1,11 +1,11 @@
-from typing import Dict, Any
-
-from anomavision.datasets.StreamDataset import StreamDataset
-from anomavision.datasets.StreamSource import StreamSource
+import contextlib
+from typing import Any, Dict
 
 from torch.utils.data import IterableDataset
 
 from anomavision.datasets.MQTTSource import MQTTSource
+from anomavision.datasets.StreamDataset import StreamDataset
+from anomavision.datasets.StreamSource import StreamSource
 from anomavision.datasets.TCPsource import TCPSource
 from anomavision.datasets.VideoSource import VideoSource
 from anomavision.datasets.WebcamSource import WebcamSource
@@ -65,24 +65,3 @@ class StreamSourceFactory:
             )
 
         raise ValueError(f"Unknown StreamSource type: {source_type}")
-
-
-# Optional: convenience ctor on StreamDataset
-class StreamDataset(IterableDataset):
-    # your existing __init__ here...
-
-    @classmethod
-    def from_config(
-        cls,
-        source_config: Dict[str, Any],
-        **dataset_kwargs: Any,
-    ) -> "StreamDataset":
-        """
-        Build StreamDataset from a source config dict + dataset kwargs.
-
-        Example:
-            source_cfg = {"type": "webcam", "camera_id": 0}
-            ds = StreamDataset.from_config(source_cfg, max_frames=100)
-        """
-        source = StreamSourceFactory.create(source_config)
-        return cls(source=source, **dataset_kwargs)

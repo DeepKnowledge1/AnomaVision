@@ -89,7 +89,8 @@ class kCenterGreedy(SamplingMethod):
             self.features = model.transform(self.X)
             print("Calculating distances...")
             self.update_distances(already_selected, only_new=False, reset_dist=True)
-        except:
+        except Exception:
+
             print("Using flat_X as features.")
             self.update_distances(already_selected, only_new=True, reset_dist=False)
 
