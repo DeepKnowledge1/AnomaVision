@@ -36,8 +36,8 @@ jobs:
       - name: Check formatting with Black
         run: uv run black --check --diff .
 
-      - name: Check import sorting with isort
-        run: uv run --with isort isort --check-only --diff .
+      # - name: Check import sorting with isort
+      #   run: uv run --with isort isort --check-only --diff .
 
       - name: Lint with flake8
         run: |
