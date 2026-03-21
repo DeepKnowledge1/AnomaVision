@@ -1,0 +1,36 @@
+# ─── Stage 1: dependency builder ─────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install uv (fast wheel installer)
+RUN pip install --no-cache-dir uv
+
+WORKDIR /install
+
+COPY requirements.txt .
+
+# Install into an isolated prefix so we can COPY only the site-packages
+RUN uv pip install --system --no-cache-dir \
+    --target /deps \
+    -r requirements.txt
+
+# ─── Stage 2: minimal runtime base ───────────────────────────────────────────
+FROM python:3.11-slim AS base
+
+# Only the native libs actually needed at runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libglib2.0-0 libgl1 && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy pre-built packages from builder — no compiler, no pip, no uv in final image
+COPY --from=builder /deps /usr/local/lib/python3.11/site-packages
+
+WORKDIR /app
+
+ENV PYTHONPATH="/app" \
+    ORT_LOGGING_LEVEL="3" \
+    PYTHONDONTWRITEBYTECODE="1" \
+    PYTHONUNBUFFERED="1"

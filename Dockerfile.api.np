@@ -1,0 +1,61 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 libgl1 && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir uv
+
+# 1. Copy the entire anomavision package (this automatically includes the static folder)
+COPY anomavision/static/AnomaVision/ ./anomavision/static/AnomaVision/
+# 2. Copy your application files (Note: added ui.py which was missing!)
+COPY apps/api.py ./apps/api.py
+COPY apps/inference_engine.py ./apps/inference_engine.py
+COPY apps/ui.py ./apps/ui.py
+COPY requirements.txt requirements.txt
+
+# 3. Install dependencies.
+# Added --extra-index-url to ensure PyTorch CPU wheels are used (keeps image size small)
+RUN uv pip install --system --no-cache-dir \
+    -r requirements.txt
+
+ENV ORT_LOGGING_LEVEL="3"
+
+# 4. CRITICAL FIX: Tell Python to look in the /app directory for the 'anomavision' module
+ENV PYTHONPATH="/app"
+
+EXPOSE 8000
+
+CMD ["python", "apps/api.py"]
+# Docker build command:
+
+# docker build -t fastapi-anomavision -f Dockerfile.api.np .
+
+# docker run -it --entrypoint bash fastapi-anomavision
+
+# docker run -it -p 8000:8000 --name anomavision-debug fastapi-anomavision
+
+
+#### How to run the Docker container:
+
+# docker run -p 8000:8000 `
+#     -v "${PWD}/distributions:/app/distributions" `
+#   fastapi-anomavision
+
+
+
+#### How to prevent creating leftover containers in the future — add --rm:
+
+
+# docker run --rm -p 8000:8000 -v "${PWD}/distributions:/app/distributions" fastapi-anomavision
+
+# Create a Docker image with a specific tag:
+# docker build -t deepknowledge/fastapi-anomavision:3.4.0 .
+
+# create a docker tag for the image:
+# docker tag fastapi-anomavision:latest deepknowledge/fastapi-anomavision:3.4.0
+
+
+# How to push the Docker image to Docker Hub:
+    # docker push deepknowledge/fastapi-anomavision:3.4.0

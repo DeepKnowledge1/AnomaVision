@@ -1,11 +1,6 @@
 <div align="center">
 <img src="docs/images/banner.png" width="100%" alt="AnomaVision banner"/>
 
-# AnomaVision 🔍
-
-**High-performance visual anomaly detection. Fast, lightweight, production-ready.**
-
-AnomaVision detects defects without ever seeing defective examples during training.
 <br>
 
 [![PyPI](https://img.shields.io/pypi/v/anomavision?label=PyPI&color=blue)](https://pypi.org/project/anomavision/)
@@ -51,11 +46,19 @@ The result: a 15 MB model that runs at **43 FPS on CPU** and **547 FPS on GPU**,
 
 ---
 
+## Why AnomaVision?
+
+- Train using only normal images
+- No gradient-based training or epochs
+- Fast CPU inference
+- Image-level and pixel-level anomaly detection
+- Export to ONNX, OpenVINO, TorchScript, and TensorRT
+- CLI, Python API, REST API, and streaming support
+
 ## 🚀 Quickstart
 
 ### Install
 
-> ⚠️ **`torch` is hardware-specific.** A plain `pip install anomavision` skips PyTorch entirely. Always install with an `[extra]` to get the right binaries for your hardware.
 
 **Don't have `uv`?** Install it first — it's faster than pip and handles PyTorch's hardware routing correctly:
 
@@ -80,12 +83,6 @@ uv sync --extra cpu              # CPU
 uv sync --extra cu121            # CUDA 12.1
 ```
 
-Or install from `requirements.txt` directly:
-
-```bash
-uv pip install -r requirements.txt
-```
-
 ---
 
 #### Option B — From PyPI (production / quick start)
@@ -98,20 +95,6 @@ uv pip install "anomavision[cpu]"
 uv pip install "anomavision[cu118]"   # CUDA 11.8
 uv pip install "anomavision[cu121]"   # CUDA 12.1
 uv pip install "anomavision[cu124]"   # CUDA 12.4
-```
-
----
-
-#### Option C — Already installed without extras?
-
-If you're seeing `ModuleNotFoundError: No module named 'torch'`, add PyTorch into your current environment:
-
-```bash
-# CPU
-uv pip install torch torchvision torchaudio
-
-# GPU (CUDA 12.1)
-uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 ```
 
 ---
@@ -160,45 +143,24 @@ Use the Python API when you want to embed AnomaVision into a larger pipeline,
 run it inside a notebook, or integrate it with your own data loading logic.
 
 ```python
-import torch
-import anomavision
-from torch.utils.data import DataLoader
 
-# --- 1. Dataset ---
-# AnodetDataset reads normal images from a folder and applies preprocessing.
-# You only need train/good/ — no labels, no anomalous images required.
 dataset = anomavision.AnodetDataset(
-    image_directory_path="./dataset/bottle/train/good",
-    resize=(224, 224),     # resize before crop
-    crop_size=(224, 224),  # center crop to this size
-    normalize=True,        # ImageNet mean/std normalization
+    image_directory_path="./dataset/bottle/train/good"
 )
+
 loader = DataLoader(dataset, batch_size=16)
 
-# --- 2. Train ---
-# fit() does a single forward pass — no gradient updates, no epochs.
-# Fits a multivariate Gaussian at each spatial position of the feature map.
-# Typical training time: under 10 seconds on CPU for ~200 images.
 model = anomavision.Padim(
-    backbone="resnet18",  # or "wide_resnet50" for higher accuracy
-    device="cpu",         # or "cuda"
-    feat_dim=100,         # number of random feature dimensions to keep
+    backbone="resnet18",
+    device="cpu"
 )
+
 model.fit(loader)
 
-# --- 3. Save ---
-torch.save(model, "model.pt")                  # full model (for export or further use)
-model.save_statistics("model.pth", half=True)  # stats-only (smaller, faster to load)
-
-# --- 4. Infer ---
-# scores: (batch_size,)      — scalar anomaly score per image. Higher = more anomalous.
-# maps:   (batch_size, H, W) — spatial heatmap showing *where* the anomaly is.
-#                              Pass directly to matplotlib.imshow() to visualize.
-batch, *_ = next(iter(loader))
 scores, maps = model.predict(batch)
 ```
+See [API](docs/api.md) for the complete API reference.
 
-See the [FAQ](#-faq) for how to pick a classification threshold from `scores`.
 
 </details>
 
@@ -230,7 +192,6 @@ Full docs at **http://localhost:8000/docs** once the server is running.
 
 </details>
 
----
 
 <details>
 <summary><strong>📊 Models & Performance</strong></summary>
@@ -278,9 +239,10 @@ Full docs at **http://localhost:8000/docs** once the server is running.
 </details>
 </details>
 
----
 
-## 🎯 Tasks & Modes
+<details>
+<summary><strong>🎯 Tasks & Modes</strong></summary>
+
 
 | Task | Train | Detect | Eval | Export | Stream | REST |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -308,7 +270,7 @@ anomavision export \
   --quantize-dynamic
 ```
 
----
+</details>
 
 <details>
 <summary><strong>📺 Streaming Sources</strong></summary>
@@ -422,92 +384,10 @@ dataset/
 
 ---
 
-## 🏗️ Architecture
+<details>
+<summary><strong>🏗️ Architecture </strong></summary>
 
 <img src="docs/images/archti.png" width="100%" alt="AnomaVision architecture"/>
-
-**Key design decisions:**
-
-**PaDiM needs no gradient training.** Features are extracted once with a frozen ResNet. The model fits a multivariate Gaussian at each spatial location — training is a matrix decomposition, not backprop. That's why it finishes in ~8 seconds.
-
-**`ModelWrapper` makes the backend transparent.** The same `predict(batch) → (scores, maps)` call works whether you loaded `.pt`, `.onnx`, `.engine`, or an OpenVINO directory. Every downstream caller — CLI, FastAPI, Streamlit, eval loop — uses the same interface.
-
-**Adaptive Gaussian post-processing** is applied to score maps after inference. The kernel is sized relative to the image resolution, which is a key factor behind the Pixel AUROC gain over baseline.
-
----
-
-## 🛠️ Development
-
-```bash
-# Clone and create environment
-git clone https://github.com/DeepKnowledge1/AnomaVision.git
-cd AnomaVision
-
-uv venv --python 3.11 .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
-
-# Install with dev dependencies
-uv sync --extra cpu              # or --extra cu121 for GPU
-
-# Install the package in editable mode
-uv pip install -e .
-
-# Verify CLI is working
-anomavision --help
-
-# Test
-pytest tests/
-
-# Format + lint
-black . && isort . && flake8 .
-```
-
-**Commit convention:**
-
-```
-feat(export):  add TensorRT INT8 calibration
-fix(detect):   handle empty directories
-docs(api):     improve ModelWrapper examples
-```
-
-Types: `feat` · `fix` · `docs` · `refactor` · `test` · `chore`
-
-PRs must pass `pytest` + `flake8` and include doc updates if behavior changes. See [`docs/contributing.md`](docs/contributing.md).
-
----
-
-## 🚢 Deploy
-
-<details>
-<summary><strong>Docker</strong></summary>
-
-```dockerfile
-FROM python:3.11-slim
-
-RUN apt-get update && apt-get install -y \
-    git git-lfs libsm6 libxext6 libgl1 libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN useradd -m -u 1000 user
-
-RUN pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir uv && \
-    uv pip install --system "anomavision[cpu]"
-
-USER user
-ENV PATH="/home/user/.local/bin:/usr/local/bin:$PATH"
-
-WORKDIR /home/user/app
-COPY --chown=user . .
-
-EXPOSE 7860
-CMD ["python", "app.py"]
-```
-
-```bash
-docker build -t anomavision .
-docker run -p 7860:7860 -v $(pwd)/distributions:/home/user/app/distributions anomavision
-```
 
 </details>
 
@@ -521,10 +401,10 @@ gunicorn apps.api.fastapi_app:app \
   --bind 0.0.0.0:8000 \
   --timeout 120
 ```
+> **Production tip:** Serve ONNX or TensorRT models — `.pt` inference is 2–3× slower than ONNX Runtime at batch size 1.
 
 </details>
 
-> **Production tip:** Serve ONNX or TensorRT models — `.pt` inference is 2–3× slower than ONNX Runtime at batch size 1.
 
 ---
 
