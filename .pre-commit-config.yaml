@@ -11,8 +11,10 @@ repos:
       rev: 5.13.2
       hooks:
         - id: isort
-          args: [--profile=black, --line-length=88]  # ADD --line-length=88
-
+          args:
+            - --profile=black
+            - --line-length=88
+            - --force-single-line-imports  # This might help too
 
   # flake8: ONLY block on critical errors (F811 redefinitions)
   # All other warnings are ignored to allow legacy code to pass
