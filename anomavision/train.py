@@ -20,7 +20,9 @@ checker.check_status()
 
 
 def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train PaDiM (args OR config).", add_help=add_help)
+    parser = argparse.ArgumentParser(
+        description="Train PaDiM (args OR config).", add_help=add_help
+    )
     # meta
     parser.add_argument(
         "--config", type=str, default="config.yml", help="Path to config.yml/.json"
@@ -176,13 +178,16 @@ def run_training(args):
         config.normalize,
     )
     if config.normalize:
-        logger.info(
-            "Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std
-        )
+        logger.info("Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std)
 
     # Resolve output run dir once
     run_dir = increment_path(
-        Path(config.model_data_path) / config.algorithm / config.class_name / config.run_name, exist_ok=True, mkdir=True
+        Path(config.model_data_path)
+        / config.algorithm
+        / config.class_name
+        / config.run_name,
+        exist_ok=True,
+        mkdir=True,
     )
 
     # === Dataset ===
@@ -199,9 +204,11 @@ def run_training(args):
     if not os.path.isdir(root):
         # Fallback check: maybe dataset_path ALREADY points to the class folder?
         # This makes it more robust for different input styles
-        potential_root = os.path.join(os.path.realpath(config.dataset_path), "train", "good")
+        potential_root = os.path.join(
+            os.path.realpath(config.dataset_path), "train", "good"
+        )
         if os.path.isdir(potential_root):
-             root = potential_root
+            root = potential_root
         else:
             logger.error('Expected folder "%s" does not exist.', root)
             raise FileNotFoundError(f"Dataset root not found: {root}")
@@ -263,13 +270,11 @@ def run_training(args):
     # snapshot the effective configuration
     save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
 
-    logger.info(
-        "saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml"
-    )
+    logger.info("saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml")
     logger.info("=== Training done in %.2fs ===", time.perf_counter() - t0)
 
     # Return objects for external usage (e.g. MLOps pipeline)
-    return padim, config, run_dir, {'train': dl}
+    return padim, config, run_dir, {"train": dl}
 
 
 def main(args=None):
@@ -282,6 +287,7 @@ def main(args=None):
     except Exception:
         get_logger(__name__).exception("Fatal error during training.")
         sys.exit(1)
-        
+
+
 if __name__ == "__main__":
     main()

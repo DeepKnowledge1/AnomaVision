@@ -105,4 +105,3 @@ stream_max_frames: null                  # Max frames to process (null = infinit
 stream_display_fps: true                 # Show FPS during streaming
 stream_save_detections: true             # Save detected anomalies to disk
 stream_detection_dir: "./stream_detections/"  # Directory for saved detections
-

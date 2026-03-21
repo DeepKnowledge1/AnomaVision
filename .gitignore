@@ -359,3 +359,4 @@ images/
 !docs/images/archti.png
 !docs/AnomaVision_vs_Anomalib.pdf
 poetry publish --build --username __toke.txt
+fix_flake.py

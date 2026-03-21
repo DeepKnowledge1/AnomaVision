@@ -1,13 +1,13 @@
-from anomavision.datasets.StreamSource import StreamSource
-
-from typing import Optional
 import socket
 import threading
 import time
-from queue import Queue, Empty, Full
+from queue import Empty, Full, Queue
+from typing import Optional
 
 import cv2
 import numpy as np
+
+from anomavision.datasets.StreamSource import StreamSource
 
 
 class TCPSource(StreamSource):
@@ -132,7 +132,10 @@ class TCPSource(StreamSource):
                 if payload_len <= 0:
                     continue
 
-                if self.max_message_size is not None and payload_len > self.max_message_size:
+                if (
+                    self.max_message_size is not None
+                    and payload_len > self.max_message_size
+                ):
                     # Drain and skip (best-effort)
                     _ = self._recv_exact(payload_len)
                     continue
@@ -238,4 +241,8 @@ class TCPSource(StreamSource):
 
     def is_connected(self) -> bool:
         with self._lock:
-            return self._connected and not self._stop_event.is_set() and self.socket is not None
+            return (
+                self._connected
+                and not self._stop_event.is_set()
+                and self.socket is not None
+            )

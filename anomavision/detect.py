@@ -21,10 +21,9 @@ from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
 
 import anomavision
+from anomavision.config import _shape, load_config
 from anomavision.datasets.StreamDataset import StreamDataset
 from anomavision.datasets.StreamSourceFactory import StreamSourceFactory
-
-from anomavision.config import _shape, load_config
 from anomavision.general import Profiler, determine_device, increment_path
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.inference.modelType import ModelType
@@ -210,7 +209,11 @@ def run_inference(args):
 
     # Parse visualization color
     try:
-        viz_color = tuple(map(int, config.viz_color.split(","))) if config.viz_color else (128, 0, 128)
+        viz_color = (
+            tuple(map(int, config.viz_color.split(",")))
+            if config.viz_color
+            else (128, 0, 128)
+        )
         if len(viz_color) != 3:
             raise ValueError
     except (ValueError, AttributeError):
@@ -224,11 +227,15 @@ def run_inference(args):
     crop_size = _shape(config.crop_size)
     normalize = config.get("normalize", True)
 
-    logger.info("Image processing: resize=%s, crop=%s, norm=%s", resize, crop_size, normalize)
+    logger.info(
+        "Image processing: resize=%s, crop=%s, norm=%s", resize, crop_size, normalize
+    )
 
     # Validation
     if not config.get("img_path") and not stream_mode:
-        raise ValueError("img_path is required (via --img_path or config) when stream_mode is False")
+        raise ValueError(
+            "img_path is required (via --img_path or config) when stream_mode is False"
+        )
 
     if not config.get("model"):
         raise ValueError("model is required (via --model or config)")
@@ -247,7 +254,7 @@ def run_inference(args):
         "scores": [],
         "classifications": [],
         # We only store images/maps if needed for downstream tasks to avoid memory issues
-        "images": [] if not stream_mode else None
+        "images": [] if not stream_mode else None,
     }
 
     total_start_time = time.time()
@@ -271,7 +278,13 @@ def run_inference(args):
 
     # --- Model Loading Phase ---
     with profilers["model_loading"]:
-        model_path = os.path.join(MODEL_DATA_PATH, config.algorithm, config.class_name, config.run_name, config.model)
+        model_path = os.path.join(
+            MODEL_DATA_PATH,
+            config.algorithm,
+            config.class_name,
+            config.run_name,
+            config.model,
+        )
         logger.info(f"Loading model: {model_path}")
 
         if not os.path.exists(model_path):
@@ -291,7 +304,11 @@ def run_inference(args):
         run_name = config.run_name
         viz_output_dir = config.get("viz_output_dir", "./visualizations/")
         RESULTS_PATH = increment_path(
-            Path(viz_output_dir) / config.algorithm / config.class_name / model_type.value.upper() / run_name,
+            Path(viz_output_dir)
+            / config.algorithm
+            / config.class_name
+            / model_type.value.upper()
+            / run_name,
             exist_ok=config.get("overwrite", False),
             mkdir=True,
         )
@@ -383,18 +400,24 @@ def run_inference(args):
             # 2. Post-processing
             with profilers["postprocessing"]:
                 try:
-                    score_maps = adaptive_gaussian_blur(score_maps, kernel_size=33, sigma=4)
+                    score_maps = adaptive_gaussian_blur(
+                        score_maps, kernel_size=33, sigma=4
+                    )
 
                     # Classify
                     if config.thresh is not None:
-                        is_anomaly = anomavision.classification(image_scores, config.thresh)
+                        is_anomaly = anomavision.classification(
+                            image_scores, config.thresh
+                        )
                     else:
                         is_anomaly = np.zeros_like(image_scores)
 
                     # Accumulate Results (Offline only)
                     if not stream_mode:
                         results_accumulator["scores"].extend(image_scores.tolist())
-                        results_accumulator["classifications"].extend(is_anomaly.tolist())
+                        results_accumulator["classifications"].extend(
+                            is_anomaly.tolist()
+                        )
                         results_accumulator["images"].extend(images)
 
                 except Exception as e:
@@ -410,7 +433,13 @@ def run_inference(args):
                         boundary_images = (
                             anomavision.visualization.framed_boundary_images(
                                 test_images,
-                                anomavision.classification(score_maps, config.thresh)if config.thresh else np.zeros_like(score_maps),
+                                (
+                                    anomavision.classification(
+                                        score_maps, config.thresh
+                                    )
+                                    if config.thresh
+                                    else np.zeros_like(score_maps)
+                                ),
                                 is_anomaly,
                                 padding=config.get("viz_padding", 40),
                             )
@@ -424,7 +453,11 @@ def run_inference(args):
                         highlighted_images = anomavision.visualization.highlighted_images(
                             [images[i] for i in range(len(images))],
                             # Dummy mask if threshold not set
-                            anomavision.classification(score_maps, config.thresh) if config.thresh else np.zeros_like(score_maps),
+                            (
+                                anomavision.classification(score_maps, config.thresh)
+                                if config.thresh
+                                else np.zeros_like(score_maps)
+                            ),
                             color=viz_color,
                         )
 
@@ -434,7 +467,10 @@ def run_inference(args):
                             if config.save_visualizations and RESULTS_PATH:
                                 try:
                                     fig, axs = plt.subplots(1, 4, figsize=(16, 8))
-                                    fig.suptitle(f"Result - Batch {batch_idx} Img {img_id}", fontsize=14)
+                                    fig.suptitle(
+                                        f"Result - Batch {batch_idx} Img {img_id}",
+                                        fontsize=14,
+                                    )
 
                                     axs[0].imshow(images[img_id])
                                     axs[0].set_title("Original")
@@ -452,7 +488,10 @@ def run_inference(args):
                                     axs[3].set_title("Highlighted")
                                     axs[3].axis("off")
 
-                                    save_path = os.path.join(RESULTS_PATH, f"batch_{batch_idx}_img_{img_id}.png")
+                                    save_path = os.path.join(
+                                        RESULTS_PATH,
+                                        f"batch_{batch_idx}_img_{img_id}.png",
+                                    )
                                     plt.savefig(save_path, dpi=100, bbox_inches="tight")
                                     plt.close(fig)
                                 except Exception as e:
@@ -465,10 +504,12 @@ def run_inference(args):
         logger.info("Closing model...")
         model.close()
         if stream_mode:
-             # Clean up stream source
-             try:
-                 test_dataset.close()
-             except: pass
+            # Clean up stream source
+            try:
+                test_dataset.close()
+            except Exception:
+
+                pass
 
     # --- Metrics & Summary ---
     total_pipeline_time = time.time() - total_start_time
@@ -482,12 +523,24 @@ def run_inference(args):
     logger.info("=" * 60)
     logger.info("ANOMAVISION PERFORMANCE SUMMARY")
     logger.info("=" * 60)
-    logger.info(f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms")
+    logger.info(
+        f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms"
+    )
     logger.info(f"Total pipeline time:       {total_pipeline_time * 1000:.2f} ms")
     logger.info("=" * 60)
 
@@ -501,16 +554,18 @@ def run_inference(args):
         logger.info(f"Average inference time:    {avg_ms:.2f} ms/batch")
 
     if batch_count > 0:
-        batch_size = config.get('batch_size', 1) or 1
+        batch_size = config.get("batch_size", 1) or 1
         throughput = fps * (final_count / batch_count) if batch_count else 0
-        logger.info(f"Throughput:                {throughput:.1f} images/sec (batch size: {batch_size})")
+        logger.info(
+            f"Throughput:                {throughput:.1f} images/sec (batch size: {batch_size})"
+        )
     logger.info("=" * 60)
 
     metrics = {
         "fps": fps,
         "avg_inference_ms": avg_ms,
         "total_time_s": total_pipeline_time,
-        "total_images": final_count
+        "total_images": final_count,
     }
 
     return metrics, results_accumulator

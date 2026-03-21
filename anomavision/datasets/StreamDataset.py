@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union, List
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -6,10 +6,7 @@ from PIL import Image
 from torch.utils.data import IterableDataset
 
 from anomavision.datasets.StreamSource import StreamSource
-from anomavision.utils import (
-    create_image_transform,
-    create_mask_transform,
-)
+from anomavision.utils import create_image_transform, create_mask_transform
 
 
 class StreamDataset(IterableDataset):

@@ -722,8 +722,19 @@ def main(args=None):
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
     logger = get_logger("anomavision.export")
 
-    model_path = Path(config.model_data_path) / config.algorithm / config.class_name / config.run_name / config.model
-    output_dir = Path(config.model_data_path) / config.algorithm / config.class_name / config.run_name
+    model_path = (
+        Path(config.model_data_path)
+        / config.algorithm
+        / config.class_name
+        / config.run_name
+        / config.model
+    )
+    output_dir = (
+        Path(config.model_data_path)
+        / config.algorithm
+        / config.class_name
+        / config.run_name
+    )
     model_stem = Path(config.model).stem
 
     # Generate output names

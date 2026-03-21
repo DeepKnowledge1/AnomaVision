@@ -2,18 +2,21 @@
 AnomaVision - Hugging Face Spaces Entry Point
 Starts both FastAPI backend and Gradio frontend in a single process
 """
+
 import multiprocessing
-import time
-import sys
 import os
+import sys
+import time
 
 # Add the apps directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 
 def run_fastapi():
     """Run FastAPI server in background process"""
     try:
         import uvicorn
+
         # Import from apps.api package
         from apps.api.fastapi_app import app
 
@@ -23,16 +26,17 @@ def run_fastapi():
             host="0.0.0.0",
             port=8000,
             log_level="info",
-            access_log=False  # Reduce log noise
+            access_log=False,  # Reduce log noise
         )
     except Exception as e:
         print(f"❌ FastAPI failed to start: {e}")
         sys.exit(1)
 
+
 def run_gradio():
     """Run Gradio interface in main process"""
-    import requests
     import gradio as gr
+    import requests
 
     # Import from apps.ui package
     from apps.ui.gradio_app import create_interface
@@ -70,11 +74,12 @@ def run_gradio():
             server_port=7860,
             share=False,
             show_error=True,
-            quiet=False
+            quiet=False,
         )
     except Exception as e:
         print(f"❌ Gradio failed to start: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     print("=" * 60)
@@ -86,12 +91,11 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Set multiprocessing start method (important for some platforms)
-    multiprocessing.set_start_method('spawn', force=True)
+    multiprocessing.set_start_method("spawn", force=True)
 
     # Start FastAPI in a separate process
     fastapi_process = multiprocessing.Process(
-        target=run_fastapi,
-        daemon=True  # Dies when main process dies
+        target=run_fastapi, daemon=True  # Dies when main process dies
     )
     fastapi_process.start()
 

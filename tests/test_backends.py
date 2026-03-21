@@ -268,7 +268,7 @@ class TestBackendCompatibility:
         score_diff_fp32 = np.abs(full_scores - fp32_scores)
         map_diff_fp32 = np.abs(full_maps - fp32_maps)
 
-        print(f"\nFP32 Stats vs Full Model:")
+        print("\nFP32 Stats vs Full Model:")
         print(
             f"Score differences - max: {score_diff_fp32.max():.8f}, mean: {score_diff_fp32.mean():.8f}"
         )
@@ -280,7 +280,7 @@ class TestBackendCompatibility:
         score_diff_fp16 = np.abs(full_scores - fp16_scores)
         map_diff_fp16 = np.abs(full_maps - fp16_maps)
 
-        print(f"\nFP16 Stats vs Full Model:")
+        print("\nFP16 Stats vs Full Model:")
         print(
             f"Score differences - max: {score_diff_fp16.max():.8f}, mean: {score_diff_fp16.mean():.8f}"
         )
@@ -292,7 +292,7 @@ class TestBackendCompatibility:
         fp32_vs_fp16_scores = np.abs(fp32_scores - fp16_scores)
         fp32_vs_fp16_maps = np.abs(fp32_maps - fp16_maps)
 
-        print(f"\nFP32 Stats vs FP16 Stats:")
+        print("\nFP32 Stats vs FP16 Stats:")
         print(
             f"Score differences - max: {fp32_vs_fp16_scores.max():.8f}, mean: {fp32_vs_fp16_scores.mean():.8f}"
         )
@@ -337,7 +337,7 @@ class TestBackendCompatibility:
         fp32_size = os.path.getsize(str(stats_path_fp32)) / (1024 * 1024)
         fp16_size = os.path.getsize(str(stats_path_fp16)) / (1024 * 1024)
 
-        print(f"\nFile Sizes:")
+        print("\nFile Sizes:")
         print(f"Full model: {full_size:.2f} MB")
         print(f"FP32 stats: {fp32_size:.2f} MB")
         print(f"FP16 stats: {fp16_size:.2f} MB")

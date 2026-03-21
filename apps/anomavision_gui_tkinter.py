@@ -37,6 +37,7 @@ try:
 except Exception:
     _DND_AVAILABLE = False
 
+
 # ----- Your package imports (existing project modules) -----
 import anomavision
 from anomavision.config import load_config
@@ -45,7 +46,7 @@ from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.inference.modelType import ModelType
 from anomavision.padim import Padim
 from anomavision.utils import get_logger
-from PIL import Image, ImageTk
+
 # -----------------------------------------------------------------------------
 # Global fast paths and helpers
 # -----------------------------------------------------------------------------
@@ -208,7 +209,7 @@ def make_logo(size=44, bg="#38BDF8", fg="#001225"):
     text = "AV"
     # Try common fonts; fall back to default
     font = None
-    for name in ("arial.ttf", "SegoeUI.ttf", "DejaVuSans.ttf"):
+    for name in ("arial.tt", "SegoeUI.tt", "DejaVuSans.tt"):
         try:
             font = ImageFont.truetype(name, int(size * 0.44))
             break
@@ -764,8 +765,8 @@ class AnomaVisionGUI:
         self.style.configure(
             "Green.Horizontal.TProgressbar",
             troughcolor=self.colors["panel"],
-            background="#10B981",      # ✅ green bar
-            thickness=14
+            background="#10B981",  # ✅ green bar
+            thickness=14,
         )
 
     def toggle_theme(self):
@@ -836,10 +837,10 @@ class AnomaVisionGUI:
 
         # --- Create logo image BEFORE using it (safe fallback if PIL font missing) ---
 
-
-
         try:
-            icon_image = Image.open("av.png")  # use PNG for clean scaling; ICO also works
+            icon_image = Image.open(
+                "av.png"
+            )  # use PNG for clean scaling; ICO also works
             icon_image = icon_image.resize((44, 44), Image.LANCZOS)
             self.logo_tk = ImageTk.PhotoImage(icon_image)
         except Exception:
@@ -1214,11 +1215,13 @@ class AnomaVisionGUI:
             variable=self.train_progress_var,
             maximum=100,
             mode="determinate",
-            style="Green.Horizontal.TProgressbar"
+            style="Green.Horizontal.TProgressbar",
         )
         self.train_progress.pack(fill=tk.X, padx=14, pady=(0, 12))
         self.train_progress.pack_forget()
-        self.train_percent_label = tk.Label(cfg, text="0%", bg=self.colors["panel"], fg=self.colors["fg"])
+        self.train_percent_label = tk.Label(
+            cfg, text="0%", bg=self.colors["panel"], fg=self.colors["fg"]
+        )
         self.train_percent_label.pack(anchor="w", padx=14)
 
     def update_training_progress(self, value):
