@@ -732,7 +732,8 @@ footer, .footer {{ display: none !important; }}
 with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
 
     # ── Header ──────────────────────────────────────────────────────────────
-    gr.HTML(f"""
+    gr.HTML(
+        f"""
     <div class="app-header">
       <div class="app-header-inner">
         <div>
@@ -760,7 +761,8 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
         </div>
       </div>
     </div>
-    """)
+    """
+    )
 
     # ── Tabs ─────────────────────────────────────────────────────────────────
     with gr.Tabs():
@@ -922,7 +924,8 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
 
         # ── Tab 2: Draw Defects ───────────────────────────────────────────────
         with gr.Tab("🎨 Draw Defects"):
-            gr.HTML("""
+            gr.HTML(
+                """
             <div style="padding:1.2rem 0 0.4rem;">
               <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;
                           color:#7c82a8;margin-bottom:0.5rem;">Synthetic Defect Testing</div>
@@ -938,7 +941,8 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                 ✦ Requires Gradio ≥ 4.x for the sketch editor
               </p>
             </div>
-            """)
+            """
+            )
             with gr.Row():
                 with gr.Column():
                     sketch_img = gr.ImageEditor(
@@ -980,7 +984,8 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
 
         # ── Tab 3: Compare Models ─────────────────────────────────────────────
         with gr.Tab("⚖️ Compare Models"):
-            gr.HTML("""
+            gr.HTML(
+                """
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
                         padding:4rem 2rem;text-align:center;">
               <div style="font-size:2.8rem;margin-bottom:1rem;opacity:0.2;">⚖️</div>
@@ -996,7 +1001,8 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                           font-size:0.72rem;font-weight:700;color:#6366f1;letter-spacing:0.1em;
                           text-transform:uppercase;">Coming Soon</div>
             </div>
-            """)
+            """
+            )
 
 
 if __name__ == "__main__":
