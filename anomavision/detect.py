@@ -21,10 +21,9 @@ from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
 
 import anomavision
+from anomavision.config import _shape, load_config
 from anomavision.datasets.StreamDataset import StreamDataset
 from anomavision.datasets.StreamSourceFactory import StreamSourceFactory
-
-from anomavision.config import _shape, load_config
 from anomavision.general import Profiler, determine_device, increment_path
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.inference.modelType import ModelType
@@ -33,6 +32,13 @@ from anomavision.utils import (
     get_logger,
     merge_config,
     setup_logging,
+)
+from anomavision_downloader import (
+    MODELS_DIR,
+    _warn_missing_path,
+    ensure_models,
+    ensure_sample_images,
+    get_mvtec_dir,
 )
 
 matplotlib.use("Agg")  # non-interactive, faster PNG writing
@@ -151,6 +157,20 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help='RGB color for highlighting (comma-separated, e.g., "128,0,128").',
     )
 
+    # Asset download parameters
+    parser.add_argument(
+        "--download_model_from_github",
+        action="store_true",
+        default=False,
+        help="Download model_bottle.zip from GitHub (DeepKnowledge1/AnomaVision assets-stable). Required if model is missing locally.",
+    )
+    parser.add_argument(
+        "--download_test_images_from_github",
+        action="store_true",
+        default=False,
+        help="Download sample_bottle_images.zip from GitHub (DeepKnowledge1/AnomaVision assets-stable). Required if image path is missing locally.",
+    )
+
     # Logging parameters
     parser.add_argument(
         "--log_level",
@@ -208,9 +228,82 @@ def run_inference(args):
     stream_mode = config.get("stream_mode", False)
     logger.info(f"Streaming mode: {stream_mode}")
 
+    # ── Asset availability check ─────────────────────────────────────────────
+    # Downloads only happen if the user explicitly passes --download_model
+    # or --download_images. Without the flag, a missing asset is a hard error.
+
+    model_file = (
+        os.path.join(
+            config.model_data_path,
+            config.algorithm,
+            config.class_name,
+            config.run_name,
+            config.model,
+        )
+        if config.model_data_path and config.get("algorithm") and config.get("model")
+        else None
+    )
+
+    if not model_file or not os.path.exists(model_file):
+        if config.get("download_model_from_github"):
+            logger.info("--download_model set — downloading model from GitHub ...")
+            ensure_models()
+            config.model_data_path = str(MODELS_DIR)
+            logger.info("model_data_path set to cache: %s", config.model_data_path)
+        else:
+            _warn_missing_path(
+                "Model",
+                str(model_file or ""),
+                "--download_model_from_github",
+                error=True,
+            )
+            raise FileNotFoundError(
+                f"Model not found: {model_file}\n"
+                "  → Run with --download_model_from_github to download it from GitHub."
+            )
+
+    if not stream_mode:
+        if not config.get("img_path") or not os.path.isdir(str(config.img_path)):
+            if config.get("download_test_images_from_github"):
+                logger.info(
+                    "--download_images set — downloading sample images from GitHub ..."
+                )
+                ensure_sample_images()  # downloads sample_bottle_images.zip from GitHub
+            else:
+                _warn_missing_path(
+                    "Image",
+                    str(config.get("img_path") or ""),
+                    "--download_test_images_from_github",
+                    error=True,
+                )
+                raise FileNotFoundError(
+                    f"Image path not found: {config.get('img_path')}\n"
+                    "  → Run with --download_test_images_from_github to download sample images from GitHub."
+                )
+            # Find whatever folder was actually extracted — zip may not follow bottle/test structure
+            mvtec = get_mvtec_dir()
+            for candidate in [
+                mvtec / config.class_name / "test",  # ideal MVTec layout
+                mvtec / config.class_name,  # no test subfolder
+                mvtec / "sample_images",  # zip extracted as sample_images/
+                mvtec / "sample_images" / "test",
+                mvtec,  # flat extraction
+            ]:
+                if candidate.is_dir() and any(candidate.rglob("*.png")):
+                    config.img_path = str(candidate)
+                    break
+            else:
+                config.img_path = str(mvtec)
+            logger.info("img_path set to cache: %s", config.img_path)
+    # ─────────────────────────────────────────────────────────────────────────
+
     # Parse visualization color
     try:
-        viz_color = tuple(map(int, config.viz_color.split(","))) if config.viz_color else (128, 0, 128)
+        viz_color = (
+            tuple(map(int, config.viz_color.split(",")))
+            if config.viz_color
+            else (128, 0, 128)
+        )
         if len(viz_color) != 3:
             raise ValueError
     except (ValueError, AttributeError):
@@ -224,11 +317,15 @@ def run_inference(args):
     crop_size = _shape(config.crop_size)
     normalize = config.get("normalize", True)
 
-    logger.info("Image processing: resize=%s, crop=%s, norm=%s", resize, crop_size, normalize)
+    logger.info(
+        "Image processing: resize=%s, crop=%s, norm=%s", resize, crop_size, normalize
+    )
 
     # Validation
     if not config.get("img_path") and not stream_mode:
-        raise ValueError("img_path is required (via --img_path or config) when stream_mode is False")
+        raise ValueError(
+            "img_path is required (via --img_path or config) when stream_mode is False"
+        )
 
     if not config.get("model"):
         raise ValueError("model is required (via --model or config)")
@@ -247,7 +344,7 @@ def run_inference(args):
         "scores": [],
         "classifications": [],
         # We only store images/maps if needed for downstream tasks to avoid memory issues
-        "images": [] if not stream_mode else None
+        "images": [] if not stream_mode else None,
     }
 
     total_start_time = time.time()
@@ -271,7 +368,27 @@ def run_inference(args):
 
     # --- Model Loading Phase ---
     with profilers["model_loading"]:
-        model_path = os.path.join(MODEL_DATA_PATH, config.algorithm, config.class_name, config.run_name, config.model)
+        model_path = os.path.join(
+            MODEL_DATA_PATH,
+            config.algorithm,
+            config.class_name,
+            config.run_name,
+            config.model,
+        )
+
+        if not os.path.exists(model_path):
+            # Search the entire MODELS_DIR recursively for the requested filename
+            found = list(Path(MODEL_DATA_PATH).rglob(config.model))
+            if not found:
+                # Try any recognised model file anywhere under MODELS_DIR
+                found = [
+                    p
+                    for p in Path(MODEL_DATA_PATH).rglob("*")
+                    if p.suffix.lower()
+                    in {".pt", ".pth", ".onnx", ".engine", ".torchscript"}
+                ]
+            model_path = str(found[0]) if found else model_path
+
         logger.info(f"Loading model: {model_path}")
 
         if not os.path.exists(model_path):
@@ -291,7 +408,11 @@ def run_inference(args):
         run_name = config.run_name
         viz_output_dir = config.get("viz_output_dir", "./visualizations/")
         RESULTS_PATH = increment_path(
-            Path(viz_output_dir) / config.algorithm / config.class_name / model_type.value.upper() / run_name,
+            Path(viz_output_dir)
+            / config.algorithm
+            / config.class_name
+            / model_type.value.upper()
+            / run_name,
             exist_ok=config.get("overwrite", False),
             mkdir=True,
         )
@@ -383,18 +504,24 @@ def run_inference(args):
             # 2. Post-processing
             with profilers["postprocessing"]:
                 try:
-                    score_maps = adaptive_gaussian_blur(score_maps, kernel_size=33, sigma=4)
+                    score_maps = adaptive_gaussian_blur(
+                        score_maps, kernel_size=33, sigma=4
+                    )
 
                     # Classify
                     if config.thresh is not None:
-                        is_anomaly = anomavision.classification(image_scores, config.thresh)
+                        is_anomaly = anomavision.classification(
+                            image_scores, config.thresh
+                        )
                     else:
                         is_anomaly = np.zeros_like(image_scores)
 
                     # Accumulate Results (Offline only)
                     if not stream_mode:
                         results_accumulator["scores"].extend(image_scores.tolist())
-                        results_accumulator["classifications"].extend(is_anomaly.tolist())
+                        results_accumulator["classifications"].extend(
+                            is_anomaly.tolist()
+                        )
                         results_accumulator["images"].extend(images)
 
                 except Exception as e:
@@ -410,7 +537,13 @@ def run_inference(args):
                         boundary_images = (
                             anomavision.visualization.framed_boundary_images(
                                 test_images,
-                                anomavision.classification(score_maps, config.thresh)if config.thresh else np.zeros_like(score_maps),
+                                (
+                                    anomavision.classification(
+                                        score_maps, config.thresh
+                                    )
+                                    if config.thresh
+                                    else np.zeros_like(score_maps)
+                                ),
                                 is_anomaly,
                                 padding=config.get("viz_padding", 40),
                             )
@@ -424,7 +557,11 @@ def run_inference(args):
                         highlighted_images = anomavision.visualization.highlighted_images(
                             [images[i] for i in range(len(images))],
                             # Dummy mask if threshold not set
-                            anomavision.classification(score_maps, config.thresh) if config.thresh else np.zeros_like(score_maps),
+                            (
+                                anomavision.classification(score_maps, config.thresh)
+                                if config.thresh
+                                else np.zeros_like(score_maps)
+                            ),
                             color=viz_color,
                         )
 
@@ -434,25 +571,31 @@ def run_inference(args):
                             if config.save_visualizations and RESULTS_PATH:
                                 try:
                                     fig, axs = plt.subplots(1, 4, figsize=(16, 8))
-                                    fig.suptitle(f"Result - Batch {batch_idx} Img {img_id}", fontsize=14)
+                                    fig.suptitle(
+                                        f"Result - Batch {batch_idx} Img {img_id}",
+                                        fontsize=14,
+                                    )
 
                                     axs[0].imshow(images[img_id])
                                     axs[0].set_title("Original")
-                                    axs[0].axis("off")
+                                    axs[0].axis("of")
 
                                     axs[1].imshow(boundary_images[img_id])
                                     axs[1].set_title("Boundary")
-                                    axs[1].axis("off")
+                                    axs[1].axis("of")
 
                                     axs[2].imshow(heatmap_images[img_id])
                                     axs[2].set_title("Heatmap")
-                                    axs[2].axis("off")
+                                    axs[2].axis("of")
 
                                     axs[3].imshow(highlighted_images[img_id])
                                     axs[3].set_title("Highlighted")
-                                    axs[3].axis("off")
+                                    axs[3].axis("of")
 
-                                    save_path = os.path.join(RESULTS_PATH, f"batch_{batch_idx}_img_{img_id}.png")
+                                    save_path = os.path.join(
+                                        RESULTS_PATH,
+                                        f"batch_{batch_idx}_img_{img_id}.png",
+                                    )
                                     plt.savefig(save_path, dpi=100, bbox_inches="tight")
                                     plt.close(fig)
                                 except Exception as e:
@@ -465,10 +608,12 @@ def run_inference(args):
         logger.info("Closing model...")
         model.close()
         if stream_mode:
-             # Clean up stream source
-             try:
-                 test_dataset.close()
-             except: pass
+            # Clean up stream source
+            try:
+                test_dataset.close()
+            except Exception:
+
+                pass
 
     # --- Metrics & Summary ---
     total_pipeline_time = time.time() - total_start_time
@@ -482,12 +627,24 @@ def run_inference(args):
     logger.info("=" * 60)
     logger.info("ANOMAVISION PERFORMANCE SUMMARY")
     logger.info("=" * 60)
-    logger.info(f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms")
+    logger.info(
+        f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms"
+    )
     logger.info(f"Total pipeline time:       {total_pipeline_time * 1000:.2f} ms")
     logger.info("=" * 60)
 
@@ -501,16 +658,18 @@ def run_inference(args):
         logger.info(f"Average inference time:    {avg_ms:.2f} ms/batch")
 
     if batch_count > 0:
-        batch_size = config.get('batch_size', 1) or 1
+        batch_size = config.get("batch_size", 1) or 1
         throughput = fps * (final_count / batch_count) if batch_count else 0
-        logger.info(f"Throughput:                {throughput:.1f} images/sec (batch size: {batch_size})")
+        logger.info(
+            f"Throughput:                {throughput:.1f} images/sec (batch size: {batch_size})"
+        )
     logger.info("=" * 60)
 
     metrics = {
         "fps": fps,
         "avg_inference_ms": avg_ms,
         "total_time_s": total_pipeline_time,
-        "total_images": final_count
+        "total_images": final_count,
     }
 
     return metrics, results_accumulator

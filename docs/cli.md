@@ -84,9 +84,13 @@ anomavision detect [options]
 | `--run_name`             | str   | detect_exp                | Experiment name                        |
 | `--overwrite`            | flag  | False                     | Overwrite run dir                      |
 | `--log_level`            | str   | INFO                      | Logging level                          |
-| `--detailed_timing`      | flag  | False                     | Log detailed timings                   |
+| `--detailed_timing`                 | flag  | False                     | Log detailed timings                                                                     |
+| `--download_model_from_github`      | flag  | False                     | Download `model_bottle.zip` from GitHub (`assets-stable`) if model is missing locally   |
+| `--download_images_from_github`     | flag  | False                     | Download `sample_bottle_images.zip` from GitHub (`assets-stable`) if images are missing |
 
-**Example:**
+> ⚠️ Without these flags, a missing model or image path raises a hard error with clear instructions on what to run.
+
+**Example — standard run:**
 
 ```bash
 anomavision detect \
@@ -96,6 +100,17 @@ anomavision detect \
   --enable_visualization \
   --save_visualizations
 ```
+
+**Example — first run, no local assets:**
+
+```bash
+anomavision detect \
+  --config config.yml \
+  --model model.onnx \
+  --download_model_from_github \
+  --download_images_from_github
+```
+
 
 ---
 
@@ -111,11 +126,12 @@ anomavision eval [options]
 | `--dataset_path`         | str  | None                      | Root dataset path          |
 | `--class_name`           | str  | bottle                    | Class name (MVTec style)   |
 | `--model_data_path`      | str  | ./distributions/anomav_exp | Directory with model files |
-| `--model`                | str  | model.onnx          | Model file                 |
+| `--model`                | str  | model.onnx                | Model file                 |
 | `--device`               | str  | auto                      | Device (`cpu`, `cuda`)     |
 | `--batch_size`           | int  | 32                        | Batch size                 |
 | `--num_workers`          | int  | 1                         | Data loader workers        |
 | `--pin_memory`           | flag | False                     | Use pinned memory          |
+| `--thresh`               | float| None                      | Threshold (auto-computed if not set) |
 | `--enable_visualization` | flag | False                     | Show plots                 |
 | `--save_visualizations`  | flag | False                     | Save plots                 |
 | `--viz_output_dir`       | str  | ./eval_visualizations     | Output path                |

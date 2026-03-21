@@ -90,6 +90,14 @@ anomavision train --config config.yml
 
 ## 3. Run Detection
 
+> 💡 **First time?** If you don't have model files or test images locally, use the auto-download flags:
+> ```bash
+> anomavision detect --config config.yml --model model.onnx \
+>   --download_model_from_github --download_images_from_github
+> ```
+> This downloads `model_bottle.zip` and `sample_bottle_images.zip` from the GitHub `assets-stable` release
+> into `~/.anomavision/` and uses them automatically. Without these flags, missing assets raise a hard error.
+
 ### Offline Detection (Static Images)
 
 #### Option A — CLI Arguments

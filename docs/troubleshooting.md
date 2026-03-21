@@ -1,4 +1,3 @@
-
 # 🛠️ Troubleshooting & FAQ
 
 This guide covers **common issues** when using AnomaVision and how to fix them.
@@ -164,3 +163,71 @@ A: Yes, as long as the dataset follows **MVTec-style folder structure**.
 ✅ With this guide, you should be able to quickly solve most common problems.
 If an issue persists, please [open a GitHub Issue](https://github.com/DeepKnowledge1/AnomaVision/issues) with details.
 
+---
+
+## 8. Asset Download Issues
+
+### ❌ Problem: Red banner — `MISSING ASSET` with hard error
+
+```
+╔══════════════════════════════════════════════════════════╗
+║  ✖  AnomaVision – MISSING ASSET                         ║
+╠══════════════════════════════════════════════════════════╣
+║  Model path is not set or does not exist.
+║  Given    : ./distributions
+║  Run with : --download_model_from_github
+╚══════════════════════════════════════════════════════════╝
+```
+
+**Cause:** Model file or image path is missing and no download flag was passed.
+**Fix:** Add the appropriate flag:
+
+```bash
+# Missing model
+anomavision detect --config config.yml --model model.onnx --download_model_from_github
+
+# Missing images
+anomavision detect --config config.yml --model model.onnx --download_images_from_github
+
+# Both missing
+anomavision detect --config config.yml --model model.onnx \
+  --download_model_from_github --download_images_from_github
+```
+
+Assets are downloaded from the `assets-stable` GitHub release and cached in `~/.anomavision/`.
+Subsequent runs use the cache automatically — no re-download unless the cache is deleted.
+
+---
+
+### ❌ Problem: Yellow banner — auto-fallback to cache, but wrong model loaded
+
+```
+╔══════════════════════════════════════════════════════════╗
+║  ⚠  AnomaVision – PATH NOT FOUND                        ║
+╠══════════════════════════════════════════════════════════╣
+║  Model path is not set or does not exist.
+║  Given    : ./distributions
+║  Action   : downloading / using cached assets …
+║  Using    : C:\Users\you\.anomavision\models
+╚══════════════════════════════════════════════════════════╝
+```
+
+**Cause:** `model_data_path` in config points to a non-existent directory.
+**Fix:** Either correct `model_data_path` in `config.yml` to point to your trained model, or use `--download_model_from_github` to use the cached sample model.
+
+---
+
+### ❌ Problem: Cache exists but model still not found
+
+**Cause:** The zip extracted into an unexpected subfolder.
+**Fix:** Check what's in the cache:
+
+```bash
+# Windows
+dir %USERPROFILE%\.anomavision\models /s
+
+# Linux / macOS
+find ~/.anomavision/models -type f
+```
+
+Then set `model_data_path` in your config to the folder containing the model file.

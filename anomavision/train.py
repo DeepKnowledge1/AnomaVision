@@ -13,6 +13,7 @@ import anomavision
 from anomavision.config import load_config
 from anomavision.general import GitStatusChecker, increment_path
 from anomavision.utils import get_logger, merge_config, save_args_to_yaml, setup_logging
+from anomavision_downloader import _warn_missing_path, ensure_images, get_mvtec_dir
 
 # Check git status at module level (optional, can be moved to main if preferred)
 checker = GitStatusChecker()
@@ -20,7 +21,9 @@ checker.check_status()
 
 
 def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train PaDiM (args OR config).", add_help=add_help)
+    parser = argparse.ArgumentParser(
+        description="Train PaDiM (args OR config).", add_help=add_help
+    )
     # meta
     parser.add_argument(
         "--config", type=str, default="config.yml", help="Path to config.yml/.json"
@@ -162,6 +165,17 @@ def run_training(args):
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
     logger = get_logger("anomavision.train")  # Force it into anomavision hierarchy
 
+    # ── Download images if dataset_path is not set or does not exist ──────────
+    if not config.dataset_path or not os.path.isdir(str(config.dataset_path)):
+        _warn_missing_path(
+            "Dataset", str(config.dataset_path or ""), str(get_mvtec_dir())
+        )
+        logger.warning("dataset_path not set or missing — ensuring cached images ...")
+        ensure_images()
+        config.dataset_path = str(get_mvtec_dir())  # ~/.anomavision/mvtec/
+        logger.info("dataset_path set to cache: %s", config.dataset_path)
+    # ─────────────────────────────────────────────────────────────────────────
+
     if not config.dataset_path:
         error_msg = "dataset.path is required (via --dataset_path or config.common.dataset_path)"
         logger.error(error_msg)
@@ -176,32 +190,30 @@ def run_training(args):
         config.normalize,
     )
     if config.normalize:
-        logger.info(
-            "Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std
-        )
+        logger.info("Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std)
 
     # Resolve output run dir once
     run_dir = increment_path(
-        Path(config.model_data_path) / config.algorithm / config.class_name / config.run_name, exist_ok=True, mkdir=True
+        Path(config.model_data_path)
+        / config.algorithm
+        / config.class_name
+        / config.run_name,
+        exist_ok=True,
+        mkdir=True,
     )
 
     # === Dataset ===
-    # Handle the 'class_name' logic safely.
-    # If dataset_path ends with the class name, use parent?
-    # Original logic assumes dataset_path is the container of class folders OR the class folder itself?
-    # Original code: os.path.join(realpath(dataset_path), config.class_name, "train", "good")
-    # This implies dataset_path is the root (e.g. MVTec root) and config.class_name is "bottle"
-
     root = os.path.join(
         os.path.realpath(config.dataset_path), config.class_name, "train", "good"
     )
 
     if not os.path.isdir(root):
         # Fallback check: maybe dataset_path ALREADY points to the class folder?
-        # This makes it more robust for different input styles
-        potential_root = os.path.join(os.path.realpath(config.dataset_path), "train", "good")
+        potential_root = os.path.join(
+            os.path.realpath(config.dataset_path), "train", "good"
+        )
         if os.path.isdir(potential_root):
-             root = potential_root
+            root = potential_root
         else:
             logger.error('Expected folder "%s" does not exist.', root)
             raise FileNotFoundError(f"Dataset root not found: {root}")
@@ -263,13 +275,11 @@ def run_training(args):
     # snapshot the effective configuration
     save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
 
-    logger.info(
-        "saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml"
-    )
+    logger.info("saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml")
     logger.info("=== Training done in %.2fs ===", time.perf_counter() - t0)
 
     # Return objects for external usage (e.g. MLOps pipeline)
-    return padim, config, run_dir, {'train': dl}
+    return padim, config, run_dir, {"train": dl}
 
 
 def main(args=None):
@@ -282,6 +292,7 @@ def main(args=None):
     except Exception:
         get_logger(__name__).exception("Fatal error during training.")
         sys.exit(1)
-        
+
+
 if __name__ == "__main__":
     main()

@@ -9,7 +9,6 @@ import numpy as np
 import torch
 from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
-from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
 import anomavision
 from anomavision.config import load_config
@@ -18,12 +17,18 @@ from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.inference.modelType import ModelType
 from anomavision.utils import (
     adaptive_gaussian_blur,
+    compute_metrics,
+    find_optimal_threshold,
     get_logger,
     merge_config,
     setup_logging,
-    find_best_threshold_f1,
-    compute_metrics,
-    find_optimal_threshold
+)
+from anomavision_downloader import (
+    MODELS_DIR,
+    _warn_missing_path,
+    ensure_images,
+    ensure_models,
+    get_mvtec_dir,
 )
 
 
@@ -156,7 +161,9 @@ def evaluate_model_with_wrapper(
     logger.info(f"Starting evaluation on {len(test_dataloader.dataset)} images")
 
     try:
-        for batch_idx, (batch, images, image_targets, mask_targets) in enumerate(test_dataloader):
+        for batch_idx, (batch, images, image_targets, mask_targets) in enumerate(
+            test_dataloader
+        ):
             batch = batch.to(device_str)
 
             with evaluation_profiler:
@@ -170,7 +177,9 @@ def evaluate_model_with_wrapper(
             # Collect results
             all_images.extend(images)
             all_image_classifications_target.extend(
-                image_targets.numpy() if hasattr(image_targets, "numpy") else image_targets
+                image_targets.numpy()
+                if hasattr(image_targets, "numpy")
+                else image_targets
             )
             all_masks_target.extend(
                 mask_targets.numpy() if hasattr(mask_targets, "numpy") else mask_targets
@@ -192,7 +201,11 @@ def evaluate_model_with_wrapper(
     return (
         np.array(all_images),
         np.array(all_image_classifications_target),
-        np.squeeze(np.array(all_masks_target), axis=1) if len(all_masks_target) > 0 else np.array([]),
+        (
+            np.squeeze(np.array(all_masks_target), axis=1)
+            if len(all_masks_target) > 0
+            else np.array([])
+        ),
         np.array(all_image_scores),
         np.array(all_score_maps),
     )
@@ -227,7 +240,46 @@ def run_evaluation(args):
 
     # Setup Phase
     with profilers["setup"]:
-        DATASET_PATH = os.path.realpath(config.dataset_path) if config.dataset_path else None
+        # ── Download dataset if path not set or missing ───────────────────────
+        if not config.dataset_path or not os.path.isdir(str(config.dataset_path)):
+            _warn_missing_path(
+                "Dataset", str(config.dataset_path or ""), str(get_mvtec_dir())
+            )
+            logger.warning(
+                "dataset_path not set or missing — ensuring cached images ..."
+            )
+            ensure_images()
+            config.dataset_path = str(get_mvtec_dir())  # ~/.anomavision/mvtec/
+            logger.info("dataset_path set to cache: %s", config.dataset_path)
+
+        # ── Download models if path not set or model file missing ─────────────
+        model_path = (
+            os.path.join(
+                config.model_data_path,
+                config.algorithm,
+                config.class_name,
+                config.run_name,
+                config.model,
+            )
+            if config.model_data_path
+            else None
+        )
+
+        if not model_path or not os.path.exists(model_path):
+            _warn_missing_path(
+                "Model", str(config.model_data_path or ""), str(MODELS_DIR)
+            )
+            logger.warning(
+                "Model not found at '%s' — ensuring cached models ...", model_path
+            )
+            ensure_models()
+            config.model_data_path = str(MODELS_DIR)  # ~/.anomavision/models/
+            logger.info("model_data_path set to cache: %s", config.model_data_path)
+        # ─────────────────────────────────────────────────────────────────────
+
+        DATASET_PATH = (
+            os.path.realpath(config.dataset_path) if config.dataset_path else None
+        )
         MODEL_DATA_PATH = os.path.realpath(config.model_data_path)
         device_str = determine_device(config.device)
 
@@ -239,7 +291,13 @@ def run_evaluation(args):
 
     # Load Model Phase
     with profilers["model_loading"]:
-        model_path = os.path.join(MODEL_DATA_PATH, config.algorithm, config.class_name, config.run_name, config.model)
+        model_path = os.path.join(
+            MODEL_DATA_PATH,
+            config.algorithm,
+            config.class_name,
+            config.run_name,
+            config.model,
+        )
         logger.info(f"Loading model: {model_path}")
 
         if not os.path.exists(model_path):
@@ -273,7 +331,7 @@ def run_evaluation(args):
                 batch_size=batch_size,
                 num_workers=config.num_workers if config.num_workers else 0,
                 pin_memory=config.pin_memory and device_str == "cuda",
-                shuffle=False
+                shuffle=False,
             )
         except Exception as e:
             logger.error(f"Failed to create dataloader: {e}")
@@ -308,8 +366,8 @@ def run_evaluation(args):
 
     # Add timing metrics
     total_images = len(test_dataset)
-    metrics['inference_fps'] = profilers["evaluation"].get_fps(total_images)
-    metrics['inference_time_total_s'] = profilers["evaluation"].accumulated_time
+    metrics["inference_fps"] = profilers["evaluation"].get_fps(total_images)
+    metrics["inference_time_total_s"] = profilers["evaluation"].accumulated_time
 
     # Visualization Phase
     if config.enable_visualization:
@@ -334,7 +392,7 @@ def run_evaluation(args):
                 logger.error(f"Visualization failed: {e}")
 
     # ========================================================================
-    # GENERATE DETAILED REPORT (Restored from original)
+    # GENERATE DETAILED REPORT
     # ========================================================================
 
     evaluation_fps = profilers["evaluation"].get_fps(total_images)
@@ -344,12 +402,21 @@ def run_evaluation(args):
     logger.info("=" * 60)
     logger.info("ANOMAVISION EVALUATION PERFORMANCE SUMMARY")
     logger.info("=" * 60)
-    logger.info(f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Evaluation time:           {profilers['evaluation'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms")
-    # logger.info("=" * 60)
+    logger.info(
+        f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Evaluation time:           {profilers['evaluation'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms"
+    )
 
     # 2. PERFORMANCE METRICS
     logger.info("=" * 60)
@@ -362,8 +429,9 @@ def run_evaluation(args):
 
     if len(test_dataloader) > 0:
         images_per_batch = total_images / len(test_dataloader)
-        logger.info(f"Evaluation throughput:     {evaluation_fps * images_per_batch:.1f} images/sec (batch size: {batch_size})")
-    # logger.info("=" * 60)
+        logger.info(
+            f"Evaluation throughput:     {evaluation_fps * images_per_batch:.1f} images/sec (batch size: {batch_size})"
+        )
 
     # 3. EVALUATION SUMMARY
     logger.info("=" * 60)
@@ -373,8 +441,9 @@ def run_evaluation(args):
     logger.info(f"Total images evaluated: {total_images}")
     logger.info(f"Model type: {model_type.value.upper() if model_type else 'UNKNOWN'}")
     logger.info(f"Device: {device_str}")
-    logger.info(f"Image processing: resize={config.resize}, crop_size={config.crop_size}, normalize={config.normalize}")
-    # logger.info("=" * 60)
+    logger.info(
+        f"Image processing: resize={config.resize}, crop_size={config.crop_size}, normalize={config.normalize}"
+    )
 
     logger.info("=" * 60)
     logger.info("ANOMAVISION DETECTION METRICS")
@@ -396,7 +465,7 @@ def run_evaluation(args):
         "labels": labels,
         "masks": masks,
         "scores": scores,
-        "maps": maps
+        "maps": maps,
     }
 
     return metrics, raw_results
