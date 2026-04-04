@@ -49,6 +49,7 @@ For detailed help on each command:
 
     try:
         from anomavision import __version__
+
         version_str = f"AnomaVision {__version__}"
     except ImportError:
         version_str = "AnomaVision"
@@ -87,8 +88,10 @@ For detailed help on each command:
 # works immediately with no changes needed here.
 # ============================================================
 
+
 def _add_train_parser(subparsers) -> None:
     from anomavision.train import create_parser as _cp
+
     subparsers.add_parser(
         "train",
         help="Train a new anomaly detection model",
@@ -99,6 +102,7 @@ def _add_train_parser(subparsers) -> None:
 
 def _add_export_parser(subparsers) -> None:
     from anomavision.export import create_parser as _cp
+
     subparsers.add_parser(
         "export",
         help="Export trained model to different formats",
@@ -109,6 +113,7 @@ def _add_export_parser(subparsers) -> None:
 
 def _add_detect_parser(subparsers) -> None:
     from anomavision.detect import create_parser as _cp
+
     subparsers.add_parser(
         "detect",
         help="Run inference on images",
@@ -119,6 +124,7 @@ def _add_detect_parser(subparsers) -> None:
 
 def _add_eval_parser(subparsers) -> None:
     from anomavision.eval import create_parser as _cp
+
     subparsers.add_parser(
         "eval",
         help="Evaluate model performance",
@@ -132,29 +138,35 @@ def _add_eval_parser(subparsers) -> None:
 # No sys.argv manipulation. No double-parsing.
 # ============================================================
 
+
 def _dispatch_train(args: argparse.Namespace) -> None:
     from anomavision import train
+
     train.main(args)
 
 
 def _dispatch_export(args: argparse.Namespace) -> None:
     from anomavision import export
+
     export.main(args)
 
 
 def _dispatch_detect(args: argparse.Namespace) -> None:
     from anomavision import detect
+
     detect.main(args)
 
 
 def _dispatch_eval(args: argparse.Namespace) -> None:
     from anomavision import eval as eval_module  # 'eval' shadows the Python builtin
+
     eval_module.main(args)
 
 
 # ============================================================
 # Entry point
 # ============================================================
+
 
 def main() -> None:
     parser = create_parser()

@@ -451,7 +451,7 @@ with st.sidebar:
 
     with st.expander("📌 Quick Start (API)"):
         st.code(
-            f"""# Health
+            """# Health
 curl -s {HEALTH_ENDPOINT}
 
 # Predict
@@ -657,8 +657,9 @@ def run_inference_on_current():
 
             st.session_state.results_cache[cache_key] = {
                 "_error": error_msg,
-                "_filename": current_file.name
+                "_filename": current_file.name,
             }
+
 
 # Run inference on current image
 if st.session_state.image_files and api_online:
@@ -714,7 +715,7 @@ with right_col:
             if is_anomaly:
                 sev = percent_diff(anomaly_score, float(new_threshold))
                 st.markdown(
-                    f"""
+                    """
 <div class="glass result-bad">
   <div style="font-size:1.15rem; font-weight:900;">🚨 Anomaly Detected</div>
   <div style="color:rgba(0,0,0,0.66); margin-top:0.2rem;">
@@ -728,7 +729,7 @@ with right_col:
             else:
                 margin = abs(percent_diff(anomaly_score, float(new_threshold)))
                 st.markdown(
-                    f"""
+                    """
 <div class="glass result-ok">
   <div style="font-size:1.15rem; font-weight:900;">✅ Normal Image</div>
   <div style="color:rgba(0,0,0,0.66); margin-top:0.2rem;">

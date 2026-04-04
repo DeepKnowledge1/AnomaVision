@@ -2,12 +2,14 @@
 """
 Simple test to compare predictions across all model formats.
 """
+
 from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
 
+from anomavision.export import ModelExporter
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.utils import (
     adaptive_gaussian_blur,
@@ -15,7 +17,6 @@ from anomavision.utils import (
     merge_config,
     setup_logging,
 )
-from anomavision.export import ModelExporter
 
 
 class TestAllFormats:
@@ -46,7 +47,7 @@ class TestAllFormats:
         models["stats_fp16"] = pth_fp16_path
 
         # Export other formats
-        exporter = ModelExporter(pt_path, temp_model_dir, logger=logger,device="cpu")
+        exporter = ModelExporter(pt_path, temp_model_dir, logger=logger, device="cpu")
 
         # ONNX
         try:
@@ -55,7 +56,8 @@ class TestAllFormats:
             )
             if onnx_path:
                 models["onnx"] = onnx_path
-        except:
+        except Exception:
+
             raise RuntimeError("ONNX export failed")
 
         # TorchScript
@@ -63,7 +65,8 @@ class TestAllFormats:
             ts_path = exporter.export_torchscript(input_shape, "model.torchscript")
             if ts_path:
                 models["torchscript"] = ts_path
-        except:
+        except Exception:
+
             raise RuntimeError("TorchScript export failed")
 
         # OpenVINO
@@ -75,7 +78,8 @@ class TestAllFormats:
                 xml_files = list(ov_dir.glob("*.xml"))
                 if xml_files:
                     models["openvino"] = xml_files[0]
-        except:
+        except Exception:
+
             raise RuntimeError("OpenVINO export failed")
 
         print(f"\nTesting {len(models)} formats: {list(models.keys())}")
@@ -112,7 +116,7 @@ class TestAllFormats:
             "openvino": 1e-3,
         }
 
-        print(f"\nComparing against PyTorch reference:")
+        print("\nComparing against PyTorch reference:")
 
         for name, pred in predictions.items():
             if name == "pytorch":
@@ -129,9 +133,9 @@ class TestAllFormats:
 
             # Check tolerance
             if score_diff <= tolerance and map_diff <= tolerance:
-                print(f"             ✓ PASS")
+                print("             ✓ PASS")
             else:
-                print(f"             ⚠ TOLERANCE EXCEEDED")
+                print("             ⚠ TOLERANCE EXCEEDED")
                 # Don't fail test, just warn
 
         # 4. Cleanup

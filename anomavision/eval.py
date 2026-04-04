@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from easydict import EasyDict as edict
+from sklearn.metrics import auc, precision_recall_curve, roc_auc_score
 from torch.utils.data import DataLoader
 
 import anomavision
@@ -18,6 +19,7 @@ from anomavision.inference.modelType import ModelType
 from anomavision.utils import (
     adaptive_gaussian_blur,
     compute_metrics,
+    find_best_threshold_f1,
     find_optimal_threshold,
     get_logger,
     merge_config,
@@ -206,6 +208,11 @@ def evaluate_model_with_wrapper(
             if len(all_masks_target) > 0
             else np.array([])
         ),
+        (
+            np.squeeze(np.array(all_masks_target), axis=1)
+            if len(all_masks_target) > 0
+            else np.array([])
+        ),
         np.array(all_image_scores),
         np.array(all_score_maps),
     )
@@ -298,6 +305,13 @@ def run_evaluation(args):
             config.run_name,
             config.model,
         )
+        model_path = os.path.join(
+            MODEL_DATA_PATH,
+            config.algorithm,
+            config.class_name,
+            config.run_name,
+            config.model,
+        )
         logger.info(f"Loading model: {model_path}")
 
         if not os.path.exists(model_path):
@@ -331,6 +345,7 @@ def run_evaluation(args):
                 batch_size=batch_size,
                 num_workers=config.num_workers if config.num_workers else 0,
                 pin_memory=config.pin_memory and device_str == "cuda",
+                shuffle=False,
                 shuffle=False,
             )
         except Exception as e:
@@ -366,6 +381,8 @@ def run_evaluation(args):
 
     # Add timing metrics
     total_images = len(test_dataset)
+    metrics["inference_fps"] = profilers["evaluation"].get_fps(total_images)
+    metrics["inference_time_total_s"] = profilers["evaluation"].accumulated_time
     metrics["inference_fps"] = profilers["evaluation"].get_fps(total_images)
     metrics["inference_time_total_s"] = profilers["evaluation"].accumulated_time
 

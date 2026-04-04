@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-
 # ========== BASE STRATEGY INTERFACE ==========
+
 
 class StreamSource(ABC):
     @abstractmethod
@@ -27,4 +27,3 @@ class StreamSource(ABC):
     def is_connected(self) -> bool:
         """Check if source is connected."""
         pass
-

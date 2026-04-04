@@ -209,6 +209,7 @@ def run_training(args):
 
     if not os.path.isdir(root):
         # Fallback check: maybe dataset_path ALREADY points to the class folder?
+        # This makes it more robust for different input styles
         potential_root = os.path.join(
             os.path.realpath(config.dataset_path), "train", "good"
         )

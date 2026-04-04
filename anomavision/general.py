@@ -1,6 +1,8 @@
+import contextlib
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -50,12 +52,6 @@ def save_visualization(images, filename, output_dir):
             plt.imsave(individual_filepath, img)
     else:  # Single image
         plt.imsave(filepath, images)
-
-
-import contextlib
-import time
-
-import torch
 
 
 class Profiler(contextlib.ContextDecorator):

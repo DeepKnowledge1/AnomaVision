@@ -33,6 +33,7 @@ try:
     from anomavision.general import determine_device
     from anomavision.inference.model.wrapper import ModelWrapper
     from anomavision.inference.modelType import ModelType
+
     ANOMAVISION_AVAILABLE = True
 except ImportError:
     ANOMAVISION_AVAILABLE = False
@@ -41,14 +42,16 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL_DATA_PATH   = os.getenv("ANOMAVISION_MODEL_DATA_PATH", "distributions/padim/bottle/anomav_exp")
-MODEL_FILE        = os.getenv("ANOMAVISION_MODEL_FILE",      "model.onnx")
-DEVICE_ENV        = os.getenv("ANOMAVISION_DEVICE",          "auto")
+MODEL_DATA_PATH = os.getenv(
+    "ANOMAVISION_MODEL_DATA_PATH", "distributions/padim/bottle/anomav_exp"
+)
+MODEL_FILE = os.getenv("ANOMAVISION_MODEL_FILE", "model.onnx")
+DEVICE_ENV = os.getenv("ANOMAVISION_DEVICE", "auto")
 THRESHOLD_DEFAULT = float(os.getenv("ANOMAVISION_THRESHOLD", "13.0"))
-VIZ_PADDING       = int(os.getenv("ANOMAVISION_VIZ_PADDING", "40"))
-VIZ_ALPHA         = float(os.getenv("ANOMAVISION_VIZ_ALPHA", "0.5"))
-VIZ_COLOR         = tuple(map(int, os.getenv("ANOMAVISION_VIZ_COLOR", "128,0,128").split(",")))
-SAMPLE_DIR        = os.getenv("SAMPLE_IMAGES_DIR", "D:/01-DATA/sample_images")
+VIZ_PADDING = int(os.getenv("ANOMAVISION_VIZ_PADDING", "40"))
+VIZ_ALPHA = float(os.getenv("ANOMAVISION_VIZ_ALPHA", "0.5"))
+VIZ_COLOR = tuple(map(int, os.getenv("ANOMAVISION_VIZ_COLOR", "128,0,128").split(",")))
+SAMPLE_DIR = os.getenv("SAMPLE_IMAGES_DIR", "D:/01-DATA/sample_images")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Model — loaded once at startup
@@ -72,11 +75,13 @@ def _load_model() -> str:
     try:
         _device_str = determine_device(DEVICE_ENV)
         _model_type = ModelType.from_extension(model_path)
-        _model      = ModelWrapper(model_path, _device_str)
+        _model = ModelWrapper(model_path, _device_str)
 
         # Optional warmup
         try:
-            dummy = torch.zeros((1, 3, 224, 224), dtype=torch.float32, device=_device_str)
+            dummy = torch.zeros(
+                (1, 3, 224, 224), dtype=torch.float32, device=_device_str
+            )
             _model.warmup(batch=dummy, runs=1)
         except Exception:
             pass
@@ -108,7 +113,9 @@ def _demo_predict(image_np: np.ndarray):
 def _real_predict(image_np: np.ndarray, threshold: float):
     """Run anomavision inference and return (score, score_map_np, boundary_np, heatmap_np, highlighted_np)."""
     device = torch.device(_device_str)
-    batch  = anomavision.to_batch([image_np], anomavision.standard_image_transform, device)
+    batch = anomavision.to_batch(
+        [image_np], anomavision.standard_image_transform, device
+    )
 
     if _device_str == "cuda":
         batch = batch.half()
@@ -116,8 +123,8 @@ def _real_predict(image_np: np.ndarray, threshold: float):
     with torch.no_grad():
         image_scores, score_maps = _model.predict(batch)
 
-    score_map_cls = anomavision.classification(score_maps,   threshold)
-    image_cls     = anomavision.classification(image_scores, threshold)
+    score_map_cls = anomavision.classification(score_maps, threshold)
+    image_cls = anomavision.classification(image_scores, threshold)
 
     test_images = np.array([image_np])
 
@@ -187,7 +194,7 @@ def _collect_samples() -> list:
 
     for p in sorted(base.rglob("*")):
         if p.suffix.lower() in SUPPORTED_EXT:
-            rel   = p.relative_to(base)
+            rel = p.relative_to(base)
             parts = rel.parts
             if len(parts) >= 3:
                 label = f"{parts[0]}/{parts[1]}"
@@ -235,22 +242,24 @@ def run_inference(
     if image is None:
         return "❌ Please upload or select an image.", None, None, None, None
 
-    resize   = (int(resize_w), int(resize_h))
+    resize = (int(resize_w), int(resize_h))
     image_np = _pil_to_np(image)
 
     t0 = time.time()
 
     if _model is not None and ANOMAVISION_AVAILABLE:
         try:
-            score, score_map_np, boundary_np, heatmap_np, highlighted_np = _real_predict(
-                image_np, threshold
+            score, score_map_np, boundary_np, heatmap_np, highlighted_np = (
+                _real_predict(image_np, threshold)
             )
             is_anomaly = score >= threshold
 
-            original_pil    = image.resize(resize, Image.BILINEAR)
-            heatmap_pil     = _np_to_pil(heatmap_np,     resize) if include_viz else None
-            boundary_pil    = _np_to_pil(boundary_np,    resize) if include_viz else None
-            highlighted_pil = _np_to_pil(highlighted_np, resize) if include_viz else None
+            original_pil = image.resize(resize, Image.BILINEAR)
+            heatmap_pil = _np_to_pil(heatmap_np, resize) if include_viz else None
+            boundary_pil = _np_to_pil(boundary_np, resize) if include_viz else None
+            highlighted_pil = (
+                _np_to_pil(highlighted_np, resize) if include_viz else None
+            )
 
         except Exception as e:
             return f"⚠️  Inference error: {e}", None, None, None, None
@@ -263,38 +272,45 @@ def run_inference(
 
         if include_viz:
             import matplotlib.cm as cm
+
             heatmap_norm = heatmap_raw / heatmap_raw.max()
-            cmap         = cm.get_cmap("jet")
+            cmap = cm.get_cmap("jet")
             heatmap_rgba = (cmap(heatmap_norm) * 255).astype(np.uint8)
-            heatmap_rgb  = heatmap_rgba[:, :, :3]
-            blend        = (0.5 * image_np + 0.5 * heatmap_rgb).astype(np.uint8)
-            heatmap_pil     = _np_to_pil(heatmap_rgb, resize)
-            boundary_pil    = _np_to_pil(blend,       resize)
-            highlighted_pil = _np_to_pil(image_np,    resize)
+            heatmap_rgb = heatmap_rgba[:, :, :3]
+            blend = (0.5 * image_np + 0.5 * heatmap_rgb).astype(np.uint8)
+            heatmap_pil = _np_to_pil(heatmap_rgb, resize)
+            boundary_pil = _np_to_pil(blend, resize)
+            highlighted_pil = _np_to_pil(image_np, resize)
         else:
             heatmap_pil = boundary_pil = highlighted_pil = None
 
     elapsed = time.time() - t0
-    label   = "🚨 ANOMALY DETECTED" if is_anomaly else "✅ NORMAL"
-    status  = f"Model: {Path(MODEL_FILE).stem} | Score: {score:.4f} | {label}"
-    detail  = f"Threshold: {threshold:.2f} | Inference time: {elapsed:.2f}s"
+    label = "🚨 ANOMALY DETECTED" if is_anomaly else "✅ NORMAL"
+    status = f"Model: {Path(MODEL_FILE).stem} | Score: {score:.4f} | {label}"
+    detail = f"Threshold: {threshold:.2f} | Inference time: {elapsed:.2f}s"
 
-    return f"{status}\n{detail}", original_pil, heatmap_pil, boundary_pil, highlighted_pil
+    return (
+        f"{status}\n{detail}",
+        original_pil,
+        heatmap_pil,
+        boundary_pil,
+        highlighted_pil,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CSS — Clean Light Theme with Indigo/Violet Accents
 # ─────────────────────────────────────────────────────────────────────────────
-_ACCENT   = "#6366f1"          # indigo
-_ACCENT_H = "#4f46e5"          # indigo hover
-_ACCENT2  = "#ef4444"          # red for anomaly alerts
-_ACCENT3  = "#22c55e"          # green for normal result
-_BG       = "#f5f6fa"          # off-white page background
-_SURFACE  = "#ffffff"          # card surface
-_SURFACE2 = "#f0f1f8"          # slightly tinted input background
-_BORDER   = "#e2e4f0"          # soft lavender border
-_TEXT     = "#1e1b4b"          # deep indigo text
-_MUTED    = "#7c82a8"          # muted blue-grey
+_ACCENT = "#6366f1"  # indigo
+_ACCENT_H = "#4f46e5"  # indigo hover
+_ACCENT2 = "#ef4444"  # red for anomaly alerts
+_ACCENT3 = "#22c55e"  # green for normal result
+_BG = "#f5f6fa"  # off-white page background
+_SURFACE = "#ffffff"  # card surface
+_SURFACE2 = "#f0f1f8"  # slightly tinted input background
+_BORDER = "#e2e4f0"  # soft lavender border
+_TEXT = "#1e1b4b"  # deep indigo text
+_MUTED = "#7c82a8"  # muted blue-grey
 
 custom_css = f"""
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
@@ -716,7 +732,8 @@ footer, .footer {{ display: none !important; }}
 with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
 
     # ── Header ──────────────────────────────────────────────────────────────
-    gr.HTML(f"""
+    gr.HTML(
+        f"""
     <div class="app-header">
       <div class="app-header-inner">
         <div>
@@ -744,7 +761,8 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
         </div>
       </div>
     </div>
-    """)
+    """
+    )
 
     # ── Tabs ─────────────────────────────────────────────────────────────────
     with gr.Tabs():
@@ -757,7 +775,9 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                 # ── Left column: controls ────────────────────────────────────
                 with gr.Column(scale=1, min_width=300):
 
-                    gr.HTML('<div class="panel-label"><span class="dot"></span>Input</div>')
+                    gr.HTML(
+                        '<div class="panel-label"><span class="dot"></span>Input</div>'
+                    )
 
                     input_img = gr.Image(
                         type="pil",
@@ -774,23 +794,47 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                             scale=1,
                         )
                         category_dd = gr.Dropdown(
-                            choices=["bottle", "cable", "carpet", "grid",
-                                     "hazelnut", "leather", "metal_nut",
-                                     "pill", "screw", "tile", "toothbrush",
-                                     "transistor", "wood", "zipper", "other"],
+                            choices=[
+                                "bottle",
+                                "cable",
+                                "carpet",
+                                "grid",
+                                "hazelnut",
+                                "leather",
+                                "metal_nut",
+                                "pill",
+                                "screw",
+                                "tile",
+                                "toothbrush",
+                                "transistor",
+                                "wood",
+                                "zipper",
+                                "other",
+                            ],
                             value="bottle",
                             label="Category",
                             scale=1,
                         )
 
                     threshold = gr.Slider(
-                        0.1, 50.0, THRESHOLD_DEFAULT,
-                        step=0.1, label="Threshold"
+                        0.1, 50.0, THRESHOLD_DEFAULT, step=0.1, label="Threshold"
                     )
 
                     with gr.Row():
-                        resize_w = gr.Number(value=224, label="Width",  minimum=32, maximum=2048, precision=0)
-                        resize_h = gr.Number(value=224, label="Height", minimum=32, maximum=2048, precision=0)
+                        resize_w = gr.Number(
+                            value=224,
+                            label="Width",
+                            minimum=32,
+                            maximum=2048,
+                            precision=0,
+                        )
+                        resize_h = gr.Number(
+                            value=224,
+                            label="Height",
+                            minimum=32,
+                            maximum=2048,
+                            precision=0,
+                        )
 
                     viz_check = gr.Checkbox(value=True, label="Generate Visualizations")
 
@@ -805,7 +849,7 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                         '<div class="panel-label" style="margin-top:1.2rem;">'
                         '<span class="dot"></span>Sample Images '
                         '<span style="font-weight:400;text-transform:none;letter-spacing:0;">'
-                        '(click to select)</span></div>'
+                        "(click to select)</span></div>"
                     )
 
                     _gallery_items = _sample_gallery_images()
@@ -835,7 +879,9 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                 # ── Right column: results ─────────────────────────────────────
                 with gr.Column(scale=2):
 
-                    gr.HTML('<div class="panel-label"><span class="dot"></span>Results</div>')
+                    gr.HTML(
+                        '<div class="panel-label"><span class="dot"></span>Results</div>'
+                    )
 
                     result_text = gr.Textbox(
                         label="",
@@ -846,10 +892,10 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                     )
 
                     with gr.Row():
-                        out_original = gr.Image(label="Original",        type="pil")
-                        out_heatmap  = gr.Image(label="Anomaly Heatmap", type="pil")
-                        out_overlay  = gr.Image(label="Overlay",         type="pil")
-                        out_mask     = gr.Image(label="Predicted Mask",  type="pil")
+                        out_original = gr.Image(label="Original", type="pil")
+                        out_heatmap = gr.Image(label="Anomaly Heatmap", type="pil")
+                        out_overlay = gr.Image(label="Overlay", type="pil")
+                        out_mask = gr.Image(label="Predicted Mask", type="pil")
 
             # ── Event wiring ─────────────────────────────────────────────────
 
@@ -862,6 +908,7 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
 
             # Sample gallery click → load image into input_img
             if sample_gallery is not None:
+
                 def on_sample_select(evt: gr.SelectData) -> Image.Image:
                     """Load the clicked sample image into the input component."""
                     if evt.index >= len(SAMPLES):
@@ -877,7 +924,8 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
 
         # ── Tab 2: Draw Defects ───────────────────────────────────────────────
         with gr.Tab("🎨 Draw Defects"):
-            gr.HTML("""
+            gr.HTML(
+                """
             <div style="padding:1.2rem 0 0.4rem;">
               <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;
                           color:#7c82a8;margin-bottom:0.5rem;">Synthetic Defect Testing</div>
@@ -893,28 +941,39 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                 ✦ Requires Gradio ≥ 4.x for the sketch editor
               </p>
             </div>
-            """)
+            """
+            )
             with gr.Row():
                 with gr.Column():
                     sketch_img = gr.ImageEditor(
                         type="pil",
                         label="Draw Defects Here",
-                        brush=gr.Brush(colors=["#ff0000", "#ffff00", "#ffffff"], default_size=8),
+                        brush=gr.Brush(
+                            colors=["#ff0000", "#ffff00", "#ffffff"], default_size=8
+                        ),
                     )
-                    sketch_threshold = gr.Slider(0.1, 50.0, THRESHOLD_DEFAULT, step=0.1, label="Threshold")
+                    sketch_threshold = gr.Slider(
+                        0.1, 50.0, THRESHOLD_DEFAULT, step=0.1, label="Threshold"
+                    )
                     sketch_btn = gr.Button("🔍  Analyze Drawn Image", variant="primary")
                 with gr.Column():
-                    sketch_result  = gr.Textbox(label="Result", lines=2)
-                    sketch_heat    = gr.Image(label="Heatmap",  type="pil")
-                    sketch_overlay = gr.Image(label="Overlay",  type="pil")
+                    sketch_result = gr.Textbox(label="Result", lines=2)
+                    sketch_heat = gr.Image(label="Heatmap", type="pil")
+                    sketch_overlay = gr.Image(label="Overlay", type="pil")
 
             def run_sketch(editor_val, thr):
                 if editor_val is None:
                     return "Please draw on the image first.", None, None
-                img = editor_val.get("composite") if isinstance(editor_val, dict) else editor_val
+                img = (
+                    editor_val.get("composite")
+                    if isinstance(editor_val, dict)
+                    else editor_val
+                )
                 if img is None:
                     return "Please draw on the image first.", None, None
-                status, orig, heat, boundary, _ = run_inference(img, thr, 224, 224, True)
+                status, orig, heat, boundary, _ = run_inference(
+                    img, thr, 224, 224, True
+                )
                 return status, heat, boundary
 
             sketch_btn.click(
@@ -925,7 +984,8 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
 
         # ── Tab 3: Compare Models ─────────────────────────────────────────────
         with gr.Tab("⚖️ Compare Models"):
-            gr.HTML("""
+            gr.HTML(
+                """
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
                         padding:4rem 2rem;text-align:center;">
               <div style="font-size:2.8rem;margin-bottom:1rem;opacity:0.2;">⚖️</div>
@@ -941,7 +1001,8 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                           font-size:0.72rem;font-weight:700;color:#6366f1;letter-spacing:0.1em;
                           text-transform:uppercase;">Coming Soon</div>
             </div>
-            """)
+            """
+            )
 
 
 if __name__ == "__main__":
@@ -956,4 +1017,3 @@ if __name__ == "__main__":
         ),
         css=custom_css,
     )
-

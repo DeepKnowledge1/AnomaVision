@@ -2,6 +2,7 @@
 """
 Tests for core PaDiM functionality.
 """
+
 import tempfile
 from pathlib import Path
 
