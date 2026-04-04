@@ -437,31 +437,30 @@ dataset/
 ---
 
 ## 🛠️ Development
-
 ```bash
-# Clone and create environment
+# Clone repository
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
 
-uv venv --python 3.11 .venv
+# Setup environment (Python 3.11)
+uv venv --python 3.11
 source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
 
-# Install with dev dependencies
-uv sync --extra cpu              # or --extra cu121 for GPU
+# Install with dependencies
+uv sync --extra cpu              # GPU: --extra cu121
 
-# Install the package in editable mode
-uv pip install -e .
-
-# Verify CLI is working
+# Verify installation
 anomavision --help
 
-# Test
-pytest tests/
+# Run tests
+pytest
 
-# Format + lint
-black . && isort . && flake8 .
+# Setup pre-commit hooks (one-time)
+pre-commit install
+
+# Format and lint
+pre-commit run --all-files
 ```
-
 **Commit convention:**
 
 ```
