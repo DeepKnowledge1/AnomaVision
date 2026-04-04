@@ -208,11 +208,6 @@ def evaluate_model_with_wrapper(
             if len(all_masks_target) > 0
             else np.array([])
         ),
-        (
-            np.squeeze(np.array(all_masks_target), axis=1)
-            if len(all_masks_target) > 0
-            else np.array([])
-        ),
         np.array(all_image_scores),
         np.array(all_score_maps),
     )
@@ -345,7 +340,6 @@ def run_evaluation(args):
                 batch_size=batch_size,
                 num_workers=config.num_workers if config.num_workers else 0,
                 pin_memory=config.pin_memory and device_str == "cuda",
-                shuffle=False,
                 shuffle=False,
             )
         except Exception as e:

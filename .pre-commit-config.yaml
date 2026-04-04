@@ -14,7 +14,7 @@ repos:
         args:
           - --profile=black
           - --line-length=88
-          - --force-single-line-imports
+          # - --force-single-line-imports
 
   # flake8: ONLY block on critical errors (F811 redefinitions)
   # All other warnings are ignored to allow legacy code to pass

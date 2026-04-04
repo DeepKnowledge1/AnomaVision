@@ -22,7 +22,6 @@ from torch.utils.data import DataLoader
 
 import anomavision
 from anomavision.config import _shape, load_config
-from anomavision.config import _shape, load_config
 from anomavision.datasets.StreamDataset import StreamDataset
 from anomavision.datasets.StreamSourceFactory import StreamSourceFactory
 from anomavision.general import Profiler, determine_device, increment_path
@@ -357,7 +356,6 @@ def run_inference(args):
         "classifications": [],
         # We only store images/maps if needed for downstream tasks to avoid memory issues
         "images": [] if not stream_mode else None,
-        "images": [] if not stream_mode else None,
     }
 
     total_start_time = time.time()
@@ -421,11 +419,6 @@ def run_inference(args):
         run_name = config.run_name
         viz_output_dir = config.get("viz_output_dir", "./visualizations/")
         RESULTS_PATH = increment_path(
-            Path(viz_output_dir)
-            / config.algorithm
-            / config.class_name
-            / model_type.value.upper()
-            / run_name,
             Path(viz_output_dir)
             / config.algorithm
             / config.class_name
@@ -744,7 +737,6 @@ def run_inference(args):
         "fps": fps,
         "avg_inference_ms": avg_ms,
         "total_time_s": total_pipeline_time,
-        "total_images": final_count,
         "total_images": final_count,
     }
 
