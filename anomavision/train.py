@@ -11,12 +11,12 @@ from torch.utils.data import DataLoader
 
 import anomavision
 from anomavision.config import load_config
-from anomavision.general import GitStatusChecker, increment_path
-from anomavision.utils import get_logger, merge_config, save_args_to_yaml, setup_logging
-
-# Check git status at module level (optional, can be moved to main if preferred)
-checker = GitStatusChecker()
-checker.check_status()
+from anomavision.general import GitStatusChecker
+from anomavision.general import increment_path
+from anomavision.utils import get_logger
+from anomavision.utils import merge_config
+from anomavision.utils import save_args_to_yaml
+from anomavision.utils import setup_logging
 
 
 def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
@@ -281,6 +281,14 @@ def main(args=None):
     try:
         if args is None:
             args = create_parser().parse_args()
+
+        # Optional git check — silently skipped if not in a repo or no network
+        try:
+            checker = GitStatusChecker()
+            if checker.is_repo():
+                checker.check_status()
+        except Exception:
+            pass  # Never block training over a git check
 
         run_training(args)
 
