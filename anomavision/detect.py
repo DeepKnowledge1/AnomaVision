@@ -304,11 +304,6 @@ def run_inference(args):
             if config.viz_color
             else (128, 0, 128)
         )
-        viz_color = (
-            tuple(map(int, config.viz_color.split(",")))
-            if config.viz_color
-            else (128, 0, 128)
-        )
         if len(viz_color) != 3:
             raise ValueError
     except (ValueError, AttributeError):
@@ -331,9 +326,6 @@ def run_inference(args):
 
     # Validation
     if not config.get("img_path") and not stream_mode:
-        raise ValueError(
-            "img_path is required (via --img_path or config) when stream_mode is False"
-        )
         raise ValueError(
             "img_path is required (via --img_path or config) when stream_mode is False"
         )
@@ -518,15 +510,9 @@ def run_inference(args):
                     score_maps = adaptive_gaussian_blur(
                         score_maps, kernel_size=33, sigma=4
                     )
-                    score_maps = adaptive_gaussian_blur(
-                        score_maps, kernel_size=33, sigma=4
-                    )
 
                     # Classify
                     if config.thresh is not None:
-                        is_anomaly = anomavision.classification(
-                            image_scores, config.thresh
-                        )
                         is_anomaly = anomavision.classification(
                             image_scores, config.thresh
                         )
@@ -536,9 +522,6 @@ def run_inference(args):
                     # Accumulate Results (Offline only)
                     if not stream_mode:
                         results_accumulator["scores"].extend(image_scores.tolist())
-                        results_accumulator["classifications"].extend(
-                            is_anomaly.tolist()
-                        )
                         results_accumulator["classifications"].extend(
                             is_anomaly.tolist()
                         )
@@ -564,13 +547,6 @@ def run_inference(args):
                                     if config.thresh
                                     else np.zeros_like(score_maps)
                                 ),
-                                (
-                                    anomavision.classification(
-                                        score_maps, config.thresh
-                                    )
-                                    if config.thresh
-                                    else np.zeros_like(score_maps)
-                                ),
                                 is_anomaly,
                                 padding=config.get("viz_padding", 40),
                             )
@@ -584,11 +560,6 @@ def run_inference(args):
                         highlighted_images = anomavision.visualization.highlighted_images(
                             [images[i] for i in range(len(images))],
                             # Dummy mask if threshold not set
-                            (
-                                anomavision.classification(score_maps, config.thresh)
-                                if config.thresh
-                                else np.zeros_like(score_maps)
-                            ),
                             (
                                 anomavision.classification(score_maps, config.thresh)
                                 if config.thresh
@@ -614,19 +585,19 @@ def run_inference(args):
 
                                     axs[0].imshow(images[img_id])
                                     axs[0].set_title("Original")
-                                    axs[0].axis("of")
+                                    axs[0].axis("off")
 
                                     axs[1].imshow(boundary_images[img_id])
                                     axs[1].set_title("Boundary")
-                                    axs[1].axis("of")
+                                    axs[1].axis("off")
 
                                     axs[2].imshow(heatmap_images[img_id])
                                     axs[2].set_title("Heatmap")
-                                    axs[2].axis("of")
+                                    axs[2].axis("off")
 
                                     axs[3].imshow(highlighted_images[img_id])
                                     axs[3].set_title("Highlighted")
-                                    axs[3].axis("of")
+                                    axs[3].axis("off")
 
                                     save_path = os.path.join(
                                         RESULTS_PATH,
@@ -691,24 +662,6 @@ def run_inference(args):
     logger.info(
         f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms"
     )
-    logger.info(
-        f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms"
-    )
     logger.info(f"Total pipeline time:       {total_pipeline_time * 1000:.2f} ms")
     logger.info("=" * 60)
 
@@ -723,11 +676,7 @@ def run_inference(args):
 
     if batch_count > 0:
         batch_size = config.get("batch_size", 1) or 1
-        batch_size = config.get("batch_size", 1) or 1
         throughput = fps * (final_count / batch_count) if batch_count else 0
-        logger.info(
-            f"Throughput:                {throughput:.1f} images/sec (batch size: {batch_size})"
-        )
         logger.info(
             f"Throughput:                {throughput:.1f} images/sec (batch size: {batch_size})"
         )
