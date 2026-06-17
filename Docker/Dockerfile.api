@@ -8,10 +8,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && \
 
 RUN pip install --no-cache-dir uv
 WORKDIR /build
-COPY requirements-ui.txt .
+COPY requirements-api.txt .
 
-RUN uv pip install --no-cache-dir --python-version 3.11 --target /deps -r requirements-ui.txt
+# Install into isolated prefix without cache
+RUN uv pip install --no-cache-dir --python-version 3.11 --target /deps -r requirements-api.txt
 
+# Aggressively clean up cache, docs, and unneeded metadata to reduce size
 RUN find /deps -type d -name __pycache__ -exec rm -rf {} + || true && \
     find /deps -name "*.pyc" -delete && \
     find /deps -name "*.pyo" -delete && \
@@ -21,6 +23,7 @@ RUN find /deps -type d -name __pycache__ -exec rm -rf {} + || true && \
 # ─── Stage 2: Minimal Runtime ────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
+# libgomp1 is critical for scipy/numpy/onnxruntime on Debian slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libglib2.0-0 \
         libgl1 \
@@ -32,29 +35,33 @@ COPY --from=builder /deps /usr/local/lib/python3.11/site-packages
 
 WORKDIR /app
 ENV PYTHONPATH="/app" \
+    ORT_LOGGING_LEVEL="3" \
     PYTHONDONTWRITEBYTECODE="1" \
     PYTHONUNBUFFERED="1" \
-    HF_HUB_DISABLE_TELEMETRY="1" \
-    ANOMAVISION_API_URL="http://anomavision-api:8000"
+    HF_HUB_DISABLE_TELEMETRY="1"
 
-# No anomavision/ or inference_engine.py here — this container never
-# imports onnxruntime or touches the model. It only talks HTTP to the
-# API service at ANOMAVISION_API_URL. Update requirements-ui.txt to
-# drop onnxruntime/numpy/the anomavision package and add `requests`.
-COPY apps/ui.py ./apps/
+# Copy ONLY the necessary code (no distributions folder!)
+COPY anomavision/static/AnomaVision/ ./anomavision/static/AnomaVision/
 
-EXPOSE 7800
-CMD ["python", "apps/ui.py"]
+
+COPY apps/api.py apps/inference_engine.py ./
+
+EXPOSE 8000
+
+# 👇 CHANGE THIS: Run 'api:app' instead of 'apps.api:app'
+CMD ["python", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
 
 
 # Build:
-#   docker build -t anomavision-ui   -f Dockerfile.ui   .
+#   docker build -t anomavision-api  -f Docker/Dockerfile.api  .
 #
-# Run (point at wherever the API is reachable from this container):
-#   docker run --rm -p 7800:7800 \
-#     -e ANOMAVISION_API_URL=http://host.docker.internal:8000 \
-#     -e SAMPLE_IMAGES_DIR=/app/sample_images \
-#     anomavision-ui
-#
-# In Kubernetes, ANOMAVISION_API_URL is normally the API's Service DNS
-# name, e.g. http://anomavision-api:8000 (already set as the default above).
+# Run:
+#   docker run --rm -p 8000:8000 \
+#     -v "${PWD}/distributions:/app/distributions" \
+#     anomavision-api
+
+
+# docker run --rm -p 8000:8000 -v "${PWD}/distributions:/app/distributions" anomavision-api
+
+#  docker run -it --entrypoint bash anomavision-api

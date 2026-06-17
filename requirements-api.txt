@@ -9,4 +9,3 @@ pydantic==2.7.4
 opencv-python-headless==4.8.1.78
 huggingface-hub>=0.23.0,<0.24.0
 starlette<1.0.0
-pydantic<2.11.0

@@ -18,6 +18,7 @@ Run standalone (API must already be reachable):
 import base64
 import io
 import os
+import socket
 import time
 from pathlib import Path
 from typing import Optional, Tuple
@@ -25,6 +26,23 @@ from typing import Optional, Tuple
 import gradio as gr
 import requests
 from PIL import Image
+
+# -----------------------------------------------------------------------------
+# Force IPv4-only DNS resolution
+# -----------------------------------------------------------------------------
+# Docker/WSL2 networking commonly answers A (IPv4) records fine but never
+# answers AAAA (IPv6) ones. getaddrinfo() tries AAAA first by default and
+# waits out a ~2s timeout before falling back to the working IPv4 address
+# — paid on EVERY request. Since this service only ever talks IPv4 inside
+# the cluster/compose network, skip the IPv6 attempt entirely.
+_original_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    return _original_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+
+socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 # -----------------------------------------------------------------------------
 # Config
@@ -56,6 +74,7 @@ def _fetch_default_threshold() -> float:
 
 
 THRESHOLD_DEFAULT = _fetch_default_threshold()
+
 
 # -----------------------------------------------------------------------------
 # Sample image helpers
@@ -175,8 +194,10 @@ def run_inference(
     )
 
     original_pil = image.resize(resize, Image.BILINEAR)
-    heatmap_pil  = _b64_to_pil(data.get("heatmap_image_base64"))  if include_viz else None
-    boundary_pil = _b64_to_pil(data.get("boundary_image_base64")) if include_viz else None
+    heatmap_pil = _b64_to_pil(data.get("heatmap_image_base64")) if include_viz else None
+    boundary_pil = (
+        _b64_to_pil(data.get("boundary_image_base64")) if include_viz else None
+    )
 
     return status, original_pil, heatmap_pil, boundary_pil
 
@@ -184,14 +205,14 @@ def run_inference(
 # -----------------------------------------------------------------------------
 # Gradio Blocks UI
 # -----------------------------------------------------------------------------
-_ACCENT  = "#6366f1"
+_ACCENT = "#6366f1"
 _ACCENT2 = "#ef4444"
 _ACCENT3 = "#22c55e"
-_BG      = "#f5f6fa"
+_BG = "#f5f6fa"
 _SURFACE = "#ffffff"
-_BORDER  = "#e2e4f0"
-_TEXT    = "#1e1b4b"
-_MUTED   = "#7c82a8"
+_BORDER = "#e2e4f0"
+_TEXT = "#1e1b4b"
+_MUTED = "#7c82a8"
 
 custom_css = f"""
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -275,14 +296,12 @@ with gr.Blocks(
 ) as demo:
 
     # Header
-    gr.HTML(
-        f"""
+    gr.HTML("""
         <div class="app-header">
           <h1>AnomaVision</h1>
           <div class="sub">Visual anomaly detection — PaDiM · ONNX · Zero-copy inference</div>
         </div>
-        """
-    )
+        """)
 
     with gr.Tab("Inspect"):
         with gr.Row():
@@ -298,8 +317,12 @@ with gr.Blocks(
                 )
 
                 with gr.Row():
-                    resize_w = gr.Number(value=224, label="Width",  minimum=32, maximum=2048, precision=0)
-                    resize_h = gr.Number(value=224, label="Height", minimum=32, maximum=2048, precision=0)
+                    resize_w = gr.Number(
+                        value=224, label="Width", minimum=32, maximum=2048, precision=0
+                    )
+                    resize_h = gr.Number(
+                        value=224, label="Height", minimum=32, maximum=2048, precision=0
+                    )
 
                 viz_check = gr.Checkbox(value=True, label="Generate visualizations")
 
@@ -312,7 +335,9 @@ with gr.Blocks(
                 # Sample gallery
                 _gallery_items = _sample_gallery_items()
                 if _gallery_items:
-                    gr.HTML('<div class="panel-label" style="margin-top:1rem;"><span class="dot"></span>Samples</div>')
+                    gr.HTML(
+                        '<div class="panel-label" style="margin-top:1rem;"><span class="dot"></span>Samples</div>'
+                    )
                     sample_gallery = gr.Gallery(
                         value=_gallery_items,
                         show_label=False,
@@ -328,7 +353,9 @@ with gr.Blocks(
 
             # Right column — results
             with gr.Column(scale=2):
-                gr.HTML('<div class="panel-label"><span class="dot"></span>Results</div>')
+                gr.HTML(
+                    '<div class="panel-label"><span class="dot"></span>Results</div>'
+                )
 
                 result_text = gr.Textbox(
                     label="",
@@ -339,9 +366,9 @@ with gr.Blocks(
                 )
 
                 with gr.Row():
-                    out_original = gr.Image(label="Original",         type="pil")
-                    out_heatmap  = gr.Image(label="Anomaly heatmap",  type="pil")
-                    out_boundary = gr.Image(label="Boundary",         type="pil")
+                    out_original = gr.Image(label="Original", type="pil")
+                    out_heatmap = gr.Image(label="Anomaly heatmap", type="pil")
+                    out_boundary = gr.Image(label="Boundary", type="pil")
 
         # Event wiring
         analyze_btn.click(
@@ -351,6 +378,7 @@ with gr.Blocks(
         )
 
         if sample_gallery is not None:
+
             def _on_sample_select(evt: gr.SelectData) -> Optional[Image.Image]:
                 if evt.index >= len(SAMPLES):
                     return None
@@ -364,20 +392,28 @@ with gr.Blocks(
                 sketch_img = gr.ImageEditor(
                     type="pil",
                     label="Draw defects here",
-                    brush=gr.Brush(colors=["#ff0000", "#ffff00", "#ffffff"], default_size=8),
+                    brush=gr.Brush(
+                        colors=["#ff0000", "#ffff00", "#ffffff"], default_size=8
+                    ),
                 )
-                sketch_threshold = gr.Slider(0.1, 50.0, THRESHOLD_DEFAULT, step=0.1, label="Threshold")
+                sketch_threshold = gr.Slider(
+                    0.1, 50.0, THRESHOLD_DEFAULT, step=0.1, label="Threshold"
+                )
                 sketch_btn = gr.Button("Analyze drawn image", variant="primary")
 
             with gr.Column():
-                sketch_result   = gr.Textbox(label="Result", lines=2)
-                sketch_heatmap  = gr.Image(label="Heatmap",   type="pil")
-                sketch_boundary = gr.Image(label="Boundary",  type="pil")
+                sketch_result = gr.Textbox(label="Result", lines=2)
+                sketch_heatmap = gr.Image(label="Heatmap", type="pil")
+                sketch_boundary = gr.Image(label="Boundary", type="pil")
 
         def _run_sketch(editor_val, thr):
             if editor_val is None:
                 return "Draw on the image first.", None, None
-            img = editor_val.get("composite") if isinstance(editor_val, dict) else editor_val
+            img = (
+                editor_val.get("composite")
+                if isinstance(editor_val, dict)
+                else editor_val
+            )
             if img is None:
                 return "Draw on the image first.", None, None
             status, _, heat, boundary = run_inference(img, thr, 224, 224, True)
@@ -390,8 +426,7 @@ with gr.Blocks(
         )
 
     with gr.Tab("API info"):
-        gr.Markdown(
-            f"""
+        gr.Markdown(f"""
 ### This UI talks to the API at: `{API_URL}`
 
 Override with the `ANOMAVISION_API_URL` env var (e.g. a Kubernetes
@@ -425,8 +460,7 @@ separate containers, scale separately, and the UI never imports onnxruntime
 or the inference engine. Every analysis is one HTTP round-trip: this UI
 encodes the image to PNG, POSTs it to `/predict`, and decodes the base64
 PNGs that come back in the JSON response.
-            """
-        )
+            """)
 
 
 # -----------------------------------------------------------------------------
@@ -438,8 +472,10 @@ if __name__ == "__main__":
         r = _session.get(f"{API_URL}/health", timeout=5)
         print(f"[ui] API health check: {r.json()}")
     except Exception as e:
-        print(f"[ui] WARNING: API not reachable at startup ({e}). "
-              f"The UI will still launch — calls will fail until the API is up.")
+        print(
+            f"[ui] WARNING: API not reachable at startup ({e}). "
+            f"The UI will still launch — calls will fail until the API is up."
+        )
 
     demo.launch(
         server_name="0.0.0.0",
@@ -447,16 +483,3 @@ if __name__ == "__main__":
         share=False,
         show_error=True,
     )
-
-
-
-
-
-
-
-
-
-
-
-
-
