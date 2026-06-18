@@ -46,11 +46,12 @@ _input_name: Optional[str] = None
 @dataclass
 class InferenceResult:
     """Everything a caller needs. All arrays are uint8 RGB numpy arrays."""
+
     anomaly_score: float
     is_anomaly: bool
-    image_np: np.ndarray        # original RGB, (H, W, 3) uint8
-    heatmap_np: np.ndarray      # heatmap overlay, same shape
-    boundary_np: np.ndarray     # framed boundary, same shape
+    image_np: np.ndarray  # original RGB, (H, W, 3) uint8
+    heatmap_np: np.ndarray  # heatmap overlay, same shape
+    boundary_np: np.ndarray  # framed boundary, same shape
     latency_ms: float
 
 
@@ -85,13 +86,12 @@ def load_model() -> str:
 
     # Warmup — run twice so JIT compile happens now, not on the first real request
     dummy_shape = tuple(
-        d if isinstance(d, int) and d > 0 else 1
-        for d in _sess.get_inputs()[0].shape
+        d if isinstance(d, int) and d > 0 else 1 for d in _sess.get_inputs()[0].shape
     )
     dummy = np.zeros(dummy_shape, dtype=np.float32)
-    _sess.run(None, {_input_name: dummy})          # triggers JIT compile
+    _sess.run(None, {_input_name: dummy})  # triggers JIT compile
     t0 = time.perf_counter()
-    _sess.run(None, {_input_name: dummy})          # steady-state measurement
+    _sess.run(None, {_input_name: dummy})  # steady-state measurement
     warmup_ms = (time.perf_counter() - t0) * 1000
 
     device = "GPU" if use_gpu else "CPU"
@@ -111,7 +111,7 @@ def session_info() -> dict:
         return {"status": "not loaded"}
     return {
         "status": "loaded",
-        "inputs":  [(i.name, i.shape, i.type) for i in _sess.get_inputs()],
+        "inputs": [(i.name, i.shape, i.type) for i in _sess.get_inputs()],
         "outputs": [(o.name, o.shape, o.type) for o in _sess.get_outputs()],
         "providers": _sess.get_providers(),
         "threshold": ANOMALY_THRESHOLD,
@@ -154,9 +154,9 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD) -> Inference
     boundary_np = visualization.framed_boundary_images(
         test_images, score_map_cls, image_cls, padding=VIZ_PADDING
     )[0]
-    heatmap_np = visualization.heatmap_images(
-        test_images, score_maps, alpha=VIZ_ALPHA
-    )[0]
+    heatmap_np = visualization.heatmap_images(test_images, score_maps, alpha=VIZ_ALPHA)[
+        0
+    ]
 
     latency_ms = (time.perf_counter() - t0) * 1000
 

@@ -1,20 +1,27 @@
 import base64
 import io
+import multiprocessing
 import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
+import cv2
 import matplotlib
 import numpy as np
+import onnxruntime as ort
 import torch
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from onnxruntime import GraphOptimizationLevel, SessionOptions
 from PIL import Image
 from pydantic import BaseModel
-import onnxruntime as ort
-from onnxruntime import SessionOptions, GraphOptimizationLevel
-import multiprocessing
-from anomavision.static.AnomaVision import classification, to_batch, standard_image_transform, visualization
+
+from anomavision.static.AnomaVision import (
+    classification,
+    standard_image_transform,
+    to_batch,
+    visualization,
+)
 from anomavision.static.AnomaVision.utils import *
 
 # import anomavision
@@ -46,9 +53,8 @@ VIZ_ALPHA = float(os.getenv("ANOMAVISION_VIZ_ALPHA", "0.5"))
 VIZ_COLOR = tuple(map(int, os.getenv("ANOMAVISION_VIZ_COLOR", "128,0,128").split(",")))
 
 
-
 async def load_model():
-    global sess, padim_model
+    global sess
     try:
         # Get the list of available execution providers (e.g., CPUExecutionProvider, CUDAExecutionProvider)
         available_providers = ort.get_available_providers()
@@ -58,12 +64,13 @@ async def load_model():
         # Create session options for ONNX Runtime
         sess_options = SessionOptions()
 
-
         # Enable memory pattern optimization to improve performance on repeated inference calls
         sess_options.enable_mem_pattern = True
 
         # Enable graph optimization to apply advanced model graph transformations
-        sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+        sess_options.graph_optimization_level = (
+            GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+        )
 
         # Warmup the ONNX session to allocate memory and compile execution graphs
         output_names = [output.name for output in sess.get_outputs()]
@@ -86,13 +93,16 @@ async def load_model():
 
         # Try to load ONNX model first
         if os.path.exists(model_path):
-            sess = ort.InferenceSession(model_path, providers=providers, sess_options=sess_options)
+            sess = ort.InferenceSession(
+                model_path, providers=providers, sess_options=sess_options
+            )
             print("ONNX model loaded successfully.")
         else:
             raise FileNotFoundError("No model found. Please ensure 'padim_model.onnx' ")
 
     except Exception as e:
         raise RuntimeError(f"Failed to load model: {e}")
+
 
 async def cleanup():
     global sess
@@ -142,15 +152,14 @@ async def root():
     }
 
 
-
 @app.get("/health")
 async def health_check():
     model_loaded = sess is not None
     return {
         "status": "healthy" if model_loaded else "unhealthy",
-        "model_type": "onnx" if sess else "pytorch" if padim_model else "none",
+        "model_type": "onnx" if sess else "none",
         "threshold": ANOMALY_THRESHOLD,
-        "resize_size": RESIZE_SIZE
+        "resize_size": RESIZE_SIZE,
     }
 
 
@@ -181,12 +190,15 @@ def numpy_to_base64(image_array: np.ndarray, resize_to: tuple = None) -> str:
 
         # Use WebP or JPEG. WebP is ~3-5x faster to encode than PNG in OpenCV
         # quality=80 is a good tradeoff between speed and visual fidelity
-        _, buffer = cv2.imencode('.webp', img, [cv2.IMWRITE_WEBP_QUALITY80])
+        _, buffer = cv2.imencode(".webp", img, [cv2.IMWRITE_WEBP_QUALITY80])
         return base64.b64encode(buffer).decode("utf-8")
     except Exception:
         return ""
 
-def numpy_to_base64_________(image_array: np.ndarray, resize_to: tuple[int, int] = None) -> str:
+
+def numpy_to_base64_________(
+    image_array: np.ndarray, resize_to: tuple[int, int] = None
+) -> str:
     if image_array is None:
         return ""
     try:
@@ -213,9 +225,7 @@ def create_visualizations(
     """
     Mirror detect.py's visualization path.
     """
-    score_map_classifications = classification(
-        score_maps, ANOMALY_THRESHOLD
-    )
+    score_map_classifications = classification(score_maps, ANOMALY_THRESHOLD)
     image_classifications = classification(image_scores, ANOMALY_THRESHOLD)
 
     test_images = np.array([image_np])
@@ -265,16 +275,14 @@ async def predict_anomaly(
             output_names = [output.name for output in sess.get_outputs()]
 
             if len(output_names) < 2:
-                raise HTTPException(status_code=500, detail="Model must have at least 2 outputs")
+                raise HTTPException(
+                    status_code=500, detail="Model must have at least 2 outputs"
+                )
 
             outputs = sess.run(output_names, {input_name: input_numpy})
 
             image_scores = np.array([outputs[0]])
             score_maps = np.array(outputs[1])
-
-
-
-
 
         anomaly_score = float(image_scores[0])
         is_anomaly = anomaly_score >= ANOMALY_THRESHOLD
@@ -324,7 +332,7 @@ async def get_model_info():
             "model_type": "onnx",
             "inputs": inputs,
             "outputs": outputs,
-            "threshold": ANOMALY_THRESHOLD
+            "threshold": ANOMALY_THRESHOLD,
         }
 
     else:

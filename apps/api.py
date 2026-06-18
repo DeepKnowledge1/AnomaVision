@@ -28,15 +28,15 @@ import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
-
+import inference_engine as engine
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel
 
-import inference_engine as engine
 # import ui  # Gradio blocks defined in ui.py
+
 
 # -----------------------------------------------------------------------------
 # Lifespan — model loads once, shared by FastAPI routes AND Gradio callbacks
@@ -59,6 +59,7 @@ app = FastAPI(
 try:
     import gradio as gr
     import ui
+
     app = gr.mount_gradio_app(app, ui.demo, path="/ui")
 except Exception as e:
     print("[warning] Gradio UI disabled:", e)
@@ -108,14 +109,18 @@ def _numpy_to_base64(arr, resize_to: tuple) -> str:
         return ""
     try:
         import numpy as np
+
         if arr.dtype != np.uint8:
-            arr = (arr * 255).clip(0, 255).astype(np.uint8) if arr.max() <= 1.0 \
-                  else arr.clip(0, 255).astype(np.uint8)
+            arr = (
+                (arr * 255).clip(0, 255).astype(np.uint8)
+                if arr.max() <= 1.0
+                else arr.clip(0, 255).astype(np.uint8)
+            )
         img = Image.fromarray(arr)
         if resize_to:
             img = img.resize(resize_to, Image.BILINEAR)
         buf = io.BytesIO()
-        img.save(buf, format="PNG", compress_level=1)   # fast encode
+        img.save(buf, format="PNG", compress_level=1)  # fast encode
         return base64.b64encode(buf.getvalue()).decode()
     except Exception:
         return ""
@@ -209,6 +214,7 @@ async def predict(
 
 def _load_image_np(contents: bytes):
     import numpy as np
+
     return np.array(Image.open(io.BytesIO(contents)).convert("RGB"))
 
 
@@ -222,15 +228,3 @@ if __name__ == "__main__":
         port=int(os.getenv("PORT", "8000")),
         reload=False,
     )
-
-
-
-
-
-
-
-
-
-
-
-

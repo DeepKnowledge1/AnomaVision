@@ -1,14 +1,16 @@
+from typing import Tuple, Union
 
 import numpy as np
-from .utils import  blend_image
-from typing import Union, Tuple
+
+from .utils import blend_image
 
 
-def highlighted_images(images: np.ndarray,
-                       patch_classifications: np.ndarray,
-                       color: Tuple[int, int, int] = (255, 0, 0),
-                       alpha: float = 0.5
-                       ) -> np.ndarray:
+def highlighted_images(
+    images: np.ndarray,
+    patch_classifications: np.ndarray,
+    color: Tuple[int, int, int] = (255, 0, 0),
+    alpha: float = 0.5,
+) -> np.ndarray:
     """
     Highlights image areas that contains anomalies on multiple images.
 
@@ -33,12 +35,12 @@ def highlighted_images(images: np.ndarray,
     return np.array(h_images)
 
 
-def highlighted_image(image: np.ndarray,
-                      patch_classification: np.ndarray,
-                      color: Tuple[int, int, int] = (255, 0, 0),
-                      alpha: float = 0.5
-                      ) -> np.ndarray:
-
+def highlighted_image(
+    image: np.ndarray,
+    patch_classification: np.ndarray,
+    color: Tuple[int, int, int] = (255, 0, 0),
+    alpha: float = 0.5,
+) -> np.ndarray:
     """
     Highlights image areas that contains anomalies
 

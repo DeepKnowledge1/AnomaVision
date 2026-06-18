@@ -3,10 +3,7 @@ Provides functions for performing anomaly detection in images.
 """
 
 from .utils import (
-    to_batch,
     classification,
-    )
-
-
+    to_batch,
+)
 from .visualization import *
-
