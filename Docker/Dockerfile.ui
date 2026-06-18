@@ -50,11 +50,13 @@ CMD ["python", "apps/ui.py"]
 # Build:
 #   docker build -t anomavision-ui   -f Docker/Dockerfile.ui   .
 #
-# Run (point at wherever the API is reachable from this container):
-#   docker run --rm -p 7800:7800 \
-#     -e ANOMAVISION_API_URL=http://host.docker.internal:8000 \
-#     -e SAMPLE_IMAGES_DIR=/app/sample_images \
-#     anomavision-ui
-# docker run --rm -p 7800:7800 anomavision-ui
-# In Kubernetes, ANOMAVISION_API_URL is normally the API's Service DNS
-# name, e.g. http://anomavision-api:8000 (already set as the default above).
+
+
+
+# Run (point at the API running on the host machine,
+# docker run --rm -p 7800:7800 -e ANOMAVISION_API_URL=http://host.docker.internal:8000 anomavision-ui
+
+
+### How to push the Docker image to Docker Hub:
+    # docker tag anomavision-ui:latest deepknowledge/anomavision-ui:1.0.0
+    # docker push deepknowledge/anomavision-ui:1.0.0
