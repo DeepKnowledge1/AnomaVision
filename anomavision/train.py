@@ -11,12 +11,8 @@ from torch.utils.data import DataLoader
 
 import anomavision
 from anomavision.config import load_config
-from anomavision.general import GitStatusChecker
-from anomavision.general import increment_path
-from anomavision.utils import get_logger
-from anomavision.utils import merge_config
-from anomavision.utils import save_args_to_yaml
-from anomavision.utils import setup_logging
+from anomavision.general import GitStatusChecker, increment_path
+from anomavision.utils import get_logger, merge_config, save_args_to_yaml, setup_logging
 
 
 def create_parser(add_help: bool = True) -> argparse.ArgumentParser:

@@ -1,0 +1,73 @@
+# syntax=docker/dockerfile:1
+
+# ─── Stage 1: Dependency Builder ─────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir uv
+WORKDIR /build
+COPY requirements-api.txt .
+
+# Install into isolated prefix without cache
+RUN uv pip install --no-cache-dir --python-version 3.11 --target /deps -r requirements-api.txt
+
+# Aggressively clean up cache, docs, and unneeded metadata to reduce size
+RUN find /deps -type d -name __pycache__ -exec rm -rf {} + || true && \
+    find /deps -name "*.pyc" -delete && \
+    find /deps -name "*.pyo" -delete && \
+    find /deps -name "*.pyd" -delete && \
+    rm -rf /deps/share /deps/include
+
+# ─── Stage 2: Minimal Runtime ────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
+
+# libgomp1 is critical for scipy/numpy/onnxruntime on Debian slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libglib2.0-0 \
+        libgl1 \
+        libgomp1 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+COPY --from=builder /deps /usr/local/lib/python3.11/site-packages
+
+WORKDIR /app
+ENV PYTHONPATH="/app" \
+    ORT_LOGGING_LEVEL="3" \
+    PYTHONDONTWRITEBYTECODE="1" \
+    PYTHONUNBUFFERED="1" \
+    HF_HUB_DISABLE_TELEMETRY="1"
+
+# Copy ONLY the necessary code (no distributions folder!)
+COPY anomavision/static/AnomaVision/ ./anomavision/static/AnomaVision/
+
+
+COPY apps/api.py apps/inference_engine.py ./
+
+EXPOSE 8000
+
+# 👇 CHANGE THIS: Run 'api:app' instead of 'apps.api:app'
+CMD ["python", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
+
+
+# Build:
+#   docker build -t anomavision-api  -f Docker/Dockerfile.api  .
+# Run:
+#   docker run --rm -p 8000:8000 \
+#     -v "${PWD}/distributions:/app/distributions" \
+#     anomavision-api
+
+# remember to add --rm to prevent leftover containers in the future:
+# docker run --rm -p 8000:8000 -v "${PWD}/distributions:/app/distributions" anomavision-api
+
+
+# Go inside the container for debugging:
+#  docker run -it --entrypoint bash anomavision-api
+
+
+### How to push the Docker image to Docker Hub:
+    # docker tag anomavision-api:latest deepknowledge/anomavision-api:1.0.0
+    # docker push deepknowledge/anomavision-api:1.0.0

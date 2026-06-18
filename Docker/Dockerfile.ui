@@ -1,0 +1,62 @@
+# syntax=docker/dockerfile:1
+
+# ─── Stage 1: Dependency Builder ─────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir uv
+WORKDIR /build
+COPY requirements-ui.txt .
+
+RUN uv pip install --no-cache-dir --python-version 3.11 --target /deps -r requirements-ui.txt
+
+RUN find /deps -type d -name __pycache__ -exec rm -rf {} + || true && \
+    find /deps -name "*.pyc" -delete && \
+    find /deps -name "*.pyo" -delete && \
+    find /deps -name "*.pyd" -delete && \
+    rm -rf /deps/share /deps/include
+
+# ─── Stage 2: Minimal Runtime ────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libglib2.0-0 \
+        libgl1 \
+        libgomp1 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+COPY --from=builder /deps /usr/local/lib/python3.11/site-packages
+
+WORKDIR /app
+ENV PYTHONPATH="/app" \
+    PYTHONDONTWRITEBYTECODE="1" \
+    PYTHONUNBUFFERED="1" \
+    HF_HUB_DISABLE_TELEMETRY="1" \
+    ANOMAVISION_API_URL="http://anomavision-api:8000"
+
+# No anomavision/ or inference_engine.py here — this container never
+# imports onnxruntime or touches the model. It only talks HTTP to the
+# API service at ANOMAVISION_API_URL. Update requirements-ui.txt to
+# drop onnxruntime/numpy/the anomavision package and add `requests`.
+COPY apps/ui.py ./apps/
+
+EXPOSE 7800
+CMD ["python", "apps/ui.py"]
+
+
+# Build:
+#   docker build -t anomavision-ui   -f Docker/Dockerfile.ui   .
+#
+
+
+
+# Run (point at the API running on the host machine,
+# docker run --rm -p 7800:7800 -e ANOMAVISION_API_URL=http://host.docker.internal:8000 anomavision-ui
+
+
+### How to push the Docker image to Docker Hub:
+    # docker tag anomavision-ui:latest deepknowledge/anomavision-ui:1.0.0
+    # docker push deepknowledge/anomavision-ui:1.0.0

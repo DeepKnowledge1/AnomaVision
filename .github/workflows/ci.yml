@@ -4,64 +4,53 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [develop, main]
+    branches: [main, develop]
 
-# Concurrency controls restored.
-# Crucial for preventing cost blowouts when developers push multiple commits rapidly.
+# Prevent duplicate runs on rapid pushes (cost + compute control)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+
 jobs:
-  # NEW JOB: Code Quality Enforcement
+
   code-quality:
-    name: Code Quality Checks
+    name: Code Quality (pre-commit)
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Python + uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Install dependencies with dev extras
+      - name: Install dependencies (dev)
         run: uv sync --extra dev --extra cpu --locked
 
-      - name: Check formatting with Black
-        run: uv run black --check --diff .
+      - name: Run pre-commit
+        run: uv run pre-commit run --all-files
 
-      # - name: Check import sorting with isort
-      #   run: uv run --with isort isort --check-only --diff .
-
-      - name: Lint with flake8
-        run: |
-          uv run flake8 \
-            --max-line-length=88 \
-            --extend-ignore=E203,E501,W503,E402,F401,F403,F841,B006,B007,B008,B009,C416,E262 \
-            anomavision/ anodet/ apps/ tests/
 
   tests:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    # Run tests only after code quality passes
     needs: code-quality
+
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
-      fail-fast: false # Prevents the entire matrix from dying if one python version fails
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # UV's official action natively handles downloading Python, installing uv,
-      # and caching the environment based on your uv.lock file.
-      - name: Install uv and Set up Python
+      - name: Setup Python + uv
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -69,35 +58,32 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies (CPU)
-        # --locked is MANDATORY. This instantly fails the build if the lockfile drifted,
-        # preventing transient dependencies from sneaking into production.
         run: uv sync --extra cpu --locked
 
       - name: Run tests
         run: uv run pytest -v
 
-  cuda-matrix-check:
-    name: Verify CUDA Resolvers
-    runs-on: ubuntu-latest
-    # Run CUDA checks only after code quality passes
-    needs: code-quality
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Install uv
+  cuda-matrix-check:
+    name: Verify CUDA Dependency Resolution
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python + uv (no cache)
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-          enable-cache: false # Caching isn't needed since we're only doing dry-runs
+          enable-cache: false
 
-      # Architect Note: We use --dry-run here. We only want to verify that the
-      # hardware routing matrix in pyproject.toml correctly resolves all dependencies
-      # without dependency conflicts. We DO NOT want to physically download 8GB of wheels.
-      - name: Verify cu118 resolution
+      - name: Verify cu118 resolution (dry-run)
         run: uv sync --extra cu118 --locked --dry-run
 
-      - name: Verify cu121 resolution
+      - name: Verify cu121 resolution (dry-run)
         run: uv sync --extra cu121 --locked --dry-run
 
-      - name: Verify cu124 resolution
+      - name: Verify cu124 resolution (dry-run)
         run: uv sync --extra cu124 --locked --dry-run

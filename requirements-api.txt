@@ -1,20 +1,11 @@
-# Core inference
 onnxruntime==1.18.1
 numpy==1.26.4
 pillow==10.3.0
 scikit-image==0.22.0
-
-# API
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
 python-multipart==0.0.9
 pydantic==2.7.4
-
-# UI
-gradio==4.37.2
-
-# Vision — headless only, no Qt/GTK
 opencv-python-headless==4.8.1.78
-
-# Pin to avoid pulling heavy transformers sub-deps via gradio
 huggingface-hub>=0.23.0,<0.24.0
+starlette<1.0.0
