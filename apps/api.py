@@ -140,12 +140,46 @@ async def root():
         "message": "AnomaVision API",
         "ui": "/ui",
         "docs": "/docs",
-        "endpoints": ["/health", "/model-info", "/config", "/predict"],
+        "endpoints": ["/health", "/model-info", "/config", "/predict", "/disconnect"],
     }
+
+
+_DEBUG_ENDPOINTS_ENABLED = os.getenv("ANOMAVISION_DEBUG_ENDPOINTS", "1") == "1"
+
+if _DEBUG_ENDPOINTS_ENABLED:
+
+    @app.get("/disconnect")
+    async def disconnect():
+        """
+        Debug-only: terminates the process to test liveness/restart behavior.
+
+        Responds 200 immediately, then exits ~0.5s later via os._exit(0) —
+        a clean exit code, no traceback, no exception. Kubernetes' default
+        restartPolicy (Always) restarts the container in the SAME pod, so
+        `kubectl get pods` shows RESTARTS += 1 a few seconds later.
+
+        Disable in real deployments by setting ANOMAVISION_DEBUG_ENDPOINTS=0.
+        """
+
+        async def _exit_soon():
+            await asyncio.sleep(0.5)  # let the HTTP response flush first
+            os._exit(0)
+
+        asyncio.create_task(_exit_soon())
+        return {"status": "disconnecting", "exit_in_seconds": 0.5}
+
+
+_FORCE_UNHEALTHY_FILE = "/tmp/force_unhealthy"
 
 
 @app.get("/health")
 async def health():
+    # Debug-only kill switch for testing liveness/readiness probe behavior.
+    # Trigger:  kubectl exec <pod> -c api -- touch /tmp/force_unhealthy
+    # Reset:    kubectl exec <pod> -c api -- rm /tmp/force_unhealthy
+    if os.path.exists(_FORCE_UNHEALTHY_FILE):
+        raise HTTPException(status_code=503, detail="forced unhealthy (debug)")
+
     return {
         "status": "healthy" if engine.is_loaded() else "unhealthy",
         "model_loaded": engine.is_loaded(),
