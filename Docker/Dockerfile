@@ -51,6 +51,15 @@ CMD ["python", "apps/ui/gradio_app.py"]
 # Create a Docker image with a specific tag:
 # docker build -t deepknowledge/gradio-anomavision:3.4.0 .
 
+
+# or
+
+# docker run -it --rm `
+#   -v "$PWD\distributions:/app/distributions" `
+#   --entrypoint bash `
+#   deepknowledge/gradio-anomavision:3.4.0
+
+
 # create a docker tag for the image:
 # docker tag gradio-anomavision:latest deepknowledge/gradio-anomavision:3.4.0
 
