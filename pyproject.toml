@@ -32,6 +32,7 @@ dependencies = [
     "gradio>=6.3.0",
     "onnxscript>=0.6.2",
     "pytest>=8.0.2",
+    "asyncpg>=0.31.0",
 ]
 
 # --- Hardware Modifiers (Triggered by Extras) ---

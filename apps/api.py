@@ -28,6 +28,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
+import db
 import inference_engine as engine
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -45,6 +46,7 @@ from pydantic import BaseModel
 async def lifespan(app: FastAPI):
     status = engine.load_model()
     print(f"[startup] {status}")
+    await db.init_pool()
     yield
     print("[shutdown] cleaning up")
 
@@ -224,6 +226,14 @@ async def predict(
         contents = await file.read()
         image_np = _load_image_np(contents)
         result = engine.run(image_np, threshold=engine.ANOMALY_THRESHOLD)
+        await db.insert_prediction(
+            image_filename=file.filename,
+            image_path=None,
+            prediction="Defective" if result.is_anomaly else "Normal",
+            anomaly_score=result.anomaly_score,
+            model_version="padim-v1.0.2",
+            processing_ms=round(result.latency_ms),
+        )
 
         heatmap_b64 = ""
         boundary_b64 = ""
@@ -262,3 +272,39 @@ if __name__ == "__main__":
         port=int(os.getenv("PORT", "8000")),
         reload=False,
     )
+
+
+### To run it with Postgresql, you can use the following command:
+# docker run -d --name anomavision-postgres \
+#   -e POSTGRES_USER=anomavision \
+#   -e POSTGRES_PASSWORD=anomavision \
+#   -e POSTGRES_DB=anomavision \
+#   -p 5432:5432 \
+#   postgres:16-alpine
+
+
+# Then
+
+# $env:DATABASE_URL="postgresql://anomavision:anomavision@127.0.0.1:5432/anomavision"
+# python apps\api.py
+
+
+# To see the results run :
+# docker exec -it anomavision-postgres psql -U anomavision -d anomavision -c "SELECT * FROM predictions;"
+
+
+##### Important
+
+# To view and manage your PostgreSQL database directly in your web browser, the easiest way is to spin up a lightweight web-based database manager using Docker.
+# Run the following command
+
+# docker run -it --rm --name adminer --link anomavision-postgres:db -p 8080:8080 adminer
+
+
+# open http://localhost:8080
+# Fill in the login form with these exact details:
+# System: PostgreSQL
+# Server: db (This is the alias we created with the --link flag)
+# Username: anomavision
+# Password: anomavision
+# Database: anomavision
