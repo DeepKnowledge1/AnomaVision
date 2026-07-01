@@ -28,7 +28,6 @@ async def init_pool():
     _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
 
     async with _pool.acquire() as conn:
-        # Updated schema to include paths for all 3 images
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
                 id              BIGSERIAL PRIMARY KEY,
@@ -94,6 +93,83 @@ async def insert_prediction(
             processing_ms,
             user_id,
         )
+
+async def get_predictions_count() -> int:
+    """Get total number of predictions."""
+    if not DB_ENABLED or _pool is None:
+        return 0
+
+    async with _pool.acquire() as conn:
+        return await conn.fetchval("SELECT COUNT(*) FROM predictions")
+
+async def get_predictions_paginated(limit: int = 10, offset: int = 0) -> list:
+    """
+    Get predictions with pagination.
+    Returns list of prediction records ordered by created_at DESC.
+    """
+    if not DB_ENABLED or _pool is None:
+        return []
+
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT
+                id, image_filename, original_path, heatmap_path, boundary_path,
+                prediction, anomaly_score, model_version, processing_ms,
+                user_id, created_at
+            FROM predictions
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+        """, limit, offset)
+
+        return [dict(row) for row in rows]
+
+async def get_prediction_by_id(prediction_id: int) -> dict | None:
+    """Get a specific prediction by ID."""
+    if not DB_ENABLED or _pool is None:
+        return None
+
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT
+                id, image_filename, original_path, heatmap_path, boundary_path,
+                prediction, anomaly_score, model_version, processing_ms,
+                user_id, created_at
+            FROM predictions
+            WHERE id = $1
+        """, prediction_id)
+
+        return dict(row) if row else None
+
+
+async def get_next_prediction_id(current_id: int) -> int | None:
+    """Get the next prediction ID (older than current - lower ID)."""
+    if not DB_ENABLED or _pool is None:
+        return None
+
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT id FROM predictions
+            WHERE id < $1
+            ORDER BY id DESC
+            LIMIT 1
+        """, current_id)
+
+        return row["id"] if row else None
+
+async def get_previous_prediction_id(current_id: int) -> int | None:
+    """Get the previous prediction ID (newer than current - higher ID)."""
+    if not DB_ENABLED or _pool is None:
+        return None
+
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT id FROM predictions
+            WHERE id > $1
+            ORDER BY id ASC
+            LIMIT 1
+        """, current_id)
+
+        return row["id"] if row else None
 
 async def close_pool():
     """
