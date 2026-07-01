@@ -103,7 +103,7 @@ class AnodetDataset(Dataset):
         image = Image.open(self.image_paths[idx]).convert("RGB")
         batch = self.image_transforms(image)
         image = np.array(image)
-        image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+        # image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
         # Load mask if mask_directory_path argument is given
         if self.mask_directory_path is not None:

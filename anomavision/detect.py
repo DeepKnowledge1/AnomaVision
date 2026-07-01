@@ -428,11 +428,10 @@ def run_inference(args):
             if config.enable_visualization:
                 with profilers["visualization"]:
                     try:
-                        test_images = np.array(images)
 
                         boundary_images = (
                             anomavision.visualization.framed_boundary_images(
-                                test_images,
+                                images,
                                 (
                                     anomavision.classification(
                                         score_maps, config.thresh
@@ -446,7 +445,7 @@ def run_inference(args):
                         )
 
                         heatmap_images = anomavision.visualization.heatmap_images(
-                            test_images,
+                            images,
                             score_maps,
                             alpha=config.get("viz_alpha", 0.5),
                         )
