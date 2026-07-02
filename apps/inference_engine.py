@@ -22,7 +22,7 @@ import onnxruntime as ort
 from onnxruntime import GraphOptimizationLevel, SessionOptions
 from PIL import Image
 
-from anomavision.static.AnomaVision import classification, to_batch, visualization
+from anomavision.static.AnomaVision import classification, to_batch, visualization,adaptive_gaussian_blur
 
 # -----------------------------------------------------------------------------
 # Config — all overridable via environment variables
@@ -145,7 +145,7 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD) -> Inference
     # outputs[1]: pixel-level map    — shape (1, H, W) or (H, W)
     image_score = float(np.squeeze(outputs[0]))
     score_maps = outputs[1]
-
+    score_maps = adaptive_gaussian_blur(score_maps, kernel_size=33, sigma=4)
     # Visualizations
     score_map_cls = classification(score_maps, threshold)
     image_cls = classification(np.array([image_score]), threshold)

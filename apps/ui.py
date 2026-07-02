@@ -291,7 +291,6 @@ body, .gradio-container {{
 """
 
 with gr.Blocks(
-    css=custom_css,
     title="AnomaVision",
 ) as demo:
 
@@ -482,4 +481,5 @@ if __name__ == "__main__":
         server_port=7800,
         share=False,
         show_error=True,
+        css=custom_css,
     )
