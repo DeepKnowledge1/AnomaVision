@@ -145,6 +145,40 @@ class _ExportWrapper(torch.nn.Module):
             return self.m.predict(x, export=True)  # Unified path for ONNX/OpenVINO
 
 
+def _make_tensorrt_calibrator(trt, samples, cache_path, batch_size=1):
+    """Create a TensorRT INT8 entropy calibrator from NCHW NumPy samples."""
+    import pycuda.driver as cuda
+
+    class Calibrator(trt.IInt8EntropyCalibrator2):
+        def __init__(self):
+            super().__init__()
+            self._samples = iter(samples)
+            self._cache_path = Path(cache_path)
+            self._batch_size = int(batch_size)
+            self._device_input = None
+
+        def get_batch_size(self):
+            return self._batch_size
+
+        def get_batch(self, names):
+            try:
+                sample = np.ascontiguousarray(next(self._samples), dtype=np.float32)
+            except StopIteration:
+                return None
+            if self._device_input is None:
+                self._device_input = cuda.mem_alloc(sample.nbytes)
+            cuda.memcpy_htod(self._device_input, sample)
+            return [int(self._device_input)]
+
+        def read_calibration_cache(self):
+            return self._cache_path.read_bytes() if self._cache_path.exists() else None
+
+        def write_calibration_cache(self, cache):
+            self._cache_path.write_bytes(bytes(cache))
+
+    return Calibrator()
+
+
 class ModelExporter:
     """Professional model exporter with clean interface and device-aware precision."""
 
@@ -399,6 +433,111 @@ class ModelExporter:
             self.logger.exception("onnx: failed after %.2fs", time.perf_counter() - t0)
             return None
 
+    def export_tensorrt(
+        self,
+        input_shape: Tuple[int, int, int, int] = (1, 3, 224, 224),
+        output_name: str = "model.engine",
+        dynamic_batch: bool = True,
+        precision: str = "fp16",
+        calib_dir: Optional[str] = None,
+        calib_samples: int = 100,
+        workspace_gb: float = 2.0,
+    ) -> Optional[Path]:
+        """Build a native TensorRT engine from an ONNX graph.
+
+        TensorRT is imported lazily because it is an NVIDIA deployment dependency.
+        INT8 mode uses real calibration images and writes a reusable calibration cache.
+        """
+        t0 = time.perf_counter()
+        temp_onnx = self.output_dir / (Path(output_name).stem + "_fp32.onnx")
+        try:
+            if self.device.type != "cuda":
+                raise RuntimeError("TensorRT export requires a CUDA device.")
+            try:
+                import tensorrt as trt
+            except ImportError as exc:
+                raise ImportError(
+                    "TensorRT export requires NVIDIA TensorRT, PyCUDA, and a CUDA runtime."
+                ) from exc
+            if precision not in {"fp32", "fp16", "int8"}:
+                raise ValueError("TensorRT precision must be fp32, fp16, or int8")
+            if precision == "int8" and not calib_dir:
+                raise ValueError("INT8 TensorRT export requires --calib-dir")
+
+            onnx_path = self.export_onnx(
+                input_shape=input_shape,
+                output_name=temp_onnx.name,
+                dynamic_batch=dynamic_batch,
+                force_precision="fp32",
+            )
+            if onnx_path is None:
+                raise RuntimeError("Could not create the intermediate ONNX graph.")
+
+            logger = trt.Logger(trt.Logger.WARNING)
+            builder = trt.Builder(logger)
+            network = builder.create_network(
+                1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+            )
+            parser = trt.OnnxParser(network, logger)
+            with onnx_path.open("rb") as handle:
+                if not parser.parse(handle.read()):
+                    errors = [str(parser.get_error(i)) for i in range(parser.num_errors)]
+                    raise RuntimeError("TensorRT ONNX parse failed: " + " | ".join(errors))
+
+            build_config = builder.create_builder_config()
+            build_config.set_memory_pool_limit(
+                trt.MemoryPoolType.WORKSPACE, int(workspace_gb * (1 << 30))
+            )
+            if precision in {"fp16", "int8"}:
+                if not builder.platform_has_fast_fp16:
+                    self.logger.warning("TensorRT platform does not report fast FP16 support.")
+                build_config.set_flag(trt.BuilderFlag.FP16)
+            if precision == "int8":
+                if not builder.platform_has_fast_int8:
+                    self.logger.warning("TensorRT platform does not report fast INT8 support.")
+                build_config.set_flag(trt.BuilderFlag.INT8)
+                samples = load_calibration_images(
+                    calib_dir, input_shape, max_samples=calib_samples
+                )
+                if not samples:
+                    raise ValueError("No calibration images were found for INT8 export.")
+                calibrator = _make_tensorrt_calibrator(
+                    trt, samples, self.output_dir / (Path(output_name).stem + ".calib")
+                )
+                build_config.int8_calibrator = calibrator
+
+            if dynamic_batch:
+                profile = builder.create_optimization_profile()
+                input_tensor = network.get_input(0)
+                _, channels, height, width = input_shape
+                profile.set_shape(
+                    input_tensor.name,
+                    (1, channels, height, width),
+                    (max(1, input_shape[0]), channels, height, width),
+                    (max(4, input_shape[0]), channels, height, width),
+                )
+                build_config.add_optimization_profile(profile)
+
+            serialized = builder.build_serialized_network(network, build_config)
+            if serialized is None:
+                raise RuntimeError("TensorRT failed to build the engine.")
+            output_path = self.output_dir / output_name
+            output_path.write_bytes(bytes(serialized))
+            self.logger.info(
+                "tensorrt: ok (%.2fs) file=%s size=%.1fMB precision=%s dynamic_batch=%s",
+                time.perf_counter() - t0,
+                output_path,
+                output_path.stat().st_size / (1024 * 1024),
+                precision.upper(),
+                dynamic_batch,
+            )
+            return output_path
+        except Exception:
+            self.logger.exception("tensorrt: failed after %.2fs", time.perf_counter() - t0)
+            return None
+        finally:
+            temp_onnx.unlink(missing_ok=True)
+
     def export_torchscript(
         self,
         input_shape: Tuple[int, int, int, int] = (1, 3, 224, 224),
@@ -590,7 +729,7 @@ class ModelExporter:
 def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     """Command line interface."""
     parser = argparse.ArgumentParser(
-        description="Export PaDiM models to ONNX, TorchScript, and OpenVINO (with optional quantization)",
+        description="Export AnomaVision models to ONNX, TensorRT, TorchScript, and OpenVINO.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         add_help=add_help,
     )
@@ -631,7 +770,7 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--format",
-        choices=["onnx", "openvino", "torchscript", "all"],
+        choices=["onnx", "tensorrt", "openvino", "torchscript", "all"],
         help="Export format",
     )
 
@@ -652,6 +791,24 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     )
 
     parser.add_argument("--opset", type=int, default=18, help="ONNX opset version")
+    parser.add_argument(
+        "--tensorrt-precision",
+        choices=["fp32", "fp16", "int8"],
+        default="fp16",
+        help="TensorRT engine precision",
+    )
+    parser.add_argument(
+        "--calib-dir",
+        type=str,
+        default=None,
+        help="Directory of normal images used for TensorRT INT8 calibration",
+    )
+    parser.add_argument(
+        "--workspace-gb",
+        type=float,
+        default=2.0,
+        help="TensorRT builder workspace limit in GiB",
+    )
     parser.add_argument(
         "--static-batch", action="store_true", help="Disable dynamic batch size"
     )
@@ -740,6 +897,7 @@ def main(args=None):
     # Generate output names
     precision_suffix = "" if config.precision == "auto" else f"_{config.precision}"
     onnx_name = f"{model_stem}{precision_suffix}.onnx"
+    tensorrt_name = f"{model_stem}_{config.tensorrt_precision}.engine"
     openvino_name = f"{model_stem}_openvino{precision_suffix}"
     torchscript_name = f"{model_stem}{precision_suffix}.torchscript"
 
@@ -766,7 +924,7 @@ def main(args=None):
     started = time.perf_counter()
     success = True
 
-    calib_dir = os.path.join(
+    calib_dir = config.calib_dir or os.path.join(
         os.path.realpath(config.dataset_path), config.class_name, "train", "good"
     )
 
@@ -783,6 +941,20 @@ def main(args=None):
                     calib_samples=config.calib_samples,
                     calib_dir=calib_dir,
                     force_precision=force_precision,
+                )
+                is not None
+            )
+
+        if config.format in ["tensorrt", "all"]:
+            success &= (
+                exporter.export_tensorrt(
+                    input_shape=tuple(input_shape),
+                    output_name=tensorrt_name,
+                    dynamic_batch=not config.static_batch,
+                    precision=config.tensorrt_precision,
+                    calib_dir=calib_dir,
+                    calib_samples=config.calib_samples,
+                    workspace_gb=config.workspace_gb,
                 )
                 is not None
             )
