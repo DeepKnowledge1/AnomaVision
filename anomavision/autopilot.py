@@ -57,6 +57,10 @@ def _format_metric(value: Any) -> str:
     return "N/A" if value is None else f"{float(value):.4f}"
 
 
+def _format_percent(value: Any) -> str:
+    return "N/A" if value is None else f"{float(value):.1%}"
+
+
 def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup: int, timing_batches: int) -> Dict[str, Any]:
     wrapper = ModelWrapper(model_path, device)
     iterator = iter(dataloader)
@@ -101,7 +105,16 @@ def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup:
     masks_np = np.asarray(all_masks, dtype=np.float32)
     if masks_np.ndim == 4 and masks_np.shape[1] == 1:
         masks_np = masks_np[:, 0]
-    localization = {"available": bool(len(maps_np) == len(labels_np) and maps_np.ndim == 3), "non_empty_fraction": 0.0, "mean_mask_area_fraction": 0.0}
+    localization = {
+        "available": bool(len(maps_np) == len(labels_np) and maps_np.ndim == 3),
+        "non_empty_fraction": None,
+        "mean_mask_area_fraction": None,
+        "anomaly_non_empty_fraction": None,
+        "normal_false_positive_fraction": None,
+        "anomaly_mean_mask_area_fraction": None,
+        "normal_mean_mask_area_fraction": None,
+        "verdict": "unavailable",
+    }
     if localization["available"] and masks_np.shape == maps_np.shape and np.unique(masks_np).size > 1:
         try:
             pixel_auroc = float(roc_auc_score(masks_np.reshape(-1) > 0.5, maps_np.reshape(-1)))
@@ -111,9 +124,21 @@ def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup:
     image_metrics["pixel_auroc"] = pixel_auroc
     anomaly_labels = (scores_np >= threshold).astype(np.uint8)
     if localization["available"]:
-        loc_masks = make_localization_mask(maps_np, anomaly_labels)
-        localization["non_empty_fraction"] = float(np.mean(loc_masks.reshape(len(loc_masks), -1).sum(axis=1) > 0))
-        localization["mean_mask_area_fraction"] = float(loc_masks.mean())
+        loc_masks = make_localization_mask(maps_np, anomaly_labels).astype(bool)
+        non_empty = loc_masks.reshape(len(loc_masks), -1).any(axis=1)
+        area = loc_masks.reshape(len(loc_masks), -1).mean(axis=1)
+        anomaly_idx = labels_np == 1
+        normal_idx = labels_np == 0
+        localization["non_empty_fraction"] = float(non_empty.mean())
+        localization["mean_mask_area_fraction"] = float(area.mean())
+        localization["anomaly_non_empty_fraction"] = float(non_empty[anomaly_idx].mean()) if anomaly_idx.any() else None
+        localization["normal_false_positive_fraction"] = float(non_empty[normal_idx].mean()) if normal_idx.any() else None
+        localization["anomaly_mean_mask_area_fraction"] = float(area[anomaly_idx].mean()) if anomaly_idx.any() else None
+        localization["normal_mean_mask_area_fraction"] = float(area[normal_idx].mean()) if normal_idx.any() else None
+        if pixel_auroc is not None:
+            localization["verdict"] = "healthy" if (localization["normal_false_positive_fraction"] or 0.0) <= 0.10 else "review false positives"
+        else:
+            localization["verdict"] = "maps available; pixel AUROC unavailable"
     median_ms = float(np.median(timings) * 1000 / max(1, dataloader.batch_size)) if timings else 0.0
     p95_ms = float(np.percentile(timings, 95) * 1000 / max(1, dataloader.batch_size)) if timings else 0.0
     return {
@@ -154,10 +179,10 @@ def _write_report(manifest: Dict[str, Any], output_dir: Path) -> None:
         cards.append(
             f'<article class="model-card {status_class}"><div class="card-top"><span class="model-name">{escape(name.upper())}</span><span class="badge">{status}</span></div>'
             f'<div class="score">{_format_metric(metrics.get("image_auroc"))}<small> image AUROC</small></div>'
-            f'<div class="mini-grid"><div><b>{_format_metric(metrics.get("pixel_auroc"))}</b><span>pixel AUROC</span></div><div><b>{result["latency_ms"]["p95"]:.1f} ms</b><span>p95 latency</span></div><div><b>{loc["non_empty_fraction"]:.1%}</b><span>non-empty maps</span></div></div></article>'
+            f'<div class="mini-grid"><div><b>{_format_metric(metrics.get("pixel_auroc"))}</b><span>pixel AUROC</span></div><div><b>{result["latency_ms"]["p95"]:.1f} ms</b><span>p95 latency</span></div><div><b>{_format_percent(loc.get("anomaly_non_empty_fraction"))}</b><span>anomaly coverage</span></div></div></article>'
         )
         rows.append(
-            f'<tr class="{"active" if is_selected else ""}"><td><strong>{escape(name)}</strong></td><td>{_format_metric(metrics.get("image_auroc"))}</td><td>{_format_metric(metrics.get("pixel_auroc"))}</td><td>{result["latency_ms"]["median"]:.2f}</td><td>{result["latency_ms"]["p95"]:.2f}</td><td>{loc["non_empty_fraction"]:.1%}</td><td><code>{result["threshold"]:.6f}</code></td></tr>'
+            f'<tr class="{"active" if is_selected else ""}"><td><strong>{escape(name)}</strong></td><td>{_format_metric(metrics.get("image_auroc"))}</td><td>{_format_metric(metrics.get("pixel_auroc"))}</td><td>{result["latency_ms"]["median"]:.2f}</td><td>{result["latency_ms"]["p95"]:.2f}</td><td>{_format_percent(loc.get("anomaly_non_empty_fraction"))}</td><td>{_format_percent(loc.get("normal_false_positive_fraction"))}</td><td><code>{result["threshold"]:.6f}</code></td></tr>'
         )
     target_text = f"under {target:.1f} ms p95" if target is not None else "with the strongest measured accuracy/latency balance"
     environment_json = escape(json.dumps(manifest["environment"], indent=2))
@@ -175,8 +200,8 @@ def _write_report(manifest: Dict[str, Any], output_dir: Path) -> None:
 <section class="hero"><div class="eyebrow">AnomaVision / Production Autopilot</div><h1>Deployment confidence, before production.</h1><p>Calibrated thresholds, hardware-aware profiling, and localization health checks in one reproducible report.</p><div class="hero-meta"><span class="pill">Selected: <b>{escape(selected)}</b></span><span class="pill">Class: <b>{escape(str(manifest["dataset"]["class_name"]))}</b></span><span class="pill">Samples: <b>{manifest["dataset"]["samples"]}</b></span><span class="pill">Device: <b>{escape(str(manifest["environment"].get("device", "unknown")))}</b></span></div></section>
 <section class="section"><div class="recommend"><strong>Recommendation</strong><br>Deploy <b>{escape(selected)}</b> with threshold <code>{selected_result["threshold"]:.6f}</code>. It was selected {escape(target_text)}. Recheck this threshold on a production validation set before release.</div></section>
 <section class="section"><div class="section-title"><h2>Candidate overview</h2><span class="muted">Measured on the same validation data</span></div><div class="cards">{"".join(cards)}</div></section>
-<section class="section"><div class="section-title"><h2>Detailed comparison</h2><span class="muted">Higher AUROC and lower latency are better</span></div><div class="table-wrap"><table><thead><tr><th>Model</th><th>Image AUROC</th><th>Pixel AUROC</th><th>Median ms</th><th>P95 ms</th><th>Maps non-empty</th><th>Threshold</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div></section>
-<section class="section two-col"><div class="panel"><h2>Localization health</h2><div class="check"><span>Selected model maps available</span><span class="ok">{"PASS" if selected_result["localization"]["available"] else "CHECK"}</span></div><div class="check"><span>Selected model non-empty maps</span><span class="ok">{selected_result["localization"]["non_empty_fraction"]:.1%}</span></div><div class="check"><span>Selected model mean mask area</span><span>{selected_result["localization"]["mean_mask_area_fraction"]:.1%}</span></div><p class="muted">A low non-empty rate can indicate a threshold, score-scale, export, or model-sensitivity problem.</p></div><div class="panel"><h2>Deployment artifact</h2><div class="check"><span>Artifact</span><code>{escape(str(manifest["selected_artifact"]))}</code></div><div class="check"><span>Format</span><code>{escape(str(selected_result["model_format"]))}</code></div><div class="check"><span>Preprocessing</span><span>{escape(str(manifest["preprocessing"].get("resize")))} px</span></div><div class="check"><span>Target latency</span><span>{escape(str(target)) if target is not None else "not set"}</span></div></div></section>
+<section class="section"><div class="section-title"><h2>Detailed comparison</h2><span class="muted">Higher AUROC and anomaly coverage are better; lower false positives and latency are better</span></div><div class="table-wrap"><table><thead><tr><th>Model</th><th>Image AUROC</th><th>Pixel AUROC</th><th>Median ms</th><th>P95 ms</th><th>Anomaly coverage</th><th>Normal false positives</th><th>Threshold</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div></section>
+<section class="section two-col"><div class="panel"><h2>Localization health</h2><div class="check"><span>Selected model maps available</span><span class="ok">{"PASS" if selected_result["localization"]["available"] else "CHECK"}</span></div><div class="check"><span>Anomaly images with localization</span><span class="ok">{_format_percent(selected_result["localization"].get("anomaly_non_empty_fraction"))}</span></div><div class="check"><span>Normal images with false-positive maps</span><span>{_format_percent(selected_result["localization"].get("normal_false_positive_fraction"))}</span></div><div class="check"><span>Anomaly mean mask area</span><span>{_format_percent(selected_result["localization"].get("anomaly_mean_mask_area_fraction"))}</span></div><div class="check"><span>Localization verdict</span><span class="ok">{escape(str(selected_result["localization"].get("verdict", "N/A")))}</span></div><p class="muted">Anomaly coverage measures detected defect images. Normal false positives should remain low.</p></div><div class="panel"><h2>Deployment artifact</h2><div class="check"><span>Artifact</span><code>{escape(str(manifest["selected_artifact"]))}</code></div><div class="check"><span>Format</span><code>{escape(str(selected_result["model_format"]))}</code></div><div class="check"><span>Preprocessing</span><span>{escape(str(manifest["preprocessing"].get("resize")))} px</span></div><div class="check"><span>Target latency</span><span>{escape(str(target)) if target is not None else "not set"}</span></div></div></section>
 <section class="section"><div class="panel"><h2>Reproducibility environment</h2><pre>{environment_json}</pre></div></section><footer>Generated by AnomaVision Production Autopilot · manifest schema {manifest["schema_version"]}</footer>
 </main></body></html>'''
     (output_dir / "production_autopilot_report.html").write_text(html, encoding="utf-8")
@@ -208,7 +233,7 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     packaged_model = output_dir / f"model{selected_source.suffix}"
     shutil.copy2(selected_source, packaged_model)
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "selected_model": selected,
         "selected_artifact": str(packaged_model.name),
         "dataset": {"path": str(Path(dataset_path).resolve()), "class_name": class_name, "samples": len(dataset)},

@@ -10,7 +10,7 @@ def _candidate(image_auroc, p95, threshold=0.3):
         "model_format": ".pt",
         "metrics": {"image_auroc": image_auroc, "pixel_auroc": image_auroc - 0.1},
         "latency_ms": {"median": p95 / 2, "p95": p95},
-        "localization": {"available": True, "non_empty_fraction": 0.5, "mean_mask_area_fraction": 0.08},
+        "localization": {"available": True, "non_empty_fraction": 0.5, "mean_mask_area_fraction": 0.08, "anomaly_non_empty_fraction": 0.75, "normal_false_positive_fraction": 0.05, "anomaly_mean_mask_area_fraction": 0.12, "verdict": "healthy"},
     }
 
 
@@ -44,6 +44,9 @@ def test_autopilot_report_contains_manifest_summary(tmp_path):
     assert "0.9000" in html
     assert "Deployment confidence, before production." in html
     assert "<html" in html
+    assert "anomaly coverage" in html
+    assert "Normal images with false-positive maps" in html
+    assert "healthy" in html
 
 
 def test_autopilot_parser_exposes_production_controls():
