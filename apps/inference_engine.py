@@ -20,9 +20,23 @@ from typing import Optional
 import numpy as np
 import onnxruntime as ort
 from onnxruntime import GraphOptimizationLevel, SessionOptions
-from PIL import Image
 
 from anomavision.static.AnomaVision import classification, to_batch, visualization,adaptive_gaussian_blur
+
+
+try:
+    from prometheus_client import Counter, Histogram
+    PROMETHEUS_ENABLED = True
+except ImportError:
+    PROMETHEUS_ENABLED = False
+
+
+if PROMETHEUS_ENABLED:
+    PREDICTIONS_TOTAL = Counter("anomavision_predictions_total", "Total predictions", ["result"])
+    INFERENCE_LATENCY = Histogram("anomavision_inference_latency_ms", "Inference latency in ms",
+                                   buckets=(5, 10, 25, 50, 100, 250, 500, 1000))
+    ANOMALY_SCORE = Histogram("anomavision_anomaly_score", "Distribution of anomaly scores",
+                               buckets=(0, 5, 10, 13, 15, 20, 30, 50))
 
 # -----------------------------------------------------------------------------
 # Config — all overridable via environment variables
@@ -35,6 +49,7 @@ MODEL_FILE = os.getenv("ANOMAVISION_MODEL_FILE", "model.onnx")
 VIZ_PADDING = int(os.getenv("ANOMAVISION_VIZ_PADDING", "40"))
 VIZ_ALPHA = float(os.getenv("ANOMAVISION_VIZ_ALPHA", "0.5"))
 VIZ_COLOR = tuple(map(int, os.getenv("ANOMAVISION_VIZ_COLOR", "128,0,128").split(",")))
+
 
 # -----------------------------------------------------------------------------
 # Module-level session — shared across all callers in the same process
@@ -159,6 +174,11 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD) -> Inference
     ]
 
     latency_ms = (time.perf_counter() - t0) * 1000
+    if PROMETHEUS_ENABLED:
+        PREDICTIONS_TOTAL.labels(result="Defective" if image_score >= threshold else "Normal").inc()
+        INFERENCE_LATENCY.observe(latency_ms)
+        ANOMALY_SCORE.observe(image_score)
+
 
     return InferenceResult(
         anomaly_score=image_score,

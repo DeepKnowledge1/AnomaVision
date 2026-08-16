@@ -41,9 +41,8 @@ from pydantic import BaseModel
 # Optional Prometheus support
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
-    PROMETHEUS_ENABLED = True
 except ImportError:
-    PROMETHEUS_ENABLED = False
+    engine.PROMETHEUS_ENABLED = False
 
 # -----------------------------------------------------------------------------
 # Lifespan — model loads once, shared by FastAPI routes AND Gradio callbacks
@@ -67,7 +66,7 @@ app = FastAPI(
 )
 
 # Add Prometheus metrics if the library is installed
-if PROMETHEUS_ENABLED:
+if engine.PROMETHEUS_ENABLED:
     Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 try:
@@ -76,6 +75,46 @@ try:
     app = gr.mount_gradio_app(app, ui.demo, path="/ui")
 except Exception as e:
     print("[warning] Gradio UI disabled:", e)
+
+# -----------------------------------------------------------------------------
+# Cross-Platform Process Metrics (CPU & Memory for Windows/Linux)
+# -----------------------------------------------------------------------------
+if engine.PROMETHEUS_ENABLED:
+    try:
+        import psutil
+        import threading
+        from prometheus_client import Gauge, REGISTRY
+
+        # Helper to prevent "Duplicated timeseries" errors on reloads/duplicate pastes
+        def _safe_gauge(name: str, documentation: str):
+            if name in REGISTRY._names_to_collectors:
+                return REGISTRY._names_to_collectors[name]
+            return Gauge(name, documentation)
+
+        # Use the safe helper instead of calling Gauge() directly
+        PROCESS_CPU_PERCENT = _safe_gauge('process_cpu_percent', 'Process CPU usage percentage')
+        PROCESS_MEMORY_RSS_MB = _safe_gauge('process_memory_rss_mb', 'Process resident memory (MB)')
+        PROCESS_MEMORY_VMS_MB = _safe_gauge('process_memory_vms_mb', 'Process virtual memory (MB)')
+
+        def _monitor_process_metrics():
+            proc = psutil.Process(os.getpid())
+            proc.cpu_percent(interval=None)  # Prime the CPU measurement
+            while True:
+                try:
+                    PROCESS_CPU_PERCENT.set(proc.cpu_percent(interval=1.0))
+                    mem = proc.memory_info()
+                    PROCESS_MEMORY_RSS_MB.set(mem.rss / (1024 * 1024))
+                    PROCESS_MEMORY_VMS_MB.set(mem.vms / (1024 * 1024))
+                except Exception:
+                    pass
+                time.sleep(4)  # Update every 5 seconds
+
+        # Start background thread to keep metrics updated
+        threading.Thread(target=_monitor_process_metrics, daemon=True).start()
+        print("[metrics] Cross-platform CPU/Memory monitoring enabled via psutil")
+    except ImportError:
+        print("[warning] psutil not installed. CPU/Memory metrics disabled. Run: pip install psutil")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -447,7 +486,7 @@ async def root():
         "ui": "/ui",
         "docs": "/docs",
         "browse": "/browse",
-        "metrics": "/metrics" if PROMETHEUS_ENABLED else "disabled",
+        "metrics": "/metrics" if engine.PROMETHEUS_ENABLED else "disabled",
         "images": "/uploads/",
         "endpoints": ["/health", "/model-info", "/config", "/predict", "/disconnect"],
     }

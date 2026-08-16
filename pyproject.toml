@@ -33,6 +33,9 @@ dependencies = [
     "onnxscript>=0.6.2",
     "pytest>=8.0.2",
     "asyncpg>=0.31.0",
+    "prometheus-client>=0.25.0",
+    "prometheus-fastapi-instrumentator>=7.1.0",
+    "psutil>=7.2.2",
 ]
 
 # --- Hardware Modifiers (Triggered by Extras) ---
