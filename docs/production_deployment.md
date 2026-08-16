@@ -57,3 +57,22 @@ Adoption is more likely when a project is easy to verify and easy to integrate. 
 A useful release should include a comparison table with dataset split, preprocessing, backbone, hardware, batch size, and latency methodology. Link the raw results and invite independent reproduction. Then publish a short example showing how to load the exported artifact in an existing service. This creates three entry points: researchers can inspect the benchmark, engineers can copy the deployment path, and beginners can run the quickstart.
 
 For discoverability, use a clear repository description, topic tags such as `anomaly-detection`, `computer-vision`, `patchcore`, and `tensorrt`, a small release note for each version, and issue templates for bug reports and benchmark reproduction. Avoid unsupported claims such as “best” unless the comparison protocol is public and repeatable.
+
+## Automatic TensorRT conversion
+
+Use `scripts/convert_to_tensorrt.py` when you already have a compact PaDiM statistics artifact or an ultra-light PatchCore memory-bank artifact. The utility detects the artifact type and delegates model loading and TensorRT construction to the shared export pipeline.
+
+```bash
+python scripts/convert_to_tensorrt.py `
+  --model ./model_data/patchcore/bottle/run/model.pth `
+  --output-dir ./engines/bottle `
+  --precision int8 `
+  --device cuda `
+  --calib-dir ./dataset/bottle/train/good `
+  --calib-samples 100 `
+  --min-batch 1 --opt-batch 1 --max-batch 4
+```
+
+For FP16, omit the calibration directory and change `--precision int8` to `--precision fp16`. INT8 conversion requires real normal calibration images; the TensorRT path no longer falls back to random calibration data. The utility accepts PNG, JPEG, BMP, TIFF, and nested calibration-image directories, writes a reusable calibration cache beside the engine, and deserializes the generated engine for validation unless `--skip-validation` is supplied.
+
+The input artifact may be either a PaDiM `.pth` statistics file or a PatchCore artifact containing its memory bank and feature settings. The default dynamic profile is batch 1/1/4; override it when the deployment workload has a different batch distribution.

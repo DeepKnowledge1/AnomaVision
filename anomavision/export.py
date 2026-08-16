@@ -60,13 +60,12 @@ def load_calibration_images(
     normalize: bool = True,
     mean=[0.485, 0.456, 0.406],
     std=[0.229, 0.224, 0.225],
+    allow_random: bool = True,
 ):
     """
     Load calibration images using the same preprocessing as AnodetDataset.
     Returns a list of np.ndarrays shaped (1,C,H,W).
     """
-    from glob import glob
-
     h, w = input_shape[2], input_shape[3]
     transform = create_image_transform(
         resize=(h, w),
@@ -76,7 +75,11 @@ def load_calibration_images(
         std=std,
     )
 
-    paths = glob(os.path.join(img_dir, "*.png"))[:max_samples]
+    paths = sorted(
+        p
+        for p in Path(img_dir).rglob("*")
+        if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+    )[:max_samples]
     samples = []
 
     for p in paths:
@@ -87,10 +90,8 @@ def load_calibration_images(
         except Exception as e:
             print(f"Skipping {p}, error {e}")
 
-    if not samples:
-        # Fallback to random data if no images found
+    if not samples and allow_random:
         samples = [np.random.rand(*input_shape).astype("float32") for _ in range(32)]
-
     return samples
 
 
@@ -445,6 +446,9 @@ class ModelExporter:
         calib_dir: Optional[str] = None,
         calib_samples: int = 100,
         workspace_gb: float = 2.0,
+        min_batch: int = 1,
+        opt_batch: Optional[int] = None,
+        max_batch: Optional[int] = None,
     ) -> Optional[Path]:
         """Build a native TensorRT engine from an ONNX graph.
 
@@ -466,6 +470,12 @@ class ModelExporter:
                 raise ValueError("TensorRT precision must be fp32, fp16, or int8")
             if precision == "int8" and not calib_dir:
                 raise ValueError("INT8 TensorRT export requires --calib-dir")
+            if min_batch < 1:
+                raise ValueError("min_batch must be at least 1")
+            opt_batch = int(opt_batch or max(min_batch, input_shape[0]))
+            max_batch = int(max_batch or max(opt_batch, 4))
+            if not min_batch <= opt_batch <= max_batch:
+                raise ValueError("Batch profile must satisfy min_batch <= opt_batch <= max_batch")
 
             onnx_path = self.export_onnx(
                 input_shape=input_shape,
@@ -500,10 +510,15 @@ class ModelExporter:
                     self.logger.warning("TensorRT platform does not report fast INT8 support.")
                 build_config.set_flag(trt.BuilderFlag.INT8)
                 samples = load_calibration_images(
-                    calib_dir, input_shape, max_samples=calib_samples
+                    calib_dir,
+                    input_shape,
+                    max_samples=calib_samples,
+                    allow_random=False,
                 )
                 if not samples:
-                    raise ValueError("No calibration images were found for INT8 export.")
+                    raise ValueError(
+                        f"No calibration images found in {calib_dir}; random calibration is disabled for TensorRT."
+                    )
                 calibrator = _make_tensorrt_calibrator(
                     trt, samples, self.output_dir / (Path(output_name).stem + ".calib")
                 )
@@ -515,9 +530,9 @@ class ModelExporter:
                 _, channels, height, width = input_shape
                 profile.set_shape(
                     input_tensor.name,
-                    (1, channels, height, width),
-                    (max(1, input_shape[0]), channels, height, width),
-                    (max(4, input_shape[0]), channels, height, width),
+                    (min_batch, channels, height, width),
+                    (opt_batch, channels, height, width),
+                    (max_batch, channels, height, width),
                 )
                 build_config.add_optimization_profile(profile)
 
@@ -813,6 +828,15 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="TensorRT builder workspace limit in GiB",
     )
     parser.add_argument(
+        "--min-batch", type=int, default=1, help="TensorRT dynamic profile minimum batch"
+    )
+    parser.add_argument(
+        "--opt-batch", type=int, default=1, help="TensorRT dynamic profile optimal batch"
+    )
+    parser.add_argument(
+        "--max-batch", type=int, default=4, help="TensorRT dynamic profile maximum batch"
+    )
+    parser.add_argument(
         "--static-batch", action="store_true", help="Disable dynamic batch size"
     )
 
@@ -958,6 +982,9 @@ def main(args=None):
                     calib_dir=calib_dir,
                     calib_samples=config.calib_samples,
                     workspace_gb=config.workspace_gb,
+                    min_batch=config.min_batch,
+                    opt_batch=config.opt_batch,
+                    max_batch=config.max_batch,
                 )
                 is not None
             )
