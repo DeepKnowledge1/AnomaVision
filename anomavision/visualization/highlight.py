@@ -57,7 +57,7 @@ def highlighted_image(
     """
     image = to_numpy(image).copy()
     mask = to_numpy(patch_classification).copy()
-    mask = np.logical_not(mask).astype(np.uint8)
+    mask = (mask > 0).astype(np.uint8)
 
     mask_height, mask_width = mask.shape
     mask_shape = (mask_height, mask_width, 3)

@@ -78,13 +78,12 @@ def heatmap_image(
     patch_scores = to_numpy(patch_scores).copy()
 
     if isinstance(mask, (np.ndarray, torch.Tensor)):
-        mask = to_numpy(mask).copy()
-        mask = np.logical_not(mask).astype(np.uint8)
+        mask = (to_numpy(mask).copy() > 0).astype(np.uint8)
 
     if min_v and max_v:
         patch_scores = normalize_patch_scores(patch_scores, min_v=min_v, max_v=max_v)
 
-    patch_scores = (1 - patch_scores) * 255
+    patch_scores = np.clip(patch_scores, 0.0, 1.0) * 255
     patch_scores = patch_scores.astype(np.uint8)
     color_map = cv2.applyColorMap(patch_scores, colormap=cv2.COLORMAP_JET)
     heatmap = blend_image(image, color_map, alpha=alpha, mask=mask)
