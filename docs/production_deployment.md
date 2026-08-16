@@ -44,7 +44,7 @@ INT8 calibration images should represent the normal production input distributio
 
 | Check | Recommended evidence |
 |---|---|
-| Accuracy | Report image and pixel AUROC with the exact dataset split. |
+| Accuracy | Report image and pixel AUROC with the exact dataset split; use `N/A` when spatial maps or masks are unavailable. |
 | Latency | Report warm-up policy, batch size, input shape, device, and percentile latency. |
 | Memory | Record peak GPU memory and PatchCore memory-bank size. |
 | Export parity | Compare PyTorch scores/maps with ONNX or TensorRT outputs on the same images. |
@@ -95,7 +95,7 @@ PatchCore now uses deterministic greedy k-center selection by default instead of
 
 ## Production Autopilot
 
-Production Autopilot evaluates available PaDiM and ultra-light PatchCore artifacts on the same validation data, calibrates a separate threshold for each algorithm, measures median and p95 latency on the selected hardware, checks whether localization maps are non-empty, and packages the selected artifact with a deployment manifest and report.
+Production Autopilot evaluates available PaDiM and ultra-light PatchCore artifacts on the same labeled data, calibrates a separate threshold for each algorithm, measures median and p95 latency on the selected hardware, computes image and pixel AUROC when valid targets exist, checks localization health, and packages the selected artifact with a deployment manifest and report.
 
 Set the complete dataset root and class in `config.yml`:
 
@@ -104,7 +104,7 @@ dataset_path: "D:/01-DATA"
 class_name: "bottle"
 ```
 
-The root must contain `bottle/train/good`, `bottle/test/good`, defect folders, and `bottle/ground_truth`. Autopilot uses the complete labeled `test` split by default (`--validation_split 1.0`) so threshold calibration and AUROC evaluation include all available normal and defective test images.
+The root must contain `bottle/train/good`, `bottle/test/good`, defect folders, and `bottle/ground_truth`. Autopilot uses the complete labeled `test` split by default (`--validation_split 1.0`) so threshold calibration and AUROC evaluation include all available normal and defective test images. The training split is used to fit the artifacts; it is not mixed into the labeled test metrics.
 
 Run it on CPU with:
 
@@ -118,4 +118,4 @@ anomavision autopilot `
   --output_dir .\production_package
 ```
 
-The output contains `model.*`, `deployment_manifest.json`, `production_autopilot_report.html`, and `localization_report.md`. Open `production_autopilot_report.html` in any browser for the polished dashboard; it is self-contained and needs no internet connection or additional assets. The manifest records preprocessing, calibrated thresholds, metrics, latency, localization sanity checks, selected model, and runtime environment. Recheck the selected threshold on a production validation set before release.
+The output contains `model.*`, `deployment_manifest.json`, `production_autopilot_report.html`, and `localization_report.md`. Open `production_autopilot_report.html` in any browser for the polished dashboard; it is self-contained and needs no internet connection or additional assets. The dashboard reports image AUROC, pixel AUROC, anomaly localization coverage, normal-image false-positive localization, anomaly mean mask area, and a localization verdict. `Anomaly coverage` is the fraction of defective images with a non-empty mask; `normal false positives` is the fraction of normal images with a non-empty mask. These are diagnostics, not substitutes for pixel AUROC. The manifest records preprocessing, calibrated thresholds, metrics, latency, localization health, selected model, and runtime environment. Recheck the selected threshold on a production validation set before release.
