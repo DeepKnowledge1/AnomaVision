@@ -30,6 +30,7 @@ from anomavision.inference.modelType import ModelType
 from anomavision.utils import (
     adaptive_gaussian_blur,
     get_logger,
+    make_localization_mask,
     merge_config,
     resolve_threshold,
     setup_logging,
@@ -201,6 +202,7 @@ def run_inference(args):
     # Merge config with CLI args
     config = edict(merge_config(args, cfg))
     config.thresh = resolve_threshold(config)
+    algorithm_name = str(config.get("algorithm", "")).lower()
 
     # Setup logging
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
@@ -414,6 +416,15 @@ def run_inference(args):
                     else:
                         is_anomaly = np.zeros_like(image_scores)
 
+                    if algorithm_name == "patchcore":
+                        localization_masks = make_localization_mask(
+                            score_maps, is_anomaly, quantile=0.90
+                        )
+                    else:
+                        localization_masks = anomavision.classification(
+                            score_maps, config.thresh
+                        ) if config.thresh is not None else np.zeros_like(score_maps)
+
                     # Accumulate Results (Offline only)
                     if not stream_mode:
                         results_accumulator["scores"].extend(image_scores.tolist())
@@ -434,13 +445,7 @@ def run_inference(args):
                         boundary_images = (
                             anomavision.visualization.framed_boundary_images(
                                 images,
-                                (
-                                    anomavision.classification(
-                                        score_maps, config.thresh
-                                    )
-                                    if config.thresh is not None
-                                    else np.zeros_like(score_maps)
-                                ),
+                                localization_masks,
                                 is_anomaly,
                                 padding=config.get("viz_padding", 40),
                             )
@@ -449,16 +454,13 @@ def run_inference(args):
                         heatmap_images = anomavision.visualization.heatmap_images(
                             images,
                             score_maps,
+                            masks=localization_masks,
                             alpha=config.get("viz_alpha", 0.5),
                         )
                         highlighted_images = anomavision.visualization.highlighted_images(
                             [images[i] for i in range(len(images))],
-                            # Dummy mask if threshold not set
-                            (
-                                anomavision.classification(score_maps, config.thresh)
-                                if config.thresh is not None
-                                else np.zeros_like(score_maps)
-                            ),
+                            localization_masks,
+
                             color=viz_color,
                         )
 
