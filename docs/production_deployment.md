@@ -97,6 +97,15 @@ PatchCore now uses deterministic greedy k-center selection by default instead of
 
 Production Autopilot evaluates available PaDiM and ultra-light PatchCore artifacts on the same validation data, calibrates a separate threshold for each algorithm, measures median and p95 latency on the selected hardware, checks whether localization maps are non-empty, and packages the selected artifact with a deployment manifest and report.
 
+Set the complete dataset root and class in `config.yml`:
+
+```yaml
+dataset_path: "D:/01-DATA"
+class_name: "bottle"
+```
+
+The root must contain `bottle/train/good`, `bottle/test/good`, defect folders, and `bottle/ground_truth`. Autopilot uses the complete labeled `test` split by default (`--validation_split 1.0`) so threshold calibration and AUROC evaluation include all available normal and defective test images.
+
 Run it on CPU with:
 
 ```powershell

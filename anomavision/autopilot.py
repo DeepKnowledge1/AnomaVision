@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterable, Optional
 
 import numpy as np
 import torch
+from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 
 import anomavision
@@ -40,7 +41,7 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--timing_batches", type=int, default=20)
     parser.add_argument("--target_latency_ms", type=float, default=None)
-    parser.add_argument("--validation_split", type=float, default=1.0, help="Fraction of test images used for calibration/profiling.")
+    parser.add_argument("--validation_split", type=float, default=1.0, help="Fraction of the complete labeled test split used for calibration; 1.0 uses every sample.")
     parser.add_argument("--output_dir", type=str, default="./production_package")
     parser.add_argument("--copy_config", action="store_true", default=True)
     return parser
@@ -50,6 +51,10 @@ def _to_numpy(value: Any) -> np.ndarray:
     if isinstance(value, torch.Tensor):
         return value.detach().cpu().numpy()
     return np.asarray(value)
+
+
+def _format_metric(value: Any) -> str:
+    return "N/A" if value is None else f"{float(value):.4f}"
 
 
 def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup: int, timing_batches: int) -> Dict[str, Any]:
@@ -71,28 +76,40 @@ def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup:
     for item in dataloader:
         batch, _, labels, masks = item
         batch = batch.to(device)
-        start = time.perf_counter()
+        measure = count < max(1, timing_batches)
+        if measure:
+            start = time.perf_counter()
         scores, maps = wrapper.predict(batch)
         if device.startswith("cuda") and torch.cuda.is_available():
             torch.cuda.synchronize()
-        elapsed = time.perf_counter() - start
-        timings.append(elapsed)
+        if measure:
+            timings.append(time.perf_counter() - start)
         all_scores.extend(_to_numpy(scores).reshape(-1).tolist())
         if maps is not None:
             all_maps.extend(_to_numpy(maps))
         all_labels.extend(_to_numpy(labels).reshape(-1).tolist())
-        all_masks.extend(list(masks))
+        all_masks.extend(_to_numpy(masks))
         count += 1
-        if count >= timing_batches:
-            break
     wrapper.close()
     scores_np = np.asarray(all_scores, dtype=np.float32)
     labels_np = np.asarray(all_labels, dtype=np.int64)
     maps_np = np.asarray(all_maps, dtype=np.float32) if all_maps else np.empty((0, 0, 0), dtype=np.float32)
     threshold, threshold_f1 = find_optimal_threshold(labels_np, scores_np) if len(np.unique(labels_np)) > 1 else (float(np.median(scores_np)), 0.0)
     image_metrics = compute_metrics(labels_np, scores_np, thresh=threshold)
-    anomaly_labels = (scores_np >= threshold).astype(np.uint8)
+    image_auroc = image_metrics.get("auc_score") if len(np.unique(labels_np)) > 1 else None
+    pixel_auroc = None
+    masks_np = np.asarray(all_masks, dtype=np.float32)
+    if masks_np.ndim == 4 and masks_np.shape[1] == 1:
+        masks_np = masks_np[:, 0]
     localization = {"available": bool(len(maps_np) == len(labels_np) and maps_np.ndim == 3), "non_empty_fraction": 0.0, "mean_mask_area_fraction": 0.0}
+    if localization["available"] and masks_np.shape == maps_np.shape and np.unique(masks_np).size > 1:
+        try:
+            pixel_auroc = float(roc_auc_score(masks_np.reshape(-1) > 0.5, maps_np.reshape(-1)))
+        except ValueError:
+            pixel_auroc = None
+    image_metrics["image_auroc"] = image_auroc
+    image_metrics["pixel_auroc"] = pixel_auroc
+    anomaly_labels = (scores_np >= threshold).astype(np.uint8)
     if localization["available"]:
         loc_masks = make_localization_mask(maps_np, anomaly_labels)
         localization["non_empty_fraction"] = float(np.mean(loc_masks.reshape(len(loc_masks), -1).sum(axis=1) > 0))
@@ -104,7 +121,7 @@ def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup:
         "model_format": Path(model_path).suffix.lower(),
         "threshold": float(threshold),
         "threshold_f1": float(threshold_f1),
-        "metrics": {k: float(v) if isinstance(v, (float, np.floating)) else v for k, v in image_metrics.items()},
+        "metrics": {k: (float(v) if isinstance(v, (float, np.floating)) else v) for k, v in image_metrics.items()},
         "latency_ms": {"median": median_ms, "p95": p95_ms},
         "throughput_images_per_second": float(1000.0 / median_ms) if median_ms > 0 else 0.0,
         "localization": localization,
@@ -118,7 +135,7 @@ def _select(results: Dict[str, Dict[str, Any]], target_latency_ms: Optional[floa
         eligible = {name: result for name, result in results.items() if result["latency_ms"]["p95"] <= target_latency_ms}
     if not eligible:
         eligible = results
-    return max(eligible, key=lambda name: (eligible[name]["metrics"].get("image_auroc", 0.0), -eligible[name]["latency_ms"]["p95"]))
+    return max(eligible, key=lambda name: (eligible[name]["metrics"].get("image_auroc") or 0.0, -eligible[name]["latency_ms"]["p95"]))
 
 
 def _write_report(manifest: Dict[str, Any], output_dir: Path) -> None:
@@ -136,11 +153,11 @@ def _write_report(manifest: Dict[str, Any], output_dir: Path) -> None:
         status_class = "selected" if is_selected else "candidate"
         cards.append(
             f'<article class="model-card {status_class}"><div class="card-top"><span class="model-name">{escape(name.upper())}</span><span class="badge">{status}</span></div>'
-            f'<div class="score">{metrics.get("image_auroc", 0.0):.4f}<small> image AUROC</small></div>'
-            f'<div class="mini-grid"><div><b>{metrics.get("pixel_auroc", 0.0):.4f}</b><span>pixel AUROC</span></div><div><b>{result["latency_ms"]["p95"]:.1f} ms</b><span>p95 latency</span></div><div><b>{loc["non_empty_fraction"]:.1%}</b><span>non-empty maps</span></div></div></article>'
+            f'<div class="score">{_format_metric(metrics.get("image_auroc"))}<small> image AUROC</small></div>'
+            f'<div class="mini-grid"><div><b>{_format_metric(metrics.get("pixel_auroc"))}</b><span>pixel AUROC</span></div><div><b>{result["latency_ms"]["p95"]:.1f} ms</b><span>p95 latency</span></div><div><b>{loc["non_empty_fraction"]:.1%}</b><span>non-empty maps</span></div></div></article>'
         )
         rows.append(
-            f'<tr class="{"active" if is_selected else ""}"><td><strong>{escape(name)}</strong></td><td>{metrics.get("image_auroc", 0.0):.4f}</td><td>{metrics.get("pixel_auroc", 0.0):.4f}</td><td>{result["latency_ms"]["median"]:.2f}</td><td>{result["latency_ms"]["p95"]:.2f}</td><td>{loc["non_empty_fraction"]:.1%}</td><td><code>{result["threshold"]:.6f}</code></td></tr>'
+            f'<tr class="{"active" if is_selected else ""}"><td><strong>{escape(name)}</strong></td><td>{_format_metric(metrics.get("image_auroc"))}</td><td>{_format_metric(metrics.get("pixel_auroc"))}</td><td>{result["latency_ms"]["median"]:.2f}</td><td>{result["latency_ms"]["p95"]:.2f}</td><td>{loc["non_empty_fraction"]:.1%}</td><td><code>{result["threshold"]:.6f}</code></td></tr>'
         )
     target_text = f"under {target:.1f} ms p95" if target is not None else "with the strongest measured accuracy/latency balance"
     environment_json = escape(json.dumps(manifest["environment"], indent=2))

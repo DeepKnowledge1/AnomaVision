@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from anomavision.autopilot import _select, _write_report, create_parser
+from anomavision.autopilot import _format_metric, _select, _write_report, create_parser
 
 
 def _candidate(image_auroc, p95, threshold=0.3):
@@ -12,6 +12,11 @@ def _candidate(image_auroc, p95, threshold=0.3):
         "latency_ms": {"median": p95 / 2, "p95": p95},
         "localization": {"available": True, "non_empty_fraction": 0.5, "mean_mask_area_fraction": 0.08},
     }
+
+
+def test_autopilot_formats_unavailable_metrics_honestly():
+    assert _format_metric(None) == "N/A"
+    assert _format_metric(0.91234) == "0.9123"
 
 
 def test_autopilot_selects_best_eligible_model():
