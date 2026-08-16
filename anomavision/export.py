@@ -876,6 +876,27 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     return parser
 
 
+def _apply_export_defaults(config):
+    """Populate optional export settings omitted by older configs or dispatchers."""
+    defaults = {
+        "calib_dir": None,
+        "calib_samples": 100,
+        "workspace_gb": 2.0,
+        "min_batch": 1,
+        "opt_batch": 1,
+        "max_batch": 4,
+        "tensorrt_precision": "fp16",
+        "quantize_dynamic": False,
+        "quantize_static": False,
+        "static_batch": False,
+        "optimize": False,
+    }
+    for key, value in defaults.items():
+        if not hasattr(config, key):
+            config[key] = value
+    return config
+
+
 def main(args=None):
     if args is None:
         args = create_parser().parse_args()
@@ -900,7 +921,7 @@ def main(args=None):
         if not cfg:
             cfg = {}
 
-    config = edict(merge_config(args, cfg))
+    config = _apply_export_defaults(edict(merge_config(args, cfg)))
 
     # Setup logging & logger
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
