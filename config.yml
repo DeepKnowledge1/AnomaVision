@@ -14,7 +14,9 @@ norm_std:  [0.229, 0.224, 0.225]         # Standard deviation for normalization 
 # Model / training
 # =========================
 backbone: "resnet18"                     # Backbone CNN architecture (resnet18 | wide_resnet50)
-algorithm: "padim"                            # Algorithm to use (padim | patchcore)
+algorithm: "padim"                       # Algorithm to use: padim or patchcore
+coreset_ratio: 0.1                       # PatchCore fraction of normal patches to retain
+max_memory_patches: 50000                # PatchCore memory-bank cap
 feat_dim: 50                             # Feature dimension size for embedding
 layer_indices: [0]                       # Which backbone layers to extract features from (0,1,2,3)
 model_data_path: "./distributions"  # Path to store/load model-related data
@@ -57,7 +59,7 @@ memory_efficient: true                  # Use memory efficient evaluation mode
 # =========================
 # Export (export.py)
 # =========================
-format: "all"                           # Export format: onnx, torchscript, openvino, all
+format: "all"                           # onnx, tensorrt, torchscript, openvino, all
 opset: 18                               # ONNX opset version
 dynamic_batch: true                     # Allow dynamic batch size in exported model
 static_batch: false                     # Disable dynamic batch size (if true)
@@ -65,7 +67,7 @@ optimize: false                         # Enable mobile optimization for TorchSc
 fp32: false                             # Export in FP32 precision (false => FP16 in OpenVINO)
 output_path: null                       # Optional explicit output filename
 half: false                             # Reserved (not actively used)
-int8: false                             # Reserved (not actively used)
+int8: false                             # Legacy; use --tensorrt-precision int8
 
 # =========================
 # Streaming Configuration

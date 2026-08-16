@@ -35,6 +35,7 @@ from anomavision.general import determine_device
 from anomavision.padim_lite import (  # stats-only .pth → runtime module
     build_padim_from_stats,
 )
+from anomavision.patchcore import build_patchcore_from_stats
 from anomavision.utils import (
     create_image_transform,
     get_logger,
@@ -228,9 +229,11 @@ class ModelExporter:
             "layer_indices",
             "backbone",
         }.issubset(obj.keys()):
-            self.logger.info("GOING INTO STATS PATH - building PadimLite")
+            self.logger.info("Loading PaDiM statistics artifact")
             base = build_padim_from_stats(obj, device=str(self.device))
-            self.logger.info("Export: built PadimLite from statistics (.pth).")
+        elif isinstance(obj, dict) and {"memory_bank", "layer_indices", "backbone"}.issubset(obj.keys()):
+            self.logger.info("Loading PatchCore memory-bank artifact")
+            base = build_patchcore_from_stats(obj, device=str(self.device))
         else:
             self.logger.info("GOING INTO FULL MODEL PATH")
             base = obj

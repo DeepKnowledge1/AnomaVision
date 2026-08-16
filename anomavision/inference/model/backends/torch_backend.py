@@ -9,9 +9,10 @@ from contextlib import nullcontext
 
 import torch
 
-from anomavision.padim_lite import (  # NEW: stats-only .pth → runtime module
+from anomavision.padim_lite import (  # stats-only .pth → runtime module
     build_padim_from_stats,
 )
+from anomavision.patchcore import build_patchcore_from_stats
 from anomavision.utils import get_logger
 
 from .base import Batch, InferenceBackend, ScoresMaps
@@ -87,10 +88,15 @@ class TorchBackend(InferenceBackend):
             "layer_indices",
             "backbone",
         }.issubset(loaded_obj.keys()):
-            logger.info(
-                "Detected statistics-only artifact (.pth). Building PadimLite on CPU."
-            )
+            logger.info("Detected PaDiM statistics artifact; building PadimLite.")
             model = build_padim_from_stats(loaded_obj, device=device)
+        elif isinstance(loaded_obj, dict) and {
+            "memory_bank",
+            "layer_indices",
+            "backbone",
+        }.issubset(loaded_obj.keys()):
+            logger.info("Detected PatchCore memory-bank artifact; building PatchCore.")
+            model = build_patchcore_from_stats(loaded_obj, device=device)
         else:
             model = loaded_obj
 

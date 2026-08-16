@@ -105,6 +105,18 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="List of layer indices to extract features from, e.g., 0 1 2.",
     )
     parser.add_argument(
+        "--coreset_ratio",
+        type=float,
+        default=None,
+        help="PatchCore memory-bank fraction to retain (0, 1].",
+    )
+    parser.add_argument(
+        "--max_memory_patches",
+        type=int,
+        default=None,
+        help="Maximum PatchCore memory-bank size; omit for no cap.",
+    )
+    parser.add_argument(
         "--output_model",
         type=str,
         default=None,
@@ -234,31 +246,40 @@ def run_training(args):
 
     # === Model & Train ===
     logger.info(
-        "cfg: backbone=%s | layers=%s | feat_dim=%d",
+        "cfg: algorithm=%s | backbone=%s | layers=%s",
+        config.algorithm,
         config.backbone,
         config.layer_indices,
-        config.feat_dim,
     )
 
-    padim = anomavision.Padim(
-        backbone=config.backbone,
-        device=device,
-        layer_indices=config.layer_indices,
-        feat_dim=int(config.feat_dim),
-    )
+    if str(config.algorithm).lower() == "patchcore":
+        model = anomavision.PatchCore(
+            backbone=config.backbone,
+            device=device,
+            layer_indices=config.layer_indices,
+            coreset_ratio=float(config.coreset_ratio),
+            max_memory_patches=config.max_memory_patches,
+        )
+    else:
+        model = anomavision.Padim(
+            backbone=config.backbone,
+            device=device,
+            layer_indices=config.layer_indices,
+            feat_dim=int(config.feat_dim),
+        )
 
     t_fit = time.perf_counter()
-    padim.fit(dl)
+    model.fit(dl)
     logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
 
     # === Save ===
     model_path = Path(run_dir) / config.output_model
-    torch.save(padim, str(model_path))
+    torch.save(model, str(model_path))
 
-    # also save a compact stats-only artifact (anomalib-style) -> ".pth"
+    # Save a compact statistics/memory-bank artifact for deployment.
     stats_path = model_path.with_suffix(".pth")
     try:
-        padim.save_statistics(str(stats_path), half=True)
+        model.save_statistics(str(stats_path), half=True)
         logger.info("saved: slim statistics=%s", stats_path)
     except Exception as e:
         logger.warning("saving slim statistics failed: %s", e)
@@ -270,7 +291,8 @@ def run_training(args):
     logger.info("=== Training done in %.2fs ===", time.perf_counter() - t0)
 
     # Return objects for external usage (e.g. MLOps pipeline)
-    return padim, config, run_dir, {"train": dl}
+    return model, config, run_dir, {"train": dl}
+
 
 
 def main(args=None):
