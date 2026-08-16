@@ -63,13 +63,22 @@ memory_efficient: true                  # Use memory efficient evaluation mode
 # =========================
 format: "all"                           # onnx, tensorrt, torchscript, openvino, all
 opset: 18                               # ONNX opset version
+precision: "auto"                      # ONNX/TorchScript precision: auto, fp16, fp32
+tensorrt_precision: "fp16"             # TensorRT precision: fp32, fp16, int8
 dynamic_batch: true                     # Allow dynamic batch size in exported model
 static_batch: false                     # Disable dynamic batch size (if true)
+min_batch: 1                            # TensorRT dynamic profile minimum batch
+opt_batch: 1                            # TensorRT dynamic profile optimal batch
+max_batch: 4                            # TensorRT dynamic profile maximum batch
+workspace_gb: 2.0                       # TensorRT workspace limit in GiB
+calib_dir: null                         # INT8 calibration image directory; auto-derived when null
+calib_samples: 100                      # Maximum real images used for INT8 calibration
+quantize_dynamic: false                  # Also write dynamically quantized INT8 ONNX
+quantize_static: false                   # Also write statically quantized INT8 ONNX
 optimize: false                         # Enable mobile optimization for TorchScript
-fp32: false                             # Export in FP32 precision (false => FP16 in OpenVINO)
 output_path: null                       # Optional explicit output filename
-half: false                             # Reserved (not actively used)
-int8: false                             # Legacy; use --tensorrt-precision int8
+half: false                             # Legacy compatibility field
+int8: false                             # Legacy compatibility field; use tensorrt_precision: int8
 
 # =========================
 # Streaming Configuration
