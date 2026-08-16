@@ -117,6 +117,18 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="Maximum PatchCore memory-bank size; omit for no cap.",
     )
     parser.add_argument(
+        "--patch_grid",
+        type=int,
+        default=None,
+        help="PatchCore pooled grid size; use a smaller value for lower latency.",
+    )
+    parser.add_argument(
+        "--search_chunk_size",
+        type=int,
+        default=None,
+        help="PatchCore query chunk size used to bound nearest-neighbor memory.",
+    )
+    parser.add_argument(
         "--output_model",
         type=str,
         default=None,
@@ -259,6 +271,8 @@ def run_training(args):
             layer_indices=config.layer_indices,
             coreset_ratio=float(config.coreset_ratio),
             max_memory_patches=config.max_memory_patches,
+            patch_grid=config.patch_grid,
+            search_chunk_size=config.search_chunk_size,
         )
     else:
         model = anomavision.Padim(

@@ -50,7 +50,13 @@ class PatchCore(torch.nn.Module):
         coreset_ratio: Fraction of extracted normal patches to retain. Must be in
             ``(0, 1]``. Lower values reduce memory and inference time.
         max_memory_patches: Hard upper bound on retained patches. ``None`` disables
-            the cap.
+            the cap. The ultra-light default keeps at most 2,048 patches.
+        patch_grid: Optional square spatial grid used to pool embeddings before the
+            memory-bank search. ``14`` reduces a 224x224 ResNet stage to at most 196
+            patches per image; ``None`` keeps the native feature grid.
+        search_chunk_size: Number of query patches processed per nearest-neighbor
+            chunk. Lower values reduce peak memory; higher values may improve GPU
+            throughput.
         n_neighbors: Number of nearest neighbors. The lightweight implementation
             currently supports only ``1``.
 
@@ -64,8 +70,10 @@ class PatchCore(torch.nn.Module):
         device: torch.device = torch.device("cpu"),
         layer_indices: Optional[List[int]] = None,
         memory_bank: Optional[torch.Tensor] = None,
-        coreset_ratio: float = 0.1,
-        max_memory_patches: Optional[int] = 50000,
+        coreset_ratio: float = 0.02,
+        max_memory_patches: Optional[int] = 2048,
+        patch_grid: Optional[int] = 14,
+        search_chunk_size: int = 1024,
         n_neighbors: int = 1,
     ) -> None:
         super().__init__()
@@ -78,6 +86,12 @@ class PatchCore(torch.nn.Module):
         self.layer_indices = list(layer_indices or [0, 1])
         self.coreset_ratio = float(coreset_ratio)
         self.max_memory_patches = max_memory_patches
+        self.patch_grid = patch_grid
+        self.search_chunk_size = int(search_chunk_size)
+        if self.patch_grid is not None and self.patch_grid < 1:
+            raise ValueError("patch_grid must be positive or None.")
+        if self.search_chunk_size < 1:
+            raise ValueError("search_chunk_size must be positive.")
         self.n_neighbors = n_neighbors
         self.embeddings_extractor = ResnetEmbeddingsExtractor(backbone, self.device)
         if memory_bank is not None:
@@ -108,7 +122,13 @@ class PatchCore(torch.nn.Module):
         embeddings, width, height = self.embeddings_extractor(
             batch.to(self.device), layer_indices=self.layer_indices
         )
-        return F.normalize(embeddings.float(), dim=-1), width, height
+        embeddings = embeddings.float().reshape(batch.shape[0], width, height, -1)
+        if self.patch_grid is not None and (width > self.patch_grid or height > self.patch_grid):
+            embeddings = F.adaptive_avg_pool2d(
+                embeddings.permute(0, 3, 1, 2), (self.patch_grid, self.patch_grid)
+            ).permute(0, 2, 3, 1)
+        width, height = embeddings.shape[1:3]
+        return F.normalize(embeddings.reshape(batch.shape[0], width * height, -1), dim=-1), width, height
 
     @torch.no_grad()
     def fit(self, dataloader: torch.utils.data.DataLoader, extractions: int = 1) -> None:
@@ -176,8 +196,14 @@ class PatchCore(torch.nn.Module):
             raise RuntimeError("PatchCore is not fitted. Call fit() first.")
         embeddings, width, height = self._extract(batch)
         flat = embeddings.reshape(-1, embeddings.shape[-1])
-        distances = torch.cdist(flat, self.memory_bank)
-        nearest = distances.amin(dim=1).reshape(batch.shape[0], width, height)
+        # Embeddings are normalized, so squared cosine distance is 2 - 2 * dot.
+        # Chunking avoids materializing a query-by-memory distance matrix for the
+        # entire batch, which is the dominant memory cost in regular PatchCore.
+        nearest_chunks = []
+        for query_chunk in flat.split(self.search_chunk_size, dim=0):
+            similarity = query_chunk @ self.memory_bank.transpose(0, 1)
+            nearest_chunks.append((2.0 - 2.0 * similarity.amax(dim=1)).clamp_min_(0).sqrt_())
+        nearest = torch.cat(nearest_chunks).reshape(batch.shape[0], width, height)
         scores = nearest.flatten(1).amax(1)
         if not return_map:
             return scores, None
@@ -242,6 +268,8 @@ class PatchCore(torch.nn.Module):
                 "layer_indices": self.layer_indices,
                 "coreset_ratio": self.coreset_ratio,
                 "max_memory_patches": self.max_memory_patches,
+                "patch_grid": self.patch_grid,
+                "search_chunk_size": self.search_chunk_size,
                 "model_type": "patchcore",
                 "dtype": "fp16" if half else "fp32",
             },
@@ -276,8 +304,10 @@ def build_patchcore_from_stats(
         backbone=str(stats["backbone"]),
         layer_indices=list(stats["layer_indices"]),
         memory_bank=bank,
-        coreset_ratio=float(stats.get("coreset_ratio", 1.0)),
-        max_memory_patches=stats.get("max_memory_patches"),
+        coreset_ratio=float(stats.get("coreset_ratio", 0.02)),
+        max_memory_patches=stats.get("max_memory_patches", 2048),
+        patch_grid=stats.get("patch_grid", 14),
+        search_chunk_size=int(stats.get("search_chunk_size", 1024)),
         device=torch.device(device),
     )
     if force_precision == "fp16" and model.device.type == "cuda":

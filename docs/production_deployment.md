@@ -12,11 +12,15 @@ Use the configuration below when inference latency or memory is more important t
 algorithm: patchcore
 backbone: resnet18
 layer_indices: [0, 1]
-coreset_ratio: 0.1
-max_memory_patches: 50000
+coreset_ratio: 0.02
+max_memory_patches: 2048
+patch_grid: 14
+search_chunk_size: 1024
 ```
 
-`coreset_ratio` controls the fraction of extracted normal patches retained. `max_memory_patches` provides a hard upper bound. Start with `resnet18`, `[0, 1]`, and the defaults above; increase the memory cap only after measuring validation quality and latency on the target device.
+`coreset_ratio` controls the fraction of extracted normal patches retained. `max_memory_patches` provides a hard upper bound. `patch_grid` pools the native feature map to a small spatial grid, and `search_chunk_size` prevents a full query-by-memory distance matrix from being allocated. Start with `resnet18`, `[0]`, a 14x14 grid, and the defaults above; increase the memory cap only after measuring validation quality and latency on the target device.
+
+The implementation uses normalized embeddings and chunked matrix multiplication rather than `torch.cdist` over the entire batch. This keeps the working memory bounded while preserving a nearest-normal-patch score. It is intentionally an ultra-light approximation of full PatchCore: the lower memory and patch count can reduce accuracy, so validate the trade-off on the target defect classes.
 
 ## TensorRT export
 
