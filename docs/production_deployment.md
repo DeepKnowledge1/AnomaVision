@@ -92,3 +92,21 @@ thresh_patchcore: null
 With an algorithm-specific value set to `null`, `eval` selects a threshold from the evaluation labels and logs the selected value. For production `detect`, copy the threshold selected on a separate validation set into the corresponding field, for example `thresh_patchcore: 0.35`. A threshold of `0.0` is valid and remains active.
 
 PatchCore now uses deterministic greedy k-center selection by default instead of random memory-bank sampling. This improves coverage of normal feature space while retaining the configured `coreset_ratio` and `max_memory_patches` limits. Set `coreset_method: random` only when you explicitly prefer faster training over representative memory-bank coverage.
+
+## Production Autopilot
+
+Production Autopilot evaluates available PaDiM and ultra-light PatchCore artifacts on the same validation data, calibrates a separate threshold for each algorithm, measures median and p95 latency on the selected hardware, checks whether localization maps are non-empty, and packages the selected artifact with a deployment manifest and report.
+
+Run it on CPU with:
+
+```powershell
+anomavision autopilot `
+  --config config.yml `
+  --padim_model .\distributions\padim\bottle\run\model.pt `
+  --patchcore_model .\distributions\patchcore\bottle\run\model.pt `
+  --device cpu `
+  --target_latency_ms 50 `
+  --output_dir .\production_package
+```
+
+The output contains `model.*`, `deployment_manifest.json`, and `localization_report.md`. The manifest records preprocessing, calibrated thresholds, metrics, latency, localization sanity checks, selected model, and runtime environment. Recheck the selected threshold on a production validation set before release.
