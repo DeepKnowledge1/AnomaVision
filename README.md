@@ -40,11 +40,23 @@ dataset/
 
 ### 3. Train
 
+Before running the command, open `config.yml` and set `dataset_path` to the folder that contains your class folder, for example `./dataset`. Keep `class_name: bottle` if your data is stored under `./dataset/bottle/`.
+
 ```bash
 anomavision train --config config.yml
 ```
 
-The default configuration trains PaDiM. To train lightweight PatchCore, set `algorithm: patchcore` in `config.yml` or pass the corresponding CLI option. The model and compact deployment artifact are saved under `model_data_path`.
+The default configuration trains PaDiM. To use the ultra-light PatchCore path, change these values in `config.yml`:
+
+```yaml
+algorithm: patchcore
+layer_indices: [0]
+coreset_ratio: 0.02
+max_memory_patches: 2048
+patch_grid: 14
+```
+
+The model and compact deployment artifact are saved under `model_data_path`.
 
 ### 4. Detect and evaluate
 
@@ -82,7 +94,7 @@ anomavision export --help
 | Model | Best starting point | Memory use | Production note |
 |---|---|---:|---|
 | PaDiM | Fast, simple baseline | Low | Recommended first experiment |
-| Lightweight PatchCore | Higher-fidelity patch retrieval with bounded memory | Configurable | Use `coreset_ratio` and `max_memory_patches` to control latency |
+| Lightweight PatchCore | Lower-memory nearest-patch baseline | Very low by default | Use `coreset_ratio`, `max_memory_patches`, and `patch_grid` to control latency |
 
 ## Documentation
 
@@ -109,6 +121,9 @@ train_loader = DataLoader(train_set, batch_size=16, shuffle=False)
 
 model = anomavision.Padim(backbone="resnet18", device=torch.device("cpu"))
 model.fit(train_loader)
+batch = next(iter(train_loader))
+if isinstance(batch, (tuple, list)):
+    batch = batch[0]
 scores, maps = model.predict(batch)
 ```
 
