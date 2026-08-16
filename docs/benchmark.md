@@ -1,10 +1,15 @@
 
 # 📊 Benchmarks
 
-We compare **AnomaVision** against **Anomalib** using **(PaDiM baseline)** on **MVTec AD** and **Visa** datasets.
+This page records **historical preliminary results** for AnomaVision versus Anomalib PaDiM. The original measurements were collected before the parity fixes in [`compare_with_anomalib.py`](../compare_with_anomalib.py), so they should not be treated as the final fair-comparison result.
 
+The corrected script now aligns image size, normalization, batch size, warm-up, timing, memory baselines, score-map post-processing, and full-checkpoint size reporting. Rerun it before making performance claims:
 
-Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
+```bash
+python compare_with_anomalib.py --dataset_path /path/to/mvtec --class_name bottle --device cuda
+```
+
+Metrics: **Image AUROC, Pixel AUROC, FPS, Full Checkpoint Size, Compact Artifact Size, and Memory Usage**.
 
 ---
 
@@ -15,10 +20,10 @@ Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
 | **Image AUROC ↑** | **0.8499** | 0.8102        |
 | **Pixel AUROC ↑** | **0.9562** | 0.9354        |
 | **FPS ↑**         | **43.41**  | 13.03         |
-| **Size (MB) ↓**   | **30.5**   | 40.5          |
+| **Historical size (MB) ↓** | **30.5 compact** | 40.5 full checkpoint |
 | **Memory (MB) ↓** | **1647**   | 1696          |
 
-✅ AnomaVision is **+4% higher Image AUROC**, **+2% higher Pixel AUROC**, and **3× faster**.
+These historical values are directional only; rerun the corrected script before interpreting the differences as a fair superiority claim.
 
 ---
 
@@ -51,10 +56,10 @@ Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
 | **Image AUROC ↑** | **0.8123** | 0.7825        |
 | **Pixel AUROC ↑** | **0.9618** | 0.9542        |
 | **FPS ↑**         | **44.76**  | 13.52         |
-| **Size (MB) ↓**   | **30.5**   | 40.5          |
+| **Historical size (MB) ↓** | **30.5 compact** | 40.5 full checkpoint |
 | **Memory (MB) ↓** | **2638**   | 2796          |
 
-✅ On Visa, AnomaVision is **+3% better on Image AUROC**, **+0.7% on Pixel AUROC**, and **3.3× faster**.
+The historical VisA table is retained for reference, but the current comparison script supports MVTec classes only. A separate VisA runner is required to reproduce these values.
 
 ---
 
@@ -92,6 +97,6 @@ Metrics: **Image AUROC, Pixel AUROC, FPS, Model Size, and Memory Usage**.
 
 <img src="images/visa.png" width="70%" alt="Visa Benchmark Results"/> <p><em>Visa Dataset</em></p> </div>
 
-👉 Benchmarks confirm: **AnomaVision is edge-ready, lightweight, and faster — without sacrificing accuracy.**
+Use the corrected benchmark before making production claims about accuracy, speed, memory, or model size.
 
 ---
