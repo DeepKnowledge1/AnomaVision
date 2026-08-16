@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from html import escape
 import json
 import platform
 import shutil
@@ -121,29 +122,50 @@ def _select(results: Dict[str, Dict[str, Any]], target_latency_ms: Optional[floa
 
 
 def _write_report(manifest: Dict[str, Any], output_dir: Path) -> None:
+    """Write a self-contained HTML dashboard and a Markdown fallback report."""
     selected = manifest["selected_model"]
-    lines = [
-        "# AnomaVision Production Autopilot Report",
-        "",
-        f"**Selected model:** `{selected}`",
-        f"**Reason:** highest image AUROC among models meeting the latency target, or highest AUROC when no candidate met it.",
-        "",
-        "## Deployment recommendation",
-        "",
-        f"Use threshold `{manifest['candidates'][selected]['threshold']:.6f}` for `{selected}`. The threshold was calibrated on the evaluation split and should be rechecked on a production validation set before release.",
-        "",
-        "## Candidate comparison",
-        "",
-        "| Model | Image AUROC | Pixel AUROC | Median ms | P95 ms | Localization | Threshold |",
-        "|---|---:|---:|---:|---:|---:|---:|",
-    ]
+    selected_result = manifest["candidates"][selected]
+    target = manifest.get("target_latency_ms")
+    cards = []
+    rows = []
     for name, result in manifest["candidates"].items():
         metrics = result["metrics"]
         loc = result["localization"]
-        lines.append(f"| {name} | {metrics.get('image_auroc', 0.0):.4f} | {metrics.get('pixel_auroc', 0.0):.4f} | {result['latency_ms']['median']:.2f} | {result['latency_ms']['p95']:.2f} | {loc['non_empty_fraction']:.2%} non-empty | {result['threshold']:.6f} |")
-    environment_json = json.dumps(manifest["environment"], indent=2)
-    lines.extend(["", "## Reproducibility", "", "```json", environment_json, "```", ""])
-    (output_dir / "localization_report.md").write_text("\n".join(lines), encoding="utf-8")
+        is_selected = name == selected
+        status = "Selected" if is_selected else "Candidate"
+        status_class = "selected" if is_selected else "candidate"
+        cards.append(
+            f'<article class="model-card {status_class}"><div class="card-top"><span class="model-name">{escape(name.upper())}</span><span class="badge">{status}</span></div>'
+            f'<div class="score">{metrics.get("image_auroc", 0.0):.4f}<small> image AUROC</small></div>'
+            f'<div class="mini-grid"><div><b>{metrics.get("pixel_auroc", 0.0):.4f}</b><span>pixel AUROC</span></div><div><b>{result["latency_ms"]["p95"]:.1f} ms</b><span>p95 latency</span></div><div><b>{loc["non_empty_fraction"]:.1%}</b><span>non-empty maps</span></div></div></article>'
+        )
+        rows.append(
+            f'<tr class="{"active" if is_selected else ""}"><td><strong>{escape(name)}</strong></td><td>{metrics.get("image_auroc", 0.0):.4f}</td><td>{metrics.get("pixel_auroc", 0.0):.4f}</td><td>{result["latency_ms"]["median"]:.2f}</td><td>{result["latency_ms"]["p95"]:.2f}</td><td>{loc["non_empty_fraction"]:.1%}</td><td><code>{result["threshold"]:.6f}</code></td></tr>'
+        )
+    target_text = f"under {target:.1f} ms p95" if target is not None else "with the strongest measured accuracy/latency balance"
+    environment_json = escape(json.dumps(manifest["environment"], indent=2))
+    html = f'''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AnomaVision Production Autopilot</title>
+<style>
+:root{{--ink:#14213d;--muted:#667085;--line:#e6eaf0;--blue:#315efb;--teal:#0f9d8a;--bg:#f5f7fb;--card:#fff}}
+*{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}} .wrap{{max-width:1180px;margin:auto;padding:34px 24px 60px}}
+.hero{{background:linear-gradient(135deg,#172554,#315efb 58%,#5b8cff);color:white;border-radius:24px;padding:34px 38px;box-shadow:0 18px 42px #315efb2b}} .eyebrow{{font-size:12px;text-transform:uppercase;letter-spacing:.18em;opacity:.75;font-weight:700}} h1{{font-size:clamp(30px,5vw,52px);line-height:1.04;margin:12px 0}} .hero p{{max-width:690px;margin:0;color:#e6ecff;font-size:17px}} .hero-meta{{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}} .pill{{background:#ffffff22;border:1px solid #ffffff3b;border-radius:999px;padding:7px 12px;font-size:13px}}
+.section{{margin-top:28px}} .section-title{{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:12px}} h2{{font-size:21px;margin:0}} .muted{{color:var(--muted)}} .recommend{{background:#fff;border:1px solid #dbe3ff;border-left:5px solid var(--blue);border-radius:16px;padding:20px 22px;box-shadow:0 8px 25px #14213d0b}} .recommend strong{{color:var(--blue)}}
+.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}} .model-card{{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 8px 22px #14213d08}} .model-card.selected{{border-color:#9eb0ff;box-shadow:0 10px 28px #315efb20}} .card-top{{display:flex;justify-content:space-between;align-items:center}} .model-name{{font-weight:800;letter-spacing:.08em}} .badge{{font-size:12px;border-radius:999px;padding:4px 9px;background:#eef1f6;color:var(--muted)}} .selected .badge{{background:#e5eaff;color:var(--blue)}} .score{{font-size:42px;font-weight:800;margin:18px 0 12px;letter-spacing:-.04em}} .score small{{font-size:12px;letter-spacing:0;color:var(--muted);font-weight:600}} .mini-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}} .mini-grid div{{border-top:1px solid var(--line);padding-top:8px}} .mini-grid b,.mini-grid span{{display:block}} .mini-grid b{{font-size:16px}} .mini-grid span{{font-size:11px;color:var(--muted)}}
+.table-wrap{{overflow:auto;background:#fff;border:1px solid var(--line);border-radius:16px}} table{{border-collapse:collapse;width:100%;min-width:720px}} th,td{{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line)}} th{{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:#fafbfc}} tr:last-child td{{border-bottom:0}} tr.active td{{background:#f3f6ff}} code{{background:#eef1f6;border-radius:6px;padding:3px 6px;font-size:12px}} .two-col{{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}} .panel{{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px}} .check{{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}} .check:last-child{{border-bottom:0}} .ok{{color:var(--teal);font-weight:700}} pre{{overflow:auto;background:#111827;color:#dbeafe;padding:16px;border-radius:12px;font-size:12px}} footer{{margin-top:28px;color:var(--muted);font-size:12px;text-align:center}} @media(max-width:760px){{.wrap{{padding:20px 14px 40px}}.hero{{padding:26px 22px;border-radius:18px}}.two-col{{grid-template-columns:1fr}}}}
+</style></head><body><main class="wrap">
+<section class="hero"><div class="eyebrow">AnomaVision / Production Autopilot</div><h1>Deployment confidence, before production.</h1><p>Calibrated thresholds, hardware-aware profiling, and localization health checks in one reproducible report.</p><div class="hero-meta"><span class="pill">Selected: <b>{escape(selected)}</b></span><span class="pill">Class: <b>{escape(str(manifest["dataset"]["class_name"]))}</b></span><span class="pill">Samples: <b>{manifest["dataset"]["samples"]}</b></span><span class="pill">Device: <b>{escape(str(manifest["environment"].get("device", "unknown")))}</b></span></div></section>
+<section class="section"><div class="recommend"><strong>Recommendation</strong><br>Deploy <b>{escape(selected)}</b> with threshold <code>{selected_result["threshold"]:.6f}</code>. It was selected {escape(target_text)}. Recheck this threshold on a production validation set before release.</div></section>
+<section class="section"><div class="section-title"><h2>Candidate overview</h2><span class="muted">Measured on the same validation data</span></div><div class="cards">{"".join(cards)}</div></section>
+<section class="section"><div class="section-title"><h2>Detailed comparison</h2><span class="muted">Higher AUROC and lower latency are better</span></div><div class="table-wrap"><table><thead><tr><th>Model</th><th>Image AUROC</th><th>Pixel AUROC</th><th>Median ms</th><th>P95 ms</th><th>Maps non-empty</th><th>Threshold</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div></section>
+<section class="section two-col"><div class="panel"><h2>Localization health</h2><div class="check"><span>Selected model maps available</span><span class="ok">{"PASS" if selected_result["localization"]["available"] else "CHECK"}</span></div><div class="check"><span>Selected model non-empty maps</span><span class="ok">{selected_result["localization"]["non_empty_fraction"]:.1%}</span></div><div class="check"><span>Selected model mean mask area</span><span>{selected_result["localization"]["mean_mask_area_fraction"]:.1%}</span></div><p class="muted">A low non-empty rate can indicate a threshold, score-scale, export, or model-sensitivity problem.</p></div><div class="panel"><h2>Deployment artifact</h2><div class="check"><span>Artifact</span><code>{escape(str(manifest["selected_artifact"]))}</code></div><div class="check"><span>Format</span><code>{escape(str(selected_result["model_format"]))}</code></div><div class="check"><span>Preprocessing</span><span>{escape(str(manifest["preprocessing"].get("resize")))} px</span></div><div class="check"><span>Target latency</span><span>{escape(str(target)) if target is not None else "not set"}</span></div></div></section>
+<section class="section"><div class="panel"><h2>Reproducibility environment</h2><pre>{environment_json}</pre></div></section><footer>Generated by AnomaVision Production Autopilot · manifest schema {manifest["schema_version"]}</footer>
+</main></body></html>'''
+    (output_dir / "production_autopilot_report.html").write_text(html, encoding="utf-8")
+
+    markdown = ["# AnomaVision Production Autopilot Report", "", f"**Selected model:** `{selected}`", "", "See `production_autopilot_report.html` for the full dashboard.", ""]
+    (output_dir / "localization_report.md").write_text("\\n".join(markdown), encoding="utf-8")
 
 
 def run(args: argparse.Namespace) -> Dict[str, Any]:

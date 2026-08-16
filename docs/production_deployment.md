@@ -109,4 +109,4 @@ anomavision autopilot `
   --output_dir .\production_package
 ```
 
-The output contains `model.*`, `deployment_manifest.json`, and `localization_report.md`. The manifest records preprocessing, calibrated thresholds, metrics, latency, localization sanity checks, selected model, and runtime environment. Recheck the selected threshold on a production validation set before release.
+The output contains `model.*`, `deployment_manifest.json`, `production_autopilot_report.html`, and `localization_report.md`. Open `production_autopilot_report.html` in any browser for the polished dashboard; it is self-contained and needs no internet connection or additional assets. The manifest records preprocessing, calibrated thresholds, metrics, latency, localization sanity checks, selected model, and runtime environment. Recheck the selected threshold on a production validation set before release.
