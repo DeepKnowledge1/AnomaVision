@@ -68,6 +68,7 @@ For detailed help on each command:
     _add_export_parser(subparsers)
     _add_detect_parser(subparsers)
     _add_eval_parser(subparsers)
+    _add_autopilot_parser(subparsers)
 
     return parser
 
@@ -133,6 +134,17 @@ def _add_eval_parser(subparsers) -> None:
     ).set_defaults(func=_dispatch_eval)
 
 
+def _add_autopilot_parser(subparsers) -> None:
+    from anomavision.autopilot import create_parser as _cp
+
+    subparsers.add_parser(
+        "autopilot",
+        help="Calibrate, profile, and package a production model",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_autopilot)
+
+
 # ============================================================
 # Dispatch functions — one line each, Namespace passed directly.
 # No sys.argv manipulation. No double-parsing.
@@ -161,6 +173,12 @@ def _dispatch_eval(args: argparse.Namespace) -> None:
     from anomavision import eval as eval_module  # 'eval' shadows the Python builtin
 
     eval_module.main(args)
+
+
+def _dispatch_autopilot(args: argparse.Namespace) -> None:
+    from anomavision import autopilot
+
+    autopilot.main(args)
 
 
 # ============================================================
