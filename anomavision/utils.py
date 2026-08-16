@@ -272,6 +272,19 @@ def image_score(patch_scores: torch.Tensor) -> torch.Tensor:
     return image_scores
 
 
+def resolve_threshold(config):
+    """Resolve an algorithm-specific threshold with a backward-compatible fallback.
+
+    ``thresh_patchcore`` and ``thresh_padim`` take precedence over the legacy
+    shared ``thresh`` value. Explicit zero is preserved as a valid threshold.
+    ``None`` means that no fixed inference threshold was configured.
+    """
+    algorithm = str(config.get("algorithm", "")).lower()
+    specific_key = f"thresh_{algorithm}"
+    specific = config.get(specific_key, None)
+    return specific if specific is not None else config.get("thresh", None)
+
+
 def classification(image_scores, thresh: float):
     """Calculate image classifications from image scores.
     Args:

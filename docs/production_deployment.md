@@ -76,3 +76,19 @@ python scripts/convert_to_tensorrt.py `
 For FP16, omit the calibration directory and change `--precision int8` to `--precision fp16`. INT8 conversion requires real normal calibration images; the TensorRT path no longer falls back to random calibration data. The utility accepts PNG, JPEG, BMP, TIFF, and nested calibration-image directories, writes a reusable calibration cache beside the engine, and deserializes the generated engine for validation unless `--skip-validation` is supplied.
 
 The input artifact may be either a PaDiM `.pth` statistics file or a PatchCore artifact containing its memory bank and feature settings. The default dynamic profile is batch 1/1/4; override it when the deployment workload has a different batch distribution.
+
+## Algorithm-specific thresholds and PatchCore coreset selection
+
+PaDiM and PatchCore produce different score scales. PaDiM uses Mahalanobis distances, while PatchCore uses bounded normalized nearest-neighbor distances, so a single threshold should not be shared between them.
+
+Use separate values in `config.yml`:
+
+```yaml
+thresh: null
+thresh_padim: null
+thresh_patchcore: null
+```
+
+With an algorithm-specific value set to `null`, `eval` selects a threshold from the evaluation labels and logs the selected value. For production `detect`, copy the threshold selected on a separate validation set into the corresponding field, for example `thresh_patchcore: 0.35`. A threshold of `0.0` is valid and remains active.
+
+PatchCore now uses deterministic greedy k-center selection by default instead of random memory-bank sampling. This improves coverage of normal feature space while retaining the configured `coreset_ratio` and `max_memory_patches` limits. Set `coreset_method: random` only when you explicitly prefer faster training over representative memory-bank coverage.

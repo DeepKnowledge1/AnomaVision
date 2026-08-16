@@ -129,6 +129,19 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="PatchCore query chunk size used to bound nearest-neighbor memory.",
     )
     parser.add_argument(
+        "--coreset_method",
+        type=str,
+        choices=["kcenter", "random"],
+        default=None,
+        help="PatchCore coreset selection strategy; kcenter is the diverse default.",
+    )
+    parser.add_argument(
+        "--coreset_seed",
+        type=int,
+        default=None,
+        help="Seed used for deterministic PatchCore coreset selection.",
+    )
+    parser.add_argument(
         "--output_model",
         type=str,
         default=None,
@@ -273,6 +286,8 @@ def run_training(args):
             max_memory_patches=config.max_memory_patches,
             patch_grid=config.patch_grid,
             search_chunk_size=config.search_chunk_size,
+            coreset_method=config.get("coreset_method", "kcenter"),
+            coreset_seed=int(config.get("coreset_seed", 42)),
         )
     else:
         model = anomavision.Padim(

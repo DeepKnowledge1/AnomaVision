@@ -31,6 +31,7 @@ from anomavision.utils import (
     adaptive_gaussian_blur,
     get_logger,
     merge_config,
+    resolve_threshold,
     setup_logging,
 )
 
@@ -199,6 +200,7 @@ def run_inference(args):
 
     # Merge config with CLI args
     config = edict(merge_config(args, cfg))
+    config.thresh = resolve_threshold(config)
 
     # Setup logging
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
@@ -436,7 +438,7 @@ def run_inference(args):
                                     anomavision.classification(
                                         score_maps, config.thresh
                                     )
-                                    if config.thresh
+                                    if config.thresh is not None
                                     else np.zeros_like(score_maps)
                                 ),
                                 is_anomaly,
@@ -454,7 +456,7 @@ def run_inference(args):
                             # Dummy mask if threshold not set
                             (
                                 anomavision.classification(score_maps, config.thresh)
-                                if config.thresh
+                                if config.thresh is not None
                                 else np.zeros_like(score_maps)
                             ),
                             color=viz_color,

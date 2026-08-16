@@ -59,6 +59,9 @@ class PatchCore(torch.nn.Module):
             throughput.
         n_neighbors: Number of nearest neighbors. The lightweight implementation
             currently supports only ``1``.
+        coreset_method: ``"kcenter"`` for deterministic greedy farthest-point
+            selection, or ``"random"`` for the faster legacy baseline.
+        coreset_seed: Seed used to choose the initial k-center point or random subset.
 
     Raises:
         ValueError: If the coreset ratio or neighbor count is unsupported.
@@ -75,6 +78,8 @@ class PatchCore(torch.nn.Module):
         patch_grid: Optional[int] = 14,
         search_chunk_size: int = 1024,
         n_neighbors: int = 1,
+        coreset_method: str = "kcenter",
+        coreset_seed: int = 42,
     ) -> None:
         super().__init__()
         if not 0 < coreset_ratio <= 1:
@@ -88,6 +93,10 @@ class PatchCore(torch.nn.Module):
         self.max_memory_patches = max_memory_patches
         self.patch_grid = patch_grid
         self.search_chunk_size = int(search_chunk_size)
+        self.coreset_method = str(coreset_method).lower()
+        self.coreset_seed = int(coreset_seed)
+        if self.coreset_method not in {"kcenter", "random"}:
+            raise ValueError("coreset_method must be 'kcenter' or 'random'.")
         if self.patch_grid is not None and self.patch_grid < 1:
             raise ValueError("patch_grid must be positive or None.")
         if self.search_chunk_size < 1:
@@ -131,11 +140,51 @@ class PatchCore(torch.nn.Module):
         return F.normalize(embeddings.reshape(batch.shape[0], width * height, -1), dim=-1), width, height
 
     @torch.no_grad()
+    def _select_coreset(self, bank: torch.Tensor, keep: int) -> torch.Tensor:
+        """Select a diverse memory bank with greedy farthest-point k-center.
+
+        Distances are computed in chunks, so selection does not allocate the full
+        ``(num_patches, keep)`` distance matrix. The bank is normalized before
+        selection, making Euclidean distance equivalent to the cosine distance
+        used during inference.
+        """
+        if keep >= bank.shape[0]:
+            return bank
+        if self.coreset_method == "random":
+            generator = torch.Generator(device="cpu").manual_seed(self.coreset_seed)
+            return bank[torch.randperm(bank.shape[0], generator=generator)[:keep]]
+
+        bank = F.normalize(bank.float(), dim=-1)
+        n = bank.shape[0]
+        generator = torch.Generator(device="cpu").manual_seed(self.coreset_seed)
+        first = int(torch.randint(n, (1,), generator=generator).item())
+        selected = torch.empty(keep, dtype=torch.long)
+        selected[0] = first
+        min_dist = torch.full((n,), float("inf"), dtype=torch.float32)
+        chunk = max(1, self.search_chunk_size)
+        for start in range(0, n, chunk):
+            end = min(start + chunk, n)
+            distances = 1.0 - bank[start:end] @ bank[first]
+            min_dist[start:end] = distances
+        min_dist[first] = -float("inf")
+        for index in range(1, keep):
+            center = int(torch.argmax(min_dist).item())
+            selected[index] = center
+            for start in range(0, n, chunk):
+                end = min(start + chunk, n)
+                distances = 1.0 - bank[start:end] @ bank[center]
+                min_dist[start:end] = torch.minimum(min_dist[start:end], distances)
+            min_dist[center] = -float("inf")
+        return bank[selected]
+
+    @torch.no_grad()
     def fit(self, dataloader: torch.utils.data.DataLoader, extractions: int = 1) -> None:
         """Fit the detector from normal training images.
 
-        The method extracts every normal patch, randomly retains the configured
-        coreset, and stores it as the memory bank. No anomaly labels or gradient
+        The method extracts every normal patch, selects a bounded diverse
+        k-center coreset by default, and stores it as the memory bank. Set
+        ``coreset_method='random'`` only for a faster but less representative
+        baseline. No anomaly labels or gradient
         updates are required. A compact bank generally reduces both RAM/VRAM use and
         the cost of the nearest-neighbor search during inference.
 
@@ -165,8 +214,7 @@ class PatchCore(torch.nn.Module):
         if self.max_memory_patches is not None:
             keep = min(keep, int(self.max_memory_patches))
         if keep < bank.shape[0]:
-            indices = torch.randperm(bank.shape[0])[:keep]
-            bank = bank[indices]
+            bank = self._select_coreset(bank, keep)
         self.memory_bank = bank.to(self.device)
 
     @torch.no_grad()
@@ -270,6 +318,8 @@ class PatchCore(torch.nn.Module):
                 "max_memory_patches": self.max_memory_patches,
                 "patch_grid": self.patch_grid,
                 "search_chunk_size": self.search_chunk_size,
+                "coreset_method": self.coreset_method,
+                "coreset_seed": self.coreset_seed,
                 "model_type": "patchcore",
                 "dtype": "fp16" if half else "fp32",
             },
@@ -308,6 +358,8 @@ def build_patchcore_from_stats(
         max_memory_patches=stats.get("max_memory_patches", 2048),
         patch_grid=stats.get("patch_grid", 14),
         search_chunk_size=int(stats.get("search_chunk_size", 1024)),
+        coreset_method=str(stats.get("coreset_method", "kcenter")),
+        coreset_seed=int(stats.get("coreset_seed", 42)),
         device=torch.device(device),
     )
     if force_precision == "fp16" and model.device.type == "cuda":

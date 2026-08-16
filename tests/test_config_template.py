@@ -19,6 +19,8 @@ REQUIRED_EXPORT_KEYS = {
     "quantize_dynamic",
     "quantize_static",
     "optimize",
+    "coreset_method",
+    "coreset_seed",
 }
 
 
@@ -29,3 +31,4 @@ def test_config_template_contains_all_export_defaults():
     assert REQUIRED_EXPORT_KEYS.issubset(config)
     assert config["calib_dir"] is None
     assert config["min_batch"] <= config["opt_batch"] <= config["max_batch"]
+    assert config["coreset_method"] == "kcenter"
