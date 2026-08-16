@@ -1,13 +1,13 @@
-"""Lightweight PatchCore anomaly detector.
+"""Lightweight PatchCore anomaly detection.
 
-The implementation intentionally keeps the PaDiM public contract: ``fit`` accepts a
-DataLoader, ``predict`` returns ``(image_scores, score_map)``, and statistics can be
-saved as a compact ``.pth`` artifact for deployment.
+This module provides a bounded-memory PatchCore implementation that follows the
+public design of :mod:`anomavision.padim`: fit on a normal-image DataLoader, predict
+image scores and spatial maps, and save a compact deployment artifact.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -16,7 +16,47 @@ from .feature_extraction import ResnetEmbeddingsExtractor
 
 
 class PatchCore(torch.nn.Module):
-    """PatchCore with a bounded, optionally randomly subsampled memory bank."""
+    """Memory-bank PatchCore detector with a production-oriented footprint.
+
+    PatchCore extracts intermediate CNN patch embeddings from normal training images,
+    stores a bounded subset of those embeddings, and assigns each test patch the
+    distance to its nearest normal memory-bank patch. The image score is the maximum
+    patch distance; the pixel map is the patch-distance grid upsampled to the input
+    resolution.
+
+    The public methods intentionally mirror :class:`anomavision.padim.Padim`, so the
+    model can be selected by the existing CLI training, inference, evaluation, and
+    export workflows.
+
+    Example:
+        >>> model = PatchCore(
+        ...     backbone="resnet18",
+        ...     layer_indices=[0, 1],
+        ...     coreset_ratio=0.1,
+        ...     max_memory_patches=50000,
+        ...     device=torch.device("cpu"),
+        ... )
+        >>> model.fit(train_loader)
+        >>> image_scores, score_maps = model.predict(test_batch)
+
+    Args:
+        backbone: Feature-extraction backbone. Supported values are ``resnet18`` and
+            ``wide_resnet50``.
+        device: Device used for feature extraction and nearest-neighbor distance.
+        layer_indices: ResNet feature stages to concatenate. Defaults to ``[0, 1]``
+            to keep the lightweight model fast and compact.
+        memory_bank: Optional precomputed bank with shape ``(num_patches, dim)``.
+            Providing it creates a ready-to-infer model.
+        coreset_ratio: Fraction of extracted normal patches to retain. Must be in
+            ``(0, 1]``. Lower values reduce memory and inference time.
+        max_memory_patches: Hard upper bound on retained patches. ``None`` disables
+            the cap.
+        n_neighbors: Number of nearest neighbors. The lightweight implementation
+            currently supports only ``1``.
+
+    Raises:
+        ValueError: If the coreset ratio or neighbor count is unsupported.
+    """
 
     def __init__(
         self,
@@ -47,9 +87,24 @@ class PatchCore(torch.nn.Module):
 
     @property
     def is_fitted(self) -> bool:
+        """Return whether a non-empty normal memory bank is available."""
         return self.memory_bank.ndim == 2 and self.memory_bank.shape[0] > 0
 
+    @torch.no_grad()
     def _extract(self, batch: torch.Tensor) -> Tuple[torch.Tensor, int, int]:
+        """Extract normalized patch embeddings for a batch.
+
+        Args:
+            batch: Input tensor with shape ``(B, C, H, W)``.
+
+        Returns:
+            A tuple ``(embeddings, width, height)``. ``embeddings`` has shape
+            ``(B, width * height, feature_dim)`` and is L2-normalized per patch.
+
+        Raises:
+            RuntimeError: Propagated if the configured backbone cannot process the
+                input tensor.
+        """
         embeddings, width, height = self.embeddings_extractor(
             batch.to(self.device), layer_indices=self.layer_indices
         )
@@ -57,7 +112,26 @@ class PatchCore(torch.nn.Module):
 
     @torch.no_grad()
     def fit(self, dataloader: torch.utils.data.DataLoader, extractions: int = 1) -> None:
-        """Build a compact normal patch memory bank from one or more passes."""
+        """Fit the detector from normal training images.
+
+        The method extracts every normal patch, randomly retains the configured
+        coreset, and stores it as the memory bank. No anomaly labels or gradient
+        updates are required. A compact bank generally reduces both RAM/VRAM use and
+        the cost of the nearest-neighbor search during inference.
+
+        Args:
+            dataloader: DataLoader yielding image tensors or ``(image, target)``
+                tuples. Training images should be normal samples.
+            extractions: Number of passes over the DataLoader. Values greater than
+                one are useful when the loader applies random augmentations.
+
+        Raises:
+            ValueError: If the DataLoader produces no batches.
+
+        Example:
+            >>> model.fit(train_loader)
+            >>> print(model.memory_bank.shape)
+        """
         chunks = []
         for _ in range(extractions):
             for item in dataloader:
@@ -79,6 +153,25 @@ class PatchCore(torch.nn.Module):
     def forward(
         self, batch: torch.Tensor, return_map: bool = True, export: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Compute PatchCore anomaly scores and an optional spatial score map.
+
+        Args:
+            batch: Input tensor with shape ``(B, C, H, W)`` using the same
+                preprocessing as training.
+            return_map: If ``True``, return a map resized to ``(H, W)``. Set to
+                ``False`` when only image-level scores are needed.
+            export: Retained for compatibility with PaDiM and export wrappers. The
+                current distance path is already tensor-export friendly.
+
+        Returns:
+            A tuple ``(image_scores, score_map)``. ``image_scores`` has shape
+            ``(B,)``. ``score_map`` has shape ``(B, H, W)`` or is ``None`` when
+            ``return_map=False``.
+
+        Raises:
+            RuntimeError: If :meth:`fit` has not been called and no memory bank was
+                supplied at construction time.
+        """
         if not self.is_fitted:
             raise RuntimeError("PatchCore is not fitted. Call fit() first.")
         embeddings, width, height = self._extract(batch)
@@ -93,15 +186,50 @@ class PatchCore(torch.nn.Module):
         ).squeeze(1)
         return scores, score_map
 
-    def predict(self, batch: torch.Tensor, export: bool = False):
+    def predict(
+        self, batch: torch.Tensor, export: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Run inference using the standard AnomaVision prediction contract.
+
+        Args:
+            batch: Preprocessed input images with shape ``(B, C, H, W)``.
+            export: Forwarded to :meth:`forward` for ONNX/TensorRT wrapper
+                compatibility.
+
+        Returns:
+            ``(image_scores, score_map)`` with shapes ``(B,)`` and ``(B, H, W)``.
+
+        Example:
+            >>> scores, maps = model.predict(batch)
+        """
         return self.forward(batch, return_map=True, export=export)
 
     def to_device(self, device: torch.device) -> None:
+        """Move the extractor and memory bank to a target device.
+
+        Args:
+            device: Target PyTorch device, for example ``torch.device("cuda")`` or
+                ``torch.device("cpu")``.
+        """
         self.device = torch.device(device)
         self.embeddings_extractor.to_device(self.device)
         self.memory_bank = self.memory_bank.to(self.device)
 
     def save_statistics(self, path: str, half: Optional[bool] = False) -> None:
+        """Save a compact PatchCore deployment artifact.
+
+        The artifact contains the memory bank and the feature-extraction settings,
+        but not a duplicate copy of the fitted training loop. It can be loaded with
+        :func:`build_patchcore_from_stats` or through the standard PyTorch backend.
+
+        Args:
+            path: Destination ``.pth`` path.
+            half: If ``True``, store the memory bank in FP16 to reduce file size.
+                Defaults to FP32 for CPU-safe numerical behavior.
+
+        Raises:
+            RuntimeError: If the model has not been fitted.
+        """
         if not self.is_fitted:
             raise RuntimeError("PatchCore is not fitted. Call fit() first.")
         bank = self.memory_bank.detach().cpu()
@@ -122,9 +250,27 @@ class PatchCore(torch.nn.Module):
 
 
 def build_patchcore_from_stats(
-    stats: dict, device: str = "cpu", force_precision: Optional[str] = None
+    stats: Dict, device: str = "cpu", force_precision: Optional[str] = None
 ) -> PatchCore:
-    """Build a deployment-ready PatchCore from its compact memory bank."""
+    """Build a ready-to-infer PatchCore from a compact statistics artifact.
+
+    Args:
+        stats: Dictionary created by :meth:`PatchCore.save_statistics`. It must
+            contain ``memory_bank``, ``backbone``, and ``layer_indices``.
+        device: Target device string such as ``"cpu"`` or ``"cuda"``.
+        force_precision: Optional precision override. ``"fp16"`` is applied only
+            when the target device is CUDA; CPU inference remains FP32.
+
+    Returns:
+        A fitted :class:`PatchCore` instance ready for :meth:`PatchCore.predict`.
+
+    Raises:
+        KeyError: If a required statistics key is missing.
+
+    Example:
+        >>> stats = torch.load("patchcore.pth", weights_only=False)
+        >>> model = build_patchcore_from_stats(stats, device="cuda")
+    """
     bank = stats["memory_bank"].float().cpu()
     model = PatchCore(
         backbone=str(stats["backbone"]),
