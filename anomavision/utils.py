@@ -283,14 +283,10 @@ def classification(image_scores, thresh: float):
     """
 
     if isinstance(image_scores, torch.Tensor):
-        image_classifications = image_scores.clone()
-        image_classifications[image_classifications < thresh] = 1
-        image_classifications[image_classifications >= thresh] = 0
+        image_classifications = (image_scores >= thresh).to(dtype=torch.int64)
 
     elif isinstance(image_scores, np.ndarray):
-        image_classifications = image_scores.copy()
-        image_classifications[image_classifications < thresh] = 1
-        image_classifications[image_classifications >= thresh] = 0
+        image_classifications = (image_scores >= thresh).astype(np.int64)
     else:
         raise TypeError("image_scores must be a torch.Tensor or numpy.ndarray")
 

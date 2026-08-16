@@ -21,13 +21,13 @@ def to_batch(images: List[np.ndarray]) -> np.ndarray:
 
 def classification(image_scores: np.ndarray, thresh: float) -> np.ndarray:
     """
-    Classify images as anomalous (0) or normal (1) based on threshold.
+    Classify images as normal (0) or anomalous (1) based on threshold.
 
     Args:
         image_scores: A 1D array of image anomaly scores.
         thresh: Threshold value to determine anomaly.
 
     Returns:
-        An array of classifications: 0 = anomaly, 1 = normal.
+        An array of classifications: 0 = normal, 1 = anomaly.
     """
-    return np.where(image_scores < thresh, 1, 0)
+    return np.where(image_scores >= thresh, 1, 0)
