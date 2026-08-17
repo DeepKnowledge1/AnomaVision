@@ -109,6 +109,22 @@ anomavision train --help
 anomavision export --help
 ```
 
+## Production Autopilot
+
+Production Autopilot compares PaDiM and ultra-light PatchCore, calibrates an operating threshold, measures latency on your selected device, and creates a self-contained deployment package with an HTML report. Train or export both candidate models first, then run:
+
+```bash
+anomavision autopilot \
+  --config config.yml \
+  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt \
+  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt \
+  --device cpu \
+  --target_latency_ms 50 \
+  --output_dir ./production_package
+```
+
+The report explains the selected model, validation metrics, threshold, memory, and measured latency. See [`docs/production_deployment.md`](docs/production_deployment.md) for GPU, TensorRT, INT8, and packaging details.
+
 ## Visual overview
 
 The same pipeline supports compact edge inference and spatial anomaly localization:
