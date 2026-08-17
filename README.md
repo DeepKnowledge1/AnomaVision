@@ -16,6 +16,7 @@
   <a href="https://onnx.ai/"><img src="https://img.shields.io/badge/ONNX-Export%20Ready-orange" alt="ONNX export ready"/></a>
   <a href="https://developer.nvidia.com/tensorrt"><img src="https://img.shields.io/badge/TensorRT-Supported-76b900" alt="TensorRT supported"/></a>
   <a href="https://docs.openvino.ai/"><img src="https://img.shields.io/badge/OpenVINO-Supported-0071C5" alt="OpenVINO supported"/></a>
+  <a href="https://github.com/DeepKnowledge1/AnomaVision/actions/workflows/ci.yml"><img src="https://github.com/DeepKnowledge1/AnomaVision/actions/workflows/ci.yml/badge.svg" alt="CI status"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT license"/></a>
 </p>
 
@@ -24,6 +25,8 @@ AnomaVision supports **PaDiM** and lightweight **PatchCore**, image-level scores
 <p align="center">
   <a href="https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection"><img src="https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-xl-dark.svg" alt="Open the AnomaVision live demo"/></a>
 </p>
+
+**Try it first:** [live demo](https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection) · [five-minute CPU quickstart](docs/quickstart.md) · [runnable examples](examples/README.md) · [reproducible benchmark](docs/benchmark.md)
 
 ## Why use it?
 
@@ -43,7 +46,7 @@ pip install uv
 uv pip install "anomavision[cpu]"
 ```
 
-For NVIDIA GPUs, choose the matching extra such as `anomavision[cu121]`. Source installation and environment setup are described in [`docs/installation.md`](docs/installation.md).
+For NVIDIA GPUs, choose the matching extra such as `anomavision[cu121]`. Source installation and environment setup are described in [`docs/installation.md`](docs/installation.md). For the shortest CPU path, use the copy-ready [`examples/quickstart_cpu.yml`](examples/quickstart_cpu.yml) configuration and follow [`docs/quickstart.md`](docs/quickstart.md).
 
 ### 2. Prepare data
 
@@ -109,15 +112,40 @@ anomavision train --help
 anomavision export --help
 ```
 
+## Production Autopilot
+
+**Production Autopilot is the easiest way to move from two trained models to one deployable choice.** It compares PaDiM and ultra-light PatchCore on the same labeled test split, calibrates a separate threshold for each, profiles median and P95 latency on your hardware, checks localization health, and packages the selected artifact with a self-contained HTML dashboard.
+
+Train both candidate models first, then run the complete labeled split on CPU:
+
+```bash
+anomavision autopilot \
+  --config config.yml \
+  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt \
+  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt \
+  --device cpu \
+  --validation_split 1.0 \
+  --target_latency_ms 50 \
+  --output_dir ./production_package
+```
+
+Open `production_package/production_autopilot_report.html` to see the selected model, AUROC, calibrated threshold, localization diagnostics, memory, median latency, P95 latency, and deployment recommendation. The package also contains `deployment_manifest.json`, `localization_report.md`, and the selected model artifact. See [`docs/production_deployment.md`](docs/production_deployment.md) for GPU, TensorRT, INT8, and packaging details.
+
 ## Visual overview
 
-The same pipeline supports compact edge inference and spatial anomaly localization:
+The same pipeline supports compact edge inference and spatial anomaly localization. In each result strip, the panels show the **input image**, the **detected boundary**, and the **anomaly heatmap** from left to right.
 
-![AnomaVision architecture](docs/images/archti.png)
+### PaDiM: distribution-based heatmap
 
-![PaDiM example visualization](notebooks/example_images/padim_example_image.png)
+PaDiM models the feature distribution of normal images. Its heatmap is typically smoother and emphasizes regions that differ from that learned distribution.
 
-![Lightweight PatchCore example visualization](notebooks/example_images/patchcore_example_image.png)
+![PaDiM input, boundary, and heatmap example](notebooks/example_images/padim_example_image.png)
+
+### Ultra-light PatchCore: nearest-patch heatmap
+
+PatchCore compares image patches with a compact normal-feature memory bank. Its heatmap can show more local texture and sharper nearest-patch differences while using bounded memory for production inference.
+
+![PatchCore input, boundary, and heatmap example](notebooks/example_images/patchcore_example_image.png)
 
 ## Choosing a model
 
@@ -135,6 +163,7 @@ The same pipeline supports compact edge inference and spatial anomaly localizati
 | CLI and configuration | [`docs/cli.md`](docs/cli.md), [`docs/config.md`](docs/config.md) |
 | Python API | [`docs/api.md`](docs/api.md) |
 | PatchCore and TensorRT deployment | [`docs/production_deployment.md`](docs/production_deployment.md) |
+| Runnable CPU, PatchCore, and TensorRT examples | [`examples/README.md`](examples/README.md) |
 | Benchmark methodology | [`docs/benchmark.md`](docs/benchmark.md) |
 | Troubleshooting | [`docs/troubleshooting.md`](docs/troubleshooting.md) |
 | Contributing | [`docs/contributing.md`](docs/contributing.md) |

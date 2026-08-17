@@ -98,6 +98,7 @@ class ModelMetrics:
     training_time: float = 0.0
     inference_fps: float = 0.0
     inference_time_per_image: float = 0.0
+    inference_p95_latency_ms: float = 0.0
 
     # Model size metrics
     model_size_mb: float = 0.0
@@ -419,9 +420,11 @@ class BenchmarkRunner:
 
             metrics.inference_memory_mb = self._get_memory_usage() - start_memory
             metrics.inference_time_per_image = np.mean(inference_times) * 1000  # ms
+            metrics.inference_p95_latency_ms = np.percentile(inference_times, 95) * 1000
             metrics.inference_fps = 1.0 / np.mean(inference_times)
 
             print(f"   Inference time: {metrics.inference_time_per_image:.2f} ms/image")
+            print(f"   P95 latency: {metrics.inference_p95_latency_ms:.2f} ms/image")
             print(f"   Inference FPS: {metrics.inference_fps:.2f}")
             print(f"   Inference memory: {metrics.inference_memory_mb:.2f} MB")
 
@@ -593,9 +596,11 @@ class BenchmarkRunner:
 
             metrics.inference_memory_mb = self._get_memory_usage() - start_memory
             metrics.inference_time_per_image = np.mean(inference_times) * 1000  # ms
+            metrics.inference_p95_latency_ms = np.percentile(inference_times, 95) * 1000
             metrics.inference_fps = 1.0 / np.mean(inference_times)
 
             print(f"   Inference time: {metrics.inference_time_per_image:.2f} ms/image")
+            print(f"   P95 latency: {metrics.inference_p95_latency_ms:.2f} ms/image")
             print(f"   Inference FPS: {metrics.inference_fps:.2f}")
             print(f"   Inference memory: {metrics.inference_memory_mb:.2f} MB")
 
@@ -709,12 +714,22 @@ class BenchmarkRunner:
                 ),
             ],
             [
-                "ms/image",
+                "Mean latency (ms/image)",
                 f"{your.inference_time_per_image:.2f}",
                 f"{anomalib.inference_time_per_image:.2f}",
                 (
                     f"{((your.inference_time_per_image - anomalib.inference_time_per_image) / anomalib.inference_time_per_image * 100):.2f}%"
                     if anomalib.inference_time_per_image > 0
+                    else "N/A"
+                ),
+            ],
+            [
+                "P95 latency (ms/image)",
+                f"{your.inference_p95_latency_ms:.2f}",
+                f"{anomalib.inference_p95_latency_ms:.2f}",
+                (
+                    f"{((your.inference_p95_latency_ms - anomalib.inference_p95_latency_ms) / anomalib.inference_p95_latency_ms * 100):.2f}%"
+                    if anomalib.inference_p95_latency_ms > 0
                     else "N/A"
                 ),
             ],
@@ -1163,6 +1178,8 @@ def generate_summary_report(all_results: Dict):
                 "Anomalib_Pixel_AUROC": anomalib.pixel_auroc,
                 "Your_FPS": your.inference_fps,
                 "Anomalib_FPS": anomalib.inference_fps,
+                "Your_P95_Latency_ms": your.inference_p95_latency_ms,
+                "Anomalib_P95_Latency_ms": anomalib.inference_p95_latency_ms,
                 "Your_Size_MB": your.model_size_mb,
                 "Anomalib_Size_MB": anomalib.model_size_mb,
                 "Your_Memory_MB": your.peak_memory_mb,
@@ -1182,6 +1199,8 @@ def generate_summary_report(all_results: Dict):
         "Anomalib_Pixel_AUROC": df["Anomalib_Pixel_AUROC"].mean(),
         "Your_FPS": df["Your_FPS"].mean(),
         "Anomalib_FPS": df["Anomalib_FPS"].mean(),
+        "Your_P95_Latency_ms": df["Your_P95_Latency_ms"].mean(),
+        "Anomalib_P95_Latency_ms": df["Anomalib_P95_Latency_ms"].mean(),
         "Your_Size_MB": df["Your_Size_MB"].mean(),
         "Anomalib_Size_MB": df["Anomalib_Size_MB"].mean(),
         "Your_Memory_MB": df["Your_Memory_MB"].mean(),
@@ -1213,6 +1232,11 @@ def generate_summary_report(all_results: Dict):
     print("\n### Speed Summary ###")
     print(
         f"Average FPS - Your: {avg_data['Your_FPS']:.2f}, Anomalib: {avg_data['Anomalib_FPS']:.2f}"
+    )
+    print(
+        "Average P95 latency - Your: "
+        f"{avg_data['Your_P95_Latency_ms']:.2f} ms, "
+        f"Anomalib: {avg_data['Anomalib_P95_Latency_ms']:.2f} ms"
     )
 
     # Size summary

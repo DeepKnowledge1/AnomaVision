@@ -1,0 +1,33 @@
+# Five-minute CPU quickstart for an MVTec-style dataset.
+# Set dataset_path to the directory that contains the class folder, for example ./dataset.
+dataset_path: "./dataset"
+class_name: "bottle"
+algorithm: "padim"
+backbone: "resnet18"
+layer_indices: [0]
+feat_dim: 50
+resize: [224, 224]
+crop_size: null
+normalize: true
+norm_mean: [0.485, 0.456, 0.406]
+norm_std: [0.229, 0.224, 0.225]
+batch_size: 2
+device: "cpu"
+model_data_path: "./distributions"
+output_model: "model.pt"
+model: "model.pt"
+run_name: "quickstart_cpu"
+log_level: "INFO"
+num_workers: 0
+pin_memory: false
+enable_visualization: true
+save_visualizations: true
+viz_output_dir: "./quickstart_results"
+viz_alpha: 0.5
+viz_padding: 40
+viz_color: "128,0,128"
+stream_mode: false
+memory_efficient: true
+thresh: null
+thresh_padim: null
+thresh_patchcore: null

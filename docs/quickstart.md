@@ -2,6 +2,60 @@
 
 This guide shows how to **train, detect, evaluate, export, and stream** with AnomaVision in just a few steps.
 
+## Five-minute CPU path
+
+This is the recommended first run. It uses **PaDiM**, CPU inference, and a small ResNet-18 configuration, so no NVIDIA GPU is required.
+
+### 1. Install
+
+```bash
+pip install uv
+uv pip install "anomavision[cpu]"
+```
+
+### 2. Prepare an MVTec-style dataset
+
+Place the dataset root at `./dataset` or change `dataset_path` in `examples/quickstart_cpu.yml`:
+
+```text
+dataset/
+└── bottle/
+    ├── train/good/
+    └── test/
+        ├── good/
+        └── scratch/
+```
+
+### 3. Train on CPU
+
+```bash
+anomavision train --config examples/quickstart_cpu.yml
+```
+
+The model is saved to `./distributions/padim/bottle/quickstart_cpu/model.pt`.
+
+### 4. Detect and save visualizations
+
+```bash
+anomavision detect --config examples/quickstart_cpu.yml \
+  --img_path ./dataset/bottle/test \
+  --device cpu
+```
+
+Results are written under `./quickstart_results/padim/bottle/PT/quickstart_cpu/`.
+
+### 5. Evaluate the complete test set
+
+```bash
+anomavision eval --config examples/quickstart_cpu.yml \
+  --dataset_path ./dataset \
+  --device cpu
+```
+
+The evaluation reports image-level metrics, localization metrics when masks are available, and inference timing. A configured threshold is optional: when it is `null`, AnomaVision selects one during evaluation.
+
+For the full workflow, including PatchCore, TensorRT, INT8 export, and streaming, continue with the detailed sections below.
+
 ---
 
 ## 1. Prepare Dataset
@@ -34,7 +88,7 @@ dataset/
 
 ```bash
 anomavision train \
-  --config config.yml
+  --config config.yml \
   --dataset_path ./dataset \
   --class_name bottle \
   --backbone resnet18 \
