@@ -111,7 +111,7 @@ anomavision export --help
 
 ## Production Autopilot
 
-Production Autopilot compares PaDiM and ultra-light PatchCore, calibrates an operating threshold, measures latency on your selected device, and creates a self-contained deployment package with an HTML report. Train or export both candidate models first, then run:
+Production Autopilot compares PaDiM and ultra-light PatchCore, calibrates an operating threshold, measures latency on your selected device, and creates a self-contained deployment package with an **HTML report**. Train or export both candidate models first, then run:
 
 ```bash
 anomavision autopilot \
