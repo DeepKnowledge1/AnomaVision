@@ -196,7 +196,7 @@ class Visualizer:
         cv2.rectangle(img, (5, 5), (420, 110), (0, 0, 0), -1)
         cv2.putText(
             img,
-            f"Score: {self._to_fixed(r.score,3)}",
+            f"Score: {self._to_fixed(r.score, 3)}",
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -214,7 +214,7 @@ class Visualizer:
         )
         cv2.putText(
             img,
-            f"Time: {self._to_fixed(t_ms,2)} ms",
+            f"Time: {self._to_fixed(t_ms, 2)} ms",
             (10, 90),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,

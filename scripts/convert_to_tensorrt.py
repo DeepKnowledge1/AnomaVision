@@ -34,7 +34,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from anomavision.export import ModelExporter
 
-
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 PADIM_KEYS = {"mean", "cov_inv", "channel_indices", "layer_indices", "backbone"}
 PATCHCORE_KEYS = {"memory_bank", "layer_indices", "backbone"}
@@ -110,7 +109,9 @@ def validate_engine(engine_path: Path, input_name: str = "input") -> None:
     else:
         names = [engine.get_binding_name(i) for i in range(engine.num_bindings)]
     if input_name not in names:
-        raise RuntimeError(f"Engine inputs/outputs {names} do not include '{input_name}'")
+        raise RuntimeError(
+            f"Engine inputs/outputs {names} do not include '{input_name}'"
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -118,19 +119,45 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Convert an AnomaVision PaDiM or PatchCore artifact to TensorRT."
     )
-    parser.add_argument("--model", type=Path, required=True, help="Input .pth/.pt model artifact")
-    parser.add_argument("--output-dir", type=Path, required=True, help="Directory for the engine and calibration cache")
-    parser.add_argument("--output-name", default=None, help="Engine filename; defaults to <model>_<precision>.engine")
+    parser.add_argument(
+        "--model", type=Path, required=True, help="Input .pth/.pt model artifact"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help="Directory for the engine and calibration cache",
+    )
+    parser.add_argument(
+        "--output-name",
+        default=None,
+        help="Engine filename; defaults to <model>_<precision>.engine",
+    )
     parser.add_argument("--precision", choices=("fp32", "fp16", "int8"), default="int8")
-    parser.add_argument("--device", default="cuda", help="CUDA device used to build the engine")
-    parser.add_argument("--input-shape", nargs=4, type=int, default=(1, 3, 224, 224), metavar=("N", "C", "H", "W"))
+    parser.add_argument(
+        "--device", default="cuda", help="CUDA device used to build the engine"
+    )
+    parser.add_argument(
+        "--input-shape",
+        nargs=4,
+        type=int,
+        default=(1, 3, 224, 224),
+        metavar=("N", "C", "H", "W"),
+    )
     parser.add_argument("--min-batch", type=int, default=1)
     parser.add_argument("--opt-batch", type=int, default=1)
     parser.add_argument("--max-batch", type=int, default=4)
-    parser.add_argument("--calib-dir", type=Path, default=None, help="Normal calibration images; required for INT8")
+    parser.add_argument(
+        "--calib-dir",
+        type=Path,
+        default=None,
+        help="Normal calibration images; required for INT8",
+    )
     parser.add_argument("--calib-samples", type=int, default=100)
     parser.add_argument("--workspace-gb", type=float, default=2.0)
-    parser.add_argument("--static-batch", action="store_true", help="Build a fixed-batch engine")
+    parser.add_argument(
+        "--static-batch", action="store_true", help="Build a fixed-batch engine"
+    )
     parser.add_argument("--skip-validation", action="store_true")
     return parser
 
@@ -148,8 +175,14 @@ def main(argv=None) -> int:
             raise SystemExit("INT8 conversion requires an existing --calib-dir.")
         calibration_images = list(_image_files(args.calib_dir))
         if not calibration_images:
-            raise SystemExit(f"No supported calibration images found in {args.calib_dir}.")
-        logger.info("using %d calibration images (limit=%d)", len(calibration_images), args.calib_samples)
+            raise SystemExit(
+                f"No supported calibration images found in {args.calib_dir}."
+            )
+        logger.info(
+            "using %d calibration images (limit=%d)",
+            len(calibration_images),
+            args.calib_samples,
+        )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     output_name = args.output_name or f"{args.model.stem}_{args.precision}.engine"

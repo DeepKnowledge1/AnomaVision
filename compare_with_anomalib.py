@@ -71,6 +71,7 @@ def build_anomalib_mvtec(MVTec, root: Path, category: str, batch_size: int):
     if "normalization" in parameters:
         try:
             from anomalib.data import NormalizationMethod
+
             kwargs["normalization"] = NormalizationMethod.IMAGENET
         except (ImportError, AttributeError):
             kwargs["normalization"] = "imagenet"
@@ -241,7 +242,11 @@ class BenchmarkRunner:
             "torch": torch.__version__,
             "device": str(self.device),
             "cuda": str(torch.version.cuda),
-            "gpu": torch.cuda.get_device_name(self.device) if self.device.type == "cuda" else "cpu",
+            "gpu": (
+                torch.cuda.get_device_name(self.device)
+                if self.device.type == "cuda"
+                else "cpu"
+            ),
             "seed": str(self.seed),
             "image_size": f"{IMAGE_SIZE[0]}x{IMAGE_SIZE[1]}",
             "normalize": str(NORMALIZE),
@@ -352,7 +357,6 @@ class BenchmarkRunner:
             metrics.compact_model_size_mb = stats_path.stat().st_size / (1024 * 1024)
             print(f"   Full PyTorch model size: {metrics.model_size_mb:.2f} MB")
             print(f"   Compact statistics size: {metrics.compact_model_size_mb:.2f} MB")
-
 
             # === 4. Export Sizes ===
             print("\n4. Testing export formats...")
@@ -1073,7 +1077,10 @@ def main():
     )
 
     parser.add_argument(
-        "--seed", type=int, default=SEED, help="Random seed shared by both implementations"
+        "--seed",
+        type=int,
+        default=SEED,
+        help="Random seed shared by both implementations",
     )
 
     parser.add_argument(
@@ -1109,7 +1116,9 @@ def main():
             print("=" * 60)
 
             try:
-                runner = BenchmarkRunner(args.dataset_path, class_name, args.device, args.seed)
+                runner = BenchmarkRunner(
+                    args.dataset_path, class_name, args.device, args.seed
+                )
                 results = runner.run_comparison()
                 all_results[class_name] = results
             except Exception as e:

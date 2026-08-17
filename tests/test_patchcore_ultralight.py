@@ -14,7 +14,9 @@ class FakeExtractor(torch.nn.Module):
     def forward(self, batch, layer_indices=None):
         batch_size = batch.shape[0]
         # A 4x4 native feature map makes pooling and patch-count assertions explicit.
-        embeddings = batch.mean(dim=(1, 2, 3)).view(batch_size, 1, 1).expand(batch_size, 16, 3)
+        embeddings = (
+            batch.mean(dim=(1, 2, 3)).view(batch_size, 1, 1).expand(batch_size, 16, 3)
+        )
         return embeddings, 4, 4
 
     def to_device(self, device):
@@ -40,7 +42,9 @@ def test_ultralight_patchcore_bounds_patches_and_search(monkeypatch):
     assert maps.shape == (2, 8, 8)
 
 
-def test_patchcore_stats_round_trip_preserves_ultralight_settings(monkeypatch, tmp_path):
+def test_patchcore_stats_round_trip_preserves_ultralight_settings(
+    monkeypatch, tmp_path
+):
     monkeypatch.setattr(patchcore_module, "ResnetEmbeddingsExtractor", FakeExtractor)
     model = patchcore_module.PatchCore(
         device="cpu", patch_grid=3, search_chunk_size=7, max_memory_patches=11

@@ -298,7 +298,9 @@ def make_localization_mask(score_maps, image_classifications, quantile: float = 
         maximum = float(finite.max())
         if maximum <= minimum + 1e-8:
             continue
-        cutoff = max(float(np.quantile(finite, quantile)), minimum + 0.5 * (maximum - minimum))
+        cutoff = max(
+            float(np.quantile(finite, quantile)), minimum + 0.5 * (maximum - minimum)
+        )
         masks[index] = (finite >= cutoff).astype(np.uint8)
     return masks
 

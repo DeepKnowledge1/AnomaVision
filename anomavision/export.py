@@ -78,7 +78,8 @@ def load_calibration_images(
     paths = sorted(
         p
         for p in Path(img_dir).rglob("*")
-        if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+        if p.is_file()
+        and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
     )[:max_samples]
     samples = []
 
@@ -232,7 +233,11 @@ class ModelExporter:
         }.issubset(obj.keys()):
             self.logger.info("Loading PaDiM statistics artifact")
             base = build_padim_from_stats(obj, device=str(self.device))
-        elif isinstance(obj, dict) and {"memory_bank", "layer_indices", "backbone"}.issubset(obj.keys()):
+        elif isinstance(obj, dict) and {
+            "memory_bank",
+            "layer_indices",
+            "backbone",
+        }.issubset(obj.keys()):
             self.logger.info("Loading PatchCore memory-bank artifact")
             base = build_patchcore_from_stats(obj, device=str(self.device))
         else:
@@ -475,7 +480,9 @@ class ModelExporter:
             opt_batch = int(opt_batch or max(min_batch, input_shape[0]))
             max_batch = int(max_batch or max(opt_batch, 4))
             if not min_batch <= opt_batch <= max_batch:
-                raise ValueError("Batch profile must satisfy min_batch <= opt_batch <= max_batch")
+                raise ValueError(
+                    "Batch profile must satisfy min_batch <= opt_batch <= max_batch"
+                )
 
             onnx_path = self.export_onnx(
                 input_shape=input_shape,
@@ -494,8 +501,12 @@ class ModelExporter:
             parser = trt.OnnxParser(network, logger)
             with onnx_path.open("rb") as handle:
                 if not parser.parse(handle.read()):
-                    errors = [str(parser.get_error(i)) for i in range(parser.num_errors)]
-                    raise RuntimeError("TensorRT ONNX parse failed: " + " | ".join(errors))
+                    errors = [
+                        str(parser.get_error(i)) for i in range(parser.num_errors)
+                    ]
+                    raise RuntimeError(
+                        "TensorRT ONNX parse failed: " + " | ".join(errors)
+                    )
 
             build_config = builder.create_builder_config()
             build_config.set_memory_pool_limit(
@@ -503,11 +514,15 @@ class ModelExporter:
             )
             if precision in {"fp16", "int8"}:
                 if not builder.platform_has_fast_fp16:
-                    self.logger.warning("TensorRT platform does not report fast FP16 support.")
+                    self.logger.warning(
+                        "TensorRT platform does not report fast FP16 support."
+                    )
                 build_config.set_flag(trt.BuilderFlag.FP16)
             if precision == "int8":
                 if not builder.platform_has_fast_int8:
-                    self.logger.warning("TensorRT platform does not report fast INT8 support.")
+                    self.logger.warning(
+                        "TensorRT platform does not report fast INT8 support."
+                    )
                 build_config.set_flag(trt.BuilderFlag.INT8)
                 samples = load_calibration_images(
                     calib_dir,
@@ -551,7 +566,9 @@ class ModelExporter:
             )
             return output_path
         except Exception:
-            self.logger.exception("tensorrt: failed after %.2fs", time.perf_counter() - t0)
+            self.logger.exception(
+                "tensorrt: failed after %.2fs", time.perf_counter() - t0
+            )
             return None
         finally:
             temp_onnx.unlink(missing_ok=True)
@@ -828,13 +845,22 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="TensorRT builder workspace limit in GiB",
     )
     parser.add_argument(
-        "--min-batch", type=int, default=1, help="TensorRT dynamic profile minimum batch"
+        "--min-batch",
+        type=int,
+        default=1,
+        help="TensorRT dynamic profile minimum batch",
     )
     parser.add_argument(
-        "--opt-batch", type=int, default=1, help="TensorRT dynamic profile optimal batch"
+        "--opt-batch",
+        type=int,
+        default=1,
+        help="TensorRT dynamic profile optimal batch",
     )
     parser.add_argument(
-        "--max-batch", type=int, default=4, help="TensorRT dynamic profile maximum batch"
+        "--max-batch",
+        type=int,
+        default=4,
+        help="TensorRT dynamic profile maximum batch",
     )
     parser.add_argument(
         "--static-batch", action="store_true", help="Disable dynamic batch size"

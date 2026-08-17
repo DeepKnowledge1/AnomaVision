@@ -421,9 +421,11 @@ def run_inference(args):
                             score_maps, is_anomaly, quantile=0.90
                         )
                     else:
-                        localization_masks = anomavision.classification(
-                            score_maps, config.thresh
-                        ) if config.thresh is not None else np.zeros_like(score_maps)
+                        localization_masks = (
+                            anomavision.classification(score_maps, config.thresh)
+                            if config.thresh is not None
+                            else np.zeros_like(score_maps)
+                        )
 
                     # Accumulate Results (Offline only)
                     if not stream_mode:
@@ -457,11 +459,12 @@ def run_inference(args):
                             masks=localization_masks,
                             alpha=config.get("viz_alpha", 0.5),
                         )
-                        highlighted_images = anomavision.visualization.highlighted_images(
-                            [images[i] for i in range(len(images))],
-                            localization_masks,
-
-                            color=viz_color,
+                        highlighted_images = (
+                            anomavision.visualization.highlighted_images(
+                                [images[i] for i in range(len(images))],
+                                localization_masks,
+                                color=viz_color,
+                            )
                         )
 
                         # Save/Show

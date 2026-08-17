@@ -1838,7 +1838,7 @@ class AnomaVisionGUI:
                 )
 
             self.device_badge.config(
-                text=f"Device: {config['device'].upper() if config['device']!='auto' else 'Auto'}"
+                text=f"Device: {config['device'].upper() if config['device'] != 'auto' else 'Auto'}"
             )
 
             self.infer_button.config(state=tk.DISABLED)
@@ -2140,7 +2140,7 @@ class AnomaVisionGUI:
         pw, ph = self.root.winfo_width(), self.root.winfo_height()
         ww, wh = 760, 600
         wx, wy = px + (pw - ww) // 2, py + (ph - wh) // 2
-        win.geometry(f"{ww}x{wh}+{max(wx,0)}+{max(wy,0)}")
+        win.geometry(f"{ww}x{wh}+{max(wx, 0)}+{max(wy, 0)}")
 
         def close():
             try:

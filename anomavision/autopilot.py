@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from html import escape
 import json
 import platform
 import shutil
 import sys
 import time
+from html import escape
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
@@ -21,7 +21,11 @@ import anomavision
 from anomavision.config import load_config
 from anomavision.general import determine_device
 from anomavision.inference.model.wrapper import ModelWrapper
-from anomavision.utils import compute_metrics, find_optimal_threshold, make_localization_mask
+from anomavision.utils import (
+    compute_metrics,
+    find_optimal_threshold,
+    make_localization_mask,
+)
 
 
 def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
@@ -30,18 +34,39 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         description="Select, calibrate, profile, and package a production anomaly model.",
         add_help=add_help,
     )
-    parser.add_argument("--config", type=str, required=True, help="Base AnomaVision config file.")
-    parser.add_argument("--dataset_path", type=str, default=None, help="MVTec-style dataset root.")
-    parser.add_argument("--class_name", type=str, default=None, help="Dataset class to evaluate.")
-    parser.add_argument("--padim_model", type=str, default=None, help="PaDiM model artifact (.pt/.pth/.onnx).")
-    parser.add_argument("--patchcore_model", type=str, default=None, help="PatchCore model artifact (.pt/.pth/.onnx).")
+    parser.add_argument(
+        "--config", type=str, required=True, help="Base AnomaVision config file."
+    )
+    parser.add_argument(
+        "--dataset_path", type=str, default=None, help="MVTec-style dataset root."
+    )
+    parser.add_argument(
+        "--class_name", type=str, default=None, help="Dataset class to evaluate."
+    )
+    parser.add_argument(
+        "--padim_model",
+        type=str,
+        default=None,
+        help="PaDiM model artifact (.pt/.pth/.onnx).",
+    )
+    parser.add_argument(
+        "--patchcore_model",
+        type=str,
+        default=None,
+        help="PatchCore model artifact (.pt/.pth/.onnx).",
+    )
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--timing_batches", type=int, default=20)
     parser.add_argument("--target_latency_ms", type=float, default=None)
-    parser.add_argument("--validation_split", type=float, default=1.0, help="Fraction of the complete labeled test split used for calibration; 1.0 uses every sample.")
+    parser.add_argument(
+        "--validation_split",
+        type=float,
+        default=1.0,
+        help="Fraction of the complete labeled test split used for calibration; 1.0 uses every sample.",
+    )
     parser.add_argument("--output_dir", type=str, default="./production_package")
     parser.add_argument("--copy_config", action="store_true", default=True)
     return parser
@@ -61,7 +86,13 @@ def _format_percent(value: Any) -> str:
     return "N/A" if value is None else f"{float(value):.1%}"
 
 
-def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup: int, timing_batches: int) -> Dict[str, Any]:
+def _profile_model(
+    model_path: str,
+    dataloader: DataLoader,
+    device: str,
+    warmup: int,
+    timing_batches: int,
+) -> Dict[str, Any]:
     wrapper = ModelWrapper(model_path, device)
     iterator = iter(dataloader)
     try:
@@ -97,10 +128,20 @@ def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup:
     wrapper.close()
     scores_np = np.asarray(all_scores, dtype=np.float32)
     labels_np = np.asarray(all_labels, dtype=np.int64)
-    maps_np = np.asarray(all_maps, dtype=np.float32) if all_maps else np.empty((0, 0, 0), dtype=np.float32)
-    threshold, threshold_f1 = find_optimal_threshold(labels_np, scores_np) if len(np.unique(labels_np)) > 1 else (float(np.median(scores_np)), 0.0)
+    maps_np = (
+        np.asarray(all_maps, dtype=np.float32)
+        if all_maps
+        else np.empty((0, 0, 0), dtype=np.float32)
+    )
+    threshold, threshold_f1 = (
+        find_optimal_threshold(labels_np, scores_np)
+        if len(np.unique(labels_np)) > 1
+        else (float(np.median(scores_np)), 0.0)
+    )
     image_metrics = compute_metrics(labels_np, scores_np, thresh=threshold)
-    image_auroc = image_metrics.get("auc_score") if len(np.unique(labels_np)) > 1 else None
+    image_auroc = (
+        image_metrics.get("auc_score") if len(np.unique(labels_np)) > 1 else None
+    )
     pixel_auroc = None
     masks_np = np.asarray(all_masks, dtype=np.float32)
     if masks_np.ndim == 4 and masks_np.shape[1] == 1:
@@ -115,9 +156,15 @@ def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup:
         "normal_mean_mask_area_fraction": None,
         "verdict": "unavailable",
     }
-    if localization["available"] and masks_np.shape == maps_np.shape and np.unique(masks_np).size > 1:
+    if (
+        localization["available"]
+        and masks_np.shape == maps_np.shape
+        and np.unique(masks_np).size > 1
+    ):
         try:
-            pixel_auroc = float(roc_auc_score(masks_np.reshape(-1) > 0.5, maps_np.reshape(-1)))
+            pixel_auroc = float(
+                roc_auc_score(masks_np.reshape(-1) > 0.5, maps_np.reshape(-1))
+            )
         except ValueError:
             pixel_auroc = None
     image_metrics["image_auroc"] = image_auroc
@@ -131,36 +178,73 @@ def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup:
         normal_idx = labels_np == 0
         localization["non_empty_fraction"] = float(non_empty.mean())
         localization["mean_mask_area_fraction"] = float(area.mean())
-        localization["anomaly_non_empty_fraction"] = float(non_empty[anomaly_idx].mean()) if anomaly_idx.any() else None
-        localization["normal_false_positive_fraction"] = float(non_empty[normal_idx].mean()) if normal_idx.any() else None
-        localization["anomaly_mean_mask_area_fraction"] = float(area[anomaly_idx].mean()) if anomaly_idx.any() else None
-        localization["normal_mean_mask_area_fraction"] = float(area[normal_idx].mean()) if normal_idx.any() else None
+        localization["anomaly_non_empty_fraction"] = (
+            float(non_empty[anomaly_idx].mean()) if anomaly_idx.any() else None
+        )
+        localization["normal_false_positive_fraction"] = (
+            float(non_empty[normal_idx].mean()) if normal_idx.any() else None
+        )
+        localization["anomaly_mean_mask_area_fraction"] = (
+            float(area[anomaly_idx].mean()) if anomaly_idx.any() else None
+        )
+        localization["normal_mean_mask_area_fraction"] = (
+            float(area[normal_idx].mean()) if normal_idx.any() else None
+        )
         if pixel_auroc is not None:
-            localization["verdict"] = "healthy" if (localization["normal_false_positive_fraction"] or 0.0) <= 0.10 else "review false positives"
+            localization["verdict"] = (
+                "healthy"
+                if (localization["normal_false_positive_fraction"] or 0.0) <= 0.10
+                else "review false positives"
+            )
         else:
             localization["verdict"] = "maps available; pixel AUROC unavailable"
-    median_ms = float(np.median(timings) * 1000 / max(1, dataloader.batch_size)) if timings else 0.0
-    p95_ms = float(np.percentile(timings, 95) * 1000 / max(1, dataloader.batch_size)) if timings else 0.0
+    median_ms = (
+        float(np.median(timings) * 1000 / max(1, dataloader.batch_size))
+        if timings
+        else 0.0
+    )
+    p95_ms = (
+        float(np.percentile(timings, 95) * 1000 / max(1, dataloader.batch_size))
+        if timings
+        else 0.0
+    )
     return {
         "model_path": str(Path(model_path).resolve()),
         "model_format": Path(model_path).suffix.lower(),
         "threshold": float(threshold),
         "threshold_f1": float(threshold_f1),
-        "metrics": {k: (float(v) if isinstance(v, (float, np.floating)) else v) for k, v in image_metrics.items()},
+        "metrics": {
+            k: (float(v) if isinstance(v, (float, np.floating)) else v)
+            for k, v in image_metrics.items()
+        },
         "latency_ms": {"median": median_ms, "p95": p95_ms},
-        "throughput_images_per_second": float(1000.0 / median_ms) if median_ms > 0 else 0.0,
+        "throughput_images_per_second": (
+            float(1000.0 / median_ms) if median_ms > 0 else 0.0
+        ),
         "localization": localization,
         "samples": int(len(labels_np)),
     }
 
 
-def _select(results: Dict[str, Dict[str, Any]], target_latency_ms: Optional[float]) -> str:
+def _select(
+    results: Dict[str, Dict[str, Any]], target_latency_ms: Optional[float]
+) -> str:
     eligible = results
     if target_latency_ms is not None:
-        eligible = {name: result for name, result in results.items() if result["latency_ms"]["p95"] <= target_latency_ms}
+        eligible = {
+            name: result
+            for name, result in results.items()
+            if result["latency_ms"]["p95"] <= target_latency_ms
+        }
     if not eligible:
         eligible = results
-    return max(eligible, key=lambda name: (eligible[name]["metrics"].get("image_auroc") or 0.0, -eligible[name]["latency_ms"]["p95"]))
+    return max(
+        eligible,
+        key=lambda name: (
+            eligible[name]["metrics"].get("image_auroc") or 0.0,
+            -eligible[name]["latency_ms"]["p95"],
+        ),
+    )
 
 
 def _write_report(manifest: Dict[str, Any], output_dir: Path) -> None:
@@ -184,9 +268,13 @@ def _write_report(manifest: Dict[str, Any], output_dir: Path) -> None:
         rows.append(
             f'<tr class="{"active" if is_selected else ""}"><td><strong>{escape(name)}</strong></td><td>{_format_metric(metrics.get("image_auroc"))}</td><td>{_format_metric(metrics.get("pixel_auroc"))}</td><td>{result["latency_ms"]["median"]:.2f}</td><td>{result["latency_ms"]["p95"]:.2f}</td><td>{_format_percent(loc.get("anomaly_non_empty_fraction"))}</td><td>{_format_percent(loc.get("normal_false_positive_fraction"))}</td><td><code>{result["threshold"]:.6f}</code></td></tr>'
         )
-    target_text = f"under {target:.1f} ms p95" if target is not None else "with the strongest measured accuracy/latency balance"
+    target_text = (
+        f"under {target:.1f} ms p95"
+        if target is not None
+        else "with the strongest measured accuracy/latency balance"
+    )
     environment_json = escape(json.dumps(manifest["environment"], indent=2))
-    html = f'''<!doctype html>
+    html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AnomaVision Production Autopilot</title>
 <style>
@@ -203,11 +291,20 @@ def _write_report(manifest: Dict[str, Any], output_dir: Path) -> None:
 <section class="section"><div class="section-title"><h2>Detailed comparison</h2><span class="muted">Higher AUROC and anomaly coverage are better; lower false positives and latency are better</span></div><div class="table-wrap"><table><thead><tr><th>Model</th><th>Image AUROC</th><th>Pixel AUROC</th><th>Median ms</th><th>P95 ms</th><th>Anomaly coverage</th><th>Normal false positives</th><th>Threshold</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div></section>
 <section class="section two-col"><div class="panel"><h2>Localization health</h2><div class="check"><span>Selected model maps available</span><span class="ok">{"PASS" if selected_result["localization"]["available"] else "CHECK"}</span></div><div class="check"><span>Anomaly images with localization</span><span class="ok">{_format_percent(selected_result["localization"].get("anomaly_non_empty_fraction"))}</span></div><div class="check"><span>Normal images with false-positive maps</span><span>{_format_percent(selected_result["localization"].get("normal_false_positive_fraction"))}</span></div><div class="check"><span>Anomaly mean mask area</span><span>{_format_percent(selected_result["localization"].get("anomaly_mean_mask_area_fraction"))}</span></div><div class="check"><span>Localization verdict</span><span class="ok">{escape(str(selected_result["localization"].get("verdict", "N/A")))}</span></div><p class="muted">Anomaly coverage measures detected defect images. Normal false positives should remain low.</p></div><div class="panel"><h2>Deployment artifact</h2><div class="check"><span>Artifact</span><code>{escape(str(manifest["selected_artifact"]))}</code></div><div class="check"><span>Format</span><code>{escape(str(selected_result["model_format"]))}</code></div><div class="check"><span>Preprocessing</span><span>{escape(str(manifest["preprocessing"].get("resize")))} px</span></div><div class="check"><span>Target latency</span><span>{escape(str(target)) if target is not None else "not set"}</span></div></div></section>
 <section class="section"><div class="panel"><h2>Reproducibility environment</h2><pre>{environment_json}</pre></div></section><footer>Generated by AnomaVision Production Autopilot · manifest schema {manifest["schema_version"]}</footer>
-</main></body></html>'''
+</main></body></html>"""
     (output_dir / "production_autopilot_report.html").write_text(html, encoding="utf-8")
 
-    markdown = ["# AnomaVision Production Autopilot Report", "", f"**Selected model:** `{selected}`", "", "See `production_autopilot_report.html` for the full dashboard.", ""]
-    (output_dir / "localization_report.md").write_text("\\n".join(markdown), encoding="utf-8")
+    markdown = [
+        "# AnomaVision Production Autopilot Report",
+        "",
+        f"**Selected model:** `{selected}`",
+        "",
+        "See `production_autopilot_report.html` for the full dashboard.",
+        "",
+    ]
+    (output_dir / "localization_report.md").write_text(
+        "\\n".join(markdown), encoding="utf-8"
+    )
 
 
 def run(args: argparse.Namespace) -> Dict[str, Any]:
@@ -216,14 +313,36 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     dataset_path = args.dataset_path or cfg.get("dataset_path") or cfg.get("img_path")
     class_name = args.class_name or cfg.get("class_name")
     if not dataset_path or not class_name:
-        raise ValueError("dataset_path and class_name are required in the CLI or config.")
+        raise ValueError(
+            "dataset_path and class_name are required in the CLI or config."
+        )
     device = determine_device(args.device)
-    dataset = anomavision.MVTecDataset(dataset_path, class_name, is_train=False, resize=cfg.get("resize", 224), crop_size=cfg.get("crop_size", 224), normalize=cfg.get("normalize", True), mean=cfg.get("norm_mean"), std=cfg.get("norm_std"))
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=False)
+    dataset = anomavision.MVTecDataset(
+        dataset_path,
+        class_name,
+        is_train=False,
+        resize=cfg.get("resize", 224),
+        crop_size=cfg.get("crop_size", 224),
+        normalize=cfg.get("normalize", True),
+        mean=cfg.get("norm_mean"),
+        std=cfg.get("norm_std"),
+    )
+    dataloader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=False,
+    )
     candidates = {}
-    for name, model_path in (("padim", args.padim_model), ("patchcore", args.patchcore_model)):
+    for name, model_path in (
+        ("padim", args.padim_model),
+        ("patchcore", args.patchcore_model),
+    ):
         if model_path:
-            candidates[name] = _profile_model(model_path, dataloader, device, args.warmup, args.timing_batches)
+            candidates[name] = _profile_model(
+                model_path, dataloader, device, args.warmup, args.timing_batches
+            )
     if not candidates:
         raise ValueError("Provide at least one of --padim_model or --patchcore_model.")
     selected = _select(candidates, args.target_latency_ms)
@@ -236,13 +355,30 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
         "schema_version": 2,
         "selected_model": selected,
         "selected_artifact": str(packaged_model.name),
-        "dataset": {"path": str(Path(dataset_path).resolve()), "class_name": class_name, "samples": len(dataset)},
-        "preprocessing": {"resize": cfg.get("resize", 224), "crop_size": cfg.get("crop_size", 224), "normalize": cfg.get("normalize", True), "mean": cfg.get("norm_mean"), "std": cfg.get("norm_std")},
+        "dataset": {
+            "path": str(Path(dataset_path).resolve()),
+            "class_name": class_name,
+            "samples": len(dataset),
+        },
+        "preprocessing": {
+            "resize": cfg.get("resize", 224),
+            "crop_size": cfg.get("crop_size", 224),
+            "normalize": cfg.get("normalize", True),
+            "mean": cfg.get("norm_mean"),
+            "std": cfg.get("norm_std"),
+        },
         "candidates": candidates,
         "target_latency_ms": args.target_latency_ms,
-        "environment": {"python": sys.version.split()[0], "platform": platform.platform(), "torch": torch.__version__, "device": device},
+        "environment": {
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+            "torch": torch.__version__,
+            "device": device,
+        },
     }
-    (output_dir / "deployment_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (output_dir / "deployment_manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8"
+    )
     _write_report(manifest, output_dir)
     return manifest
 
@@ -250,7 +386,15 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
 def main(args: Optional[argparse.Namespace] = None) -> None:
     args = args or create_parser().parse_args()
     manifest = run(args)
-    print(json.dumps({"selected_model": manifest["selected_model"], "output_dir": str(Path(args.output_dir).resolve())}, indent=2))
+    print(
+        json.dumps(
+            {
+                "selected_model": manifest["selected_model"],
+                "output_dir": str(Path(args.output_dir).resolve()),
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

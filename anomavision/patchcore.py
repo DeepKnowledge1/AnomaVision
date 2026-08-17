@@ -85,7 +85,9 @@ class PatchCore(torch.nn.Module):
         if not 0 < coreset_ratio <= 1:
             raise ValueError("coreset_ratio must be in the interval (0, 1].")
         if n_neighbors != 1:
-            raise ValueError("This lightweight implementation supports n_neighbors=1 only.")
+            raise ValueError(
+                "This lightweight implementation supports n_neighbors=1 only."
+            )
         self.device = torch.device(device)
         self.backbone = backbone
         self.layer_indices = list(layer_indices or [0, 1])
@@ -132,12 +134,18 @@ class PatchCore(torch.nn.Module):
             batch.to(self.device), layer_indices=self.layer_indices
         )
         embeddings = embeddings.float().reshape(batch.shape[0], width, height, -1)
-        if self.patch_grid is not None and (width > self.patch_grid or height > self.patch_grid):
+        if self.patch_grid is not None and (
+            width > self.patch_grid or height > self.patch_grid
+        ):
             embeddings = F.adaptive_avg_pool2d(
                 embeddings.permute(0, 3, 1, 2), (self.patch_grid, self.patch_grid)
             ).permute(0, 2, 3, 1)
         width, height = embeddings.shape[1:3]
-        return F.normalize(embeddings.reshape(batch.shape[0], width * height, -1), dim=-1), width, height
+        return (
+            F.normalize(embeddings.reshape(batch.shape[0], width * height, -1), dim=-1),
+            width,
+            height,
+        )
 
     @torch.no_grad()
     def _select_coreset(self, bank: torch.Tensor, keep: int) -> torch.Tensor:
@@ -178,7 +186,9 @@ class PatchCore(torch.nn.Module):
         return bank[selected]
 
     @torch.no_grad()
-    def fit(self, dataloader: torch.utils.data.DataLoader, extractions: int = 1) -> None:
+    def fit(
+        self, dataloader: torch.utils.data.DataLoader, extractions: int = 1
+    ) -> None:
         """Fit the detector from normal training images.
 
         The method extracts every normal patch, selects a bounded diverse
@@ -250,13 +260,18 @@ class PatchCore(torch.nn.Module):
         nearest_chunks = []
         for query_chunk in flat.split(self.search_chunk_size, dim=0):
             similarity = query_chunk @ self.memory_bank.transpose(0, 1)
-            nearest_chunks.append((2.0 - 2.0 * similarity.amax(dim=1)).clamp_min_(0).sqrt_())
+            nearest_chunks.append(
+                (2.0 - 2.0 * similarity.amax(dim=1)).clamp_min_(0).sqrt_()
+            )
         nearest = torch.cat(nearest_chunks).reshape(batch.shape[0], width, height)
         scores = nearest.flatten(1).amax(1)
         if not return_map:
             return scores, None
         score_map = F.interpolate(
-            nearest.unsqueeze(1), size=batch.shape[-2:], mode="bilinear", align_corners=False
+            nearest.unsqueeze(1),
+            size=batch.shape[-2:],
+            mode="bilinear",
+            align_corners=False,
         ).squeeze(1)
         return scores, score_map
 

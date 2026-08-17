@@ -416,9 +416,9 @@ def run_evaluation(args):
 
     for k, v in metrics.items():
         if isinstance(v, float):
-            logger.info(f"{k.replace('_',' ').title():<28} {v:.6f}")
+            logger.info(f"{k.replace('_', ' ').title():<28} {v:.6f}")
         else:
-            logger.info(f"{k.replace('_',' ').title():<28} {v}")
+            logger.info(f"{k.replace('_', ' ').title():<28} {v}")
 
     logger.info("=" * 60)
 

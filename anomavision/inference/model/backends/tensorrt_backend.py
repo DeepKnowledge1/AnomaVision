@@ -49,7 +49,9 @@ class TensorRTBackend(InferenceBackend):
             == trt.TensorIOMode.OUTPUT
         ]
         logger.info(
-            "TensorRT engine loaded: input=%s outputs=%s", self.input_name, self.output_names
+            "TensorRT engine loaded: input=%s outputs=%s",
+            self.input_name,
+            self.output_names,
         )
 
     def predict(self, batch: Batch) -> ScoresMaps:

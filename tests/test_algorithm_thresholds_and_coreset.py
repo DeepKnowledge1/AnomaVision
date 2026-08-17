@@ -20,13 +20,16 @@ def test_algorithm_threshold_overrides_legacy_threshold():
 
 
 def test_zero_algorithm_threshold_is_preserved():
-    assert resolve_threshold({"algorithm": "patchcore", "thresh": 13.0, "thresh_patchcore": 0.0}) == 0.0
+    assert (
+        resolve_threshold(
+            {"algorithm": "patchcore", "thresh": 13.0, "thresh_patchcore": 0.0}
+        )
+        == 0.0
+    )
 
 
 def test_kcenter_selection_is_deterministic_and_bounded():
-    bank = torch.tensor(
-        [[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0], [0.7, 0.7]]
-    )
+    bank = torch.tensor([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0], [0.7, 0.7]])
     first = PatchCore(
         device=torch.device("cpu"),
         memory_bank=bank,

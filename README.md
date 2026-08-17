@@ -1,9 +1,29 @@
 # AnomaVision
 
-AnomaVision is a production-oriented library for **visual anomaly detection from normal images**. It supports PaDiM and lightweight PatchCore, image-level scores, pixel-level maps, and deployment exports.
+<p align="center">
+  <img src="docs/images/banner.png" width="100%" alt="AnomaVision banner"/>
+</p>
 
-[![PyPI](https://img.shields.io/pypi/v/anomavision?label=PyPI)](https://pypi.org/project/anomavision/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+<p align="center">
+  <strong>Production-oriented visual anomaly detection from normal images.</strong>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/anomavision/"><img src="https://img.shields.io/pypi/v/anomavision?label=PyPI&color=blue" alt="PyPI version"/></a>
+  <a href="https://pypi.org/project/anomavision/"><img src="https://img.shields.io/pypi/dm/anomavision?color=blue" alt="PyPI downloads"/></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10--3.12-blue" alt="Python 3.10 to 3.12"/></a>
+  <a href="https://pytorch.org/"><img src="https://img.shields.io/badge/PyTorch-2.0%2B-red" alt="PyTorch 2.0 or newer"/></a>
+  <a href="https://onnx.ai/"><img src="https://img.shields.io/badge/ONNX-Export%20Ready-orange" alt="ONNX export ready"/></a>
+  <a href="https://developer.nvidia.com/tensorrt"><img src="https://img.shields.io/badge/TensorRT-Supported-76b900" alt="TensorRT supported"/></a>
+  <a href="https://docs.openvino.ai/"><img src="https://img.shields.io/badge/OpenVINO-Supported-0071C5" alt="OpenVINO supported"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT license"/></a>
+</p>
+
+AnomaVision supports **PaDiM** and lightweight **PatchCore**, image-level scores, pixel-level maps, and deployment exports.
+
+<p align="center">
+  <a href="https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection"><img src="https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-xl-dark.svg" alt="Open the AnomaVision live demo"/></a>
+</p>
 
 ## Why use it?
 
@@ -88,6 +108,16 @@ anomavision --help
 anomavision train --help
 anomavision export --help
 ```
+
+## Visual overview
+
+The same pipeline supports compact edge inference and spatial anomaly localization:
+
+![AnomaVision architecture](docs/images/archti.png)
+
+![PaDiM example visualization](notebooks/example_images/padim_example_image.png)
+
+![Lightweight PatchCore example visualization](notebooks/example_images/patchcore_example_image.png)
 
 ## Choosing a model
 

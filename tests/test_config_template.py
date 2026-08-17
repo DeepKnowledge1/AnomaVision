@@ -2,7 +2,6 @@ from pathlib import Path
 
 import yaml
 
-
 REQUIRED_EXPORT_KEYS = {
     "format",
     "opset",

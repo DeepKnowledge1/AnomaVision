@@ -10,7 +10,15 @@ def _candidate(image_auroc, p95, threshold=0.3):
         "model_format": ".pt",
         "metrics": {"image_auroc": image_auroc, "pixel_auroc": image_auroc - 0.1},
         "latency_ms": {"median": p95 / 2, "p95": p95},
-        "localization": {"available": True, "non_empty_fraction": 0.5, "mean_mask_area_fraction": 0.08, "anomaly_non_empty_fraction": 0.75, "normal_false_positive_fraction": 0.05, "anomaly_mean_mask_area_fraction": 0.12, "verdict": "healthy"},
+        "localization": {
+            "available": True,
+            "non_empty_fraction": 0.5,
+            "mean_mask_area_fraction": 0.08,
+            "anomaly_non_empty_fraction": 0.75,
+            "normal_false_positive_fraction": 0.05,
+            "anomaly_mean_mask_area_fraction": 0.12,
+            "verdict": "healthy",
+        },
     }
 
 
@@ -50,6 +58,8 @@ def test_autopilot_report_contains_manifest_summary(tmp_path):
 
 
 def test_autopilot_parser_exposes_production_controls():
-    args = create_parser().parse_args(["--config", "config.yml", "--target_latency_ms", "50"])
+    args = create_parser().parse_args(
+        ["--config", "config.yml", "--target_latency_ms", "50"]
+    )
     assert args.target_latency_ms == 50
     assert args.output_dir == "./production_package"

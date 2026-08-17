@@ -323,7 +323,6 @@ def run_training(args):
     return model, config, run_dir, {"train": dl}
 
 
-
 def main(args=None):
     try:
         if args is None:
