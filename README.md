@@ -111,7 +111,9 @@ anomavision export --help
 
 ## Production Autopilot
 
-Production Autopilot compares PaDiM and ultra-light PatchCore, calibrates an operating threshold, measures latency on your selected device, and creates a self-contained deployment package with an **HTML report**. Train or export both candidate models first, then run:
+**Production Autopilot is the easiest way to move from two trained models to one deployable choice.** It compares PaDiM and ultra-light PatchCore on the same labeled test split, calibrates a separate threshold for each, profiles median and P95 latency on your hardware, checks localization health, and packages the selected artifact with a self-contained HTML dashboard.
+
+Train both candidate models first, then run the complete labeled split on CPU:
 
 ```bash
 anomavision autopilot \
@@ -119,11 +121,12 @@ anomavision autopilot \
   --padim_model ./distributions/padim/bottle/anomav_exp/model.pt \
   --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt \
   --device cpu \
+  --validation_split 1.0 \
   --target_latency_ms 50 \
   --output_dir ./production_package
 ```
 
-The report explains the selected model, validation metrics, threshold, memory, and measured latency. See [`docs/production_deployment.md`](docs/production_deployment.md) for GPU, TensorRT, INT8, and packaging details.
+Open `production_package/production_autopilot_report.html` to see the selected model, AUROC, calibrated threshold, localization diagnostics, memory, median latency, P95 latency, and deployment recommendation. The package also contains `deployment_manifest.json`, `localization_report.md`, and the selected model artifact. See [`docs/production_deployment.md`](docs/production_deployment.md) for GPU, TensorRT, INT8, and packaging details.
 
 ## Visual overview
 
