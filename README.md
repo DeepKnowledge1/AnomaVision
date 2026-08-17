@@ -129,8 +129,6 @@ The report explains the selected model, validation metrics, threshold, memory, a
 
 The same pipeline supports compact edge inference and spatial anomaly localization. In each result strip, the panels show the **input image**, the **detected boundary**, and the **anomaly heatmap** from left to right.
 
-![AnomaVision architecture](docs/images/archti.png)
-
 ### PaDiM: distribution-based heatmap
 
 PaDiM models the feature distribution of normal images. Its heatmap is typically smoother and emphasizes regions that differ from that learned distribution.
