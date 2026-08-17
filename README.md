@@ -43,7 +43,7 @@ pip install uv
 uv pip install "anomavision[cpu]"
 ```
 
-For NVIDIA GPUs, choose the matching extra such as `anomavision[cu121]`. Source installation and environment setup are described in [`docs/installation.md`](docs/installation.md).
+For NVIDIA GPUs, choose the matching extra such as `anomavision[cu121]`. Source installation and environment setup are described in [`docs/installation.md`](docs/installation.md). For the shortest CPU path, use the copy-ready [`examples/quickstart_cpu.yml`](examples/quickstart_cpu.yml) configuration and follow [`docs/quickstart.md`](docs/quickstart.md).
 
 ### 2. Prepare data
 
