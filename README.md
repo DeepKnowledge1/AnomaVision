@@ -16,6 +16,7 @@
   <a href="https://onnx.ai/"><img src="https://img.shields.io/badge/ONNX-Export%20Ready-orange" alt="ONNX export ready"/></a>
   <a href="https://developer.nvidia.com/tensorrt"><img src="https://img.shields.io/badge/TensorRT-Supported-76b900" alt="TensorRT supported"/></a>
   <a href="https://docs.openvino.ai/"><img src="https://img.shields.io/badge/OpenVINO-Supported-0071C5" alt="OpenVINO supported"/></a>
+  <a href="https://github.com/DeepKnowledge1/AnomaVision/actions/workflows/ci.yml"><img src="https://github.com/DeepKnowledge1/AnomaVision/actions/workflows/ci.yml/badge.svg" alt="CI status"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT license"/></a>
 </p>
 
@@ -24,6 +25,8 @@ AnomaVision supports **PaDiM** and lightweight **PatchCore**, image-level scores
 <p align="center">
   <a href="https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection"><img src="https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-xl-dark.svg" alt="Open the AnomaVision live demo"/></a>
 </p>
+
+**Try it first:** [live demo](https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection) · [five-minute CPU quickstart](docs/quickstart.md) · [runnable examples](examples/README.md) · [reproducible benchmark](docs/benchmark.md)
 
 ## Why use it?
 
