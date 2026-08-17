@@ -1,0 +1,25 @@
+# TensorRT INT8 export example.
+# Run on a CUDA machine with TensorRT, PyCUDA, and real normal calibration images.
+dataset_path: "./dataset"
+class_name: "bottle"
+algorithm: "patchcore"
+model_data_path: "./distributions"
+model: "model.pt"
+run_name: "patchcore_cpu"
+format: "tensorrt"
+tensorrt_precision: "int8"
+calib_dir: "./dataset/bottle/train/good"
+calib_samples: 100
+device: "cuda"
+dynamic_batch: true
+static_batch: false
+min_batch: 1
+opt_batch: 1
+max_batch: 4
+workspace_gb: 2.0
+resize: [224, 224]
+crop_size: null
+normalize: true
+norm_mean: [0.485, 0.456, 0.406]
+norm_std: [0.229, 0.224, 0.225]
+log_level: "INFO"

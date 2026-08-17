@@ -1,0 +1,38 @@
+# Ultra-light PatchCore CPU example.
+# The dataset root must contain bottle/train/good and bottle/test.
+dataset_path: "./dataset"
+class_name: "bottle"
+algorithm: "patchcore"
+backbone: "resnet18"
+layer_indices: [0]
+coreset_ratio: 0.02
+max_memory_patches: 2048
+patch_grid: 14
+search_chunk_size: 1024
+coreset_method: "kcenter"
+coreset_seed: 42
+resize: [224, 224]
+crop_size: null
+normalize: true
+norm_mean: [0.485, 0.456, 0.406]
+norm_std: [0.229, 0.224, 0.225]
+batch_size: 1
+device: "cpu"
+model_data_path: "./distributions"
+output_model: "model.pt"
+model: "model.pt"
+run_name: "patchcore_cpu"
+log_level: "INFO"
+num_workers: 0
+pin_memory: false
+enable_visualization: true
+save_visualizations: true
+viz_output_dir: "./patchcore_results"
+viz_alpha: 0.5
+viz_padding: 40
+viz_color: "128,0,128"
+stream_mode: false
+memory_efficient: true
+thresh: null
+thresh_padim: null
+thresh_patchcore: null

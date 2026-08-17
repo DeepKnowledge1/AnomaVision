@@ -160,6 +160,7 @@ PatchCore compares image patches with a compact normal-feature memory bank. Its 
 | CLI and configuration | [`docs/cli.md`](docs/cli.md), [`docs/config.md`](docs/config.md) |
 | Python API | [`docs/api.md`](docs/api.md) |
 | PatchCore and TensorRT deployment | [`docs/production_deployment.md`](docs/production_deployment.md) |
+| Runnable CPU, PatchCore, and TensorRT examples | [`examples/README.md`](examples/README.md) |
 | Benchmark methodology | [`docs/benchmark.md`](docs/benchmark.md) |
 | Troubleshooting | [`docs/troubleshooting.md`](docs/troubleshooting.md) |
 | Contributing | [`docs/contributing.md`](docs/contributing.md) |
