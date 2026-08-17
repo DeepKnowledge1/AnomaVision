@@ -127,13 +127,21 @@ The report explains the selected model, validation metrics, threshold, memory, a
 
 ## Visual overview
 
-The same pipeline supports compact edge inference and spatial anomaly localization:
+The same pipeline supports compact edge inference and spatial anomaly localization. In each result strip, the panels show the **input image**, the **detected boundary**, and the **anomaly heatmap** from left to right.
 
 ![AnomaVision architecture](docs/images/archti.png)
 
-![PaDiM example visualization](notebooks/example_images/padim_example_image.png)
+### PaDiM: distribution-based heatmap
 
-![Lightweight PatchCore example visualization](notebooks/example_images/patchcore_example_image.png)
+PaDiM models the feature distribution of normal images. Its heatmap is typically smoother and emphasizes regions that differ from that learned distribution.
+
+![PaDiM input, boundary, and heatmap example](notebooks/example_images/padim_example_image.png)
+
+### Ultra-light PatchCore: nearest-patch heatmap
+
+PatchCore compares image patches with a compact normal-feature memory bank. Its heatmap can show more local texture and sharper nearest-patch differences while using bounded memory for production inference.
+
+![PatchCore input, boundary, and heatmap example](notebooks/example_images/patchcore_example_image.png)
 
 ## Choosing a model
 
