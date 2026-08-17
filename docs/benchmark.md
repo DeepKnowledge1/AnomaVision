@@ -3,13 +3,29 @@
 
 This page records **historical preliminary results** for AnomaVision versus Anomalib PaDiM. The original measurements were collected before the parity fixes in [`compare_with_anomalib.py`](../compare_with_anomalib.py), so they should not be treated as the final fair-comparison result.
 
-The corrected script now aligns image size, normalization, batch size, warm-up, timing, memory baselines, score-map post-processing, and full-checkpoint size reporting. Rerun it before making performance claims:
+The corrected script aligns image size, normalization, batch size, warm-up, timing, memory baselines, score-map post-processing, and full-checkpoint size reporting. It also reports **P95 latency**, the time at or below which 95% of measured inference calls complete. P95 is more useful than the mean when evaluating production consistency because it exposes the slower tail of the latency distribution.
+
+Run a single-class comparison:
 
 ```bash
-python compare_with_anomalib.py --dataset_path /path/to/mvtec --class_name bottle --device cuda
+python compare_with_anomalib.py \
+  --dataset_path /path/to/mvtec \
+  --class_name bottle \
+  --device cpu
 ```
 
-Metrics: **Image AUROC, Pixel AUROC, FPS, Full Checkpoint Size, Compact Artifact Size, and Memory Usage**.
+Run the complete MVTec class set:
+
+```bash
+python compare_with_anomalib.py \
+  --dataset_path /path/to/mvtec \
+  --all_classes \
+  --device cuda
+```
+
+The benchmark uses the shared contract defined in the script: 224×224 inputs, ImageNet normalization, batch size 8, three warm-up iterations, 100 timed iterations, zero data-loader workers, synchronized CUDA timing when applicable, and seed 42 by default. Results are written to `benchmark_results/`, including JSON, CSV, plots, and the all-class summary when `--all_classes` is used.
+
+Metrics: **Image AUROC, Pixel AUROC, mean latency, P95 latency, FPS, Full Checkpoint Size, Compact Artifact Size, and Memory Usage**.
 
 ---
 
