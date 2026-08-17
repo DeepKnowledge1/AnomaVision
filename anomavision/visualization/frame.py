@@ -36,9 +36,9 @@ def frame_by_anomalies(
         old_height, old_width = image.shape[:-1]
 
         if image_classifications[i]:
-            f_image = frame_image(image, padding=padding, color=non_ano_color)
-        else:
             f_image = frame_image(image, padding=padding, color=ano_color)
+        else:
+            f_image = frame_image(image, padding=padding, color=non_ano_color)
 
         f_image = cv2.resize(
             f_image, (old_width, old_height), interpolation=cv2.INTER_AREA

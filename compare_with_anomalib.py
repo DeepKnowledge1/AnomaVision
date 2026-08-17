@@ -1,6 +1,9 @@
 """
-Comprehensive comparison between your anomaly detection implementation and Anomalib.
-This script benchmarks both implementations on model size, speed, performance, and memory usage.
+Reproducible comparison between AnomaVision and Anomalib PaDiM.
+Both implementations use the same MVTec split, 224x224 inputs, ImageNet normalization,
+ResNet18 layer1-equivalent features, batch size, warm-up count, timing loop, and raw
+score-map evaluation contract. The report distinguishes full checkpoints from compact
+AnomaVision deployment statistics.
 
 Requirements:
     pip install anomalib torch torchvision numpy pandas matplotlib seaborn tabulate psutil
@@ -11,8 +14,11 @@ Usage:
 
 import argparse
 import gc
+import inspect
 import json
 import os
+import platform
+import random
 import sys
 import time
 import warnings
@@ -31,6 +37,48 @@ from torch.utils.data import DataLoader
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
+
+# One parity contract for both implementations.
+IMAGE_SIZE = (224, 224)
+NORMALIZE = True
+BATCH_SIZE = 8
+WARMUP_ITERS = 3
+TIMING_ITERS = 100
+SEED = 42
+
+
+def set_seed(seed: int = SEED) -> None:
+    """Make model initialization and benchmark ordering reproducible."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def build_anomalib_mvtec(MVTec, root: Path, category: str, batch_size: int):
+    """Build Anomalib MVTec data with explicit parity settings where supported."""
+    kwargs = {
+        "root": str(root),
+        "category": category,
+        "image_size": IMAGE_SIZE,
+        "train_batch_size": batch_size,
+        "eval_batch_size": batch_size,
+        "num_workers": 0,
+        "pin_memory": False,
+    }
+    parameters = inspect.signature(MVTec).parameters
+    if "normalization" in parameters:
+        try:
+            from anomalib.data import NormalizationMethod
+
+            kwargs["normalization"] = NormalizationMethod.IMAGENET
+        except (ImportError, AttributeError):
+            kwargs["normalization"] = "imagenet"
+    elif "normalize" in parameters:
+        kwargs["normalize"] = NORMALIZE
+    return MVTec(**{key: value for key, value in kwargs.items() if key in parameters})
+
 
 # ===============================
 # Data Classes for Results
@@ -63,18 +111,22 @@ class ModelMetrics:
     # Additional info
     backbone: str = ""
     device: str = ""
+    compact_model_size_mb: float = 0.0
+    environment: Dict[str, str] = None
 
     def __post_init__(self):
         if self.export_size_mb is None:
             self.export_size_mb = {}
+        if self.environment is None:
+            self.environment = {}
 
 
-def evaluate_model_with_wrapper(model, test_dataloader):
+def evaluate_model_with_wrapper(model, test_dataloader, device):
+    """Evaluate a model using the shared ``predict`` contract on the shared device.
+
+    The name is retained for compatibility with older benchmark reports, but the
+    fair benchmark now passes both implementations as in-memory PyTorch models.
     """
-    Evaluate AnomaVision model using the ModelWrapper inference interface
-    Returns: (images, image_classifications_target, masks_target, image_scores, score_maps)
-    """
-    from anomavision.general import determine_device
 
     all_images = []
     all_image_classifications_target = []
@@ -83,12 +135,11 @@ def evaluate_model_with_wrapper(model, test_dataloader):
     all_score_maps = []
 
     batch_count = 0
-    device_str = determine_device("cpu")
     try:
         for batch_idx, (batch, images, image_targets, mask_targets) in enumerate(
             test_dataloader
         ):
-            batch = batch.to(device_str)
+            batch = batch.to(device)
 
             image_scores, score_maps = model.predict(batch)
 
@@ -142,10 +193,14 @@ def evaluate_model_with_wrapper(model, test_dataloader):
 class BenchmarkRunner:
     """Main benchmark runner class."""
 
-    def __init__(self, dataset_path: str, class_name: str, device: str = "auto"):
+    def __init__(
+        self, dataset_path: str, class_name: str, device: str = "auto", seed: int = SEED
+    ):
         self.dataset_path = Path(dataset_path)
         self.class_name = class_name
         self.device = self._setup_device(device)
+        self.seed = int(seed)
+        set_seed(self.seed)
         self.results = {}
 
         # Setup paths
@@ -174,11 +229,31 @@ class BenchmarkRunner:
             return process.memory_info().rss / 1024 / 1024
 
     def _reset_memory(self):
-        """Reset memory tracking."""
+        """Reset memory tracking before constructing the measured object."""
         gc.collect()
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.reset_peak_memory_stats(self.device)
+
+    def _environment(self) -> Dict[str, str]:
+        """Return versions and hardware details stored with every result."""
+        return {
+            "python": platform.python_version(),
+            "torch": torch.__version__,
+            "device": str(self.device),
+            "cuda": str(torch.version.cuda),
+            "gpu": (
+                torch.cuda.get_device_name(self.device)
+                if self.device.type == "cuda"
+                else "cpu"
+            ),
+            "seed": str(self.seed),
+            "image_size": f"{IMAGE_SIZE[0]}x{IMAGE_SIZE[1]}",
+            "normalize": str(NORMALIZE),
+            "batch_size": str(BATCH_SIZE),
+            "warmup_iters": str(WARMUP_ITERS),
+            "timing_iters": str(TIMING_ITERS),
+        }
 
     # ===============================
     # Your Implementation
@@ -197,13 +272,12 @@ class BenchmarkRunner:
             # Import your modules
             import anomavision
             from anomavision import MVTecDataset, Padim
-            from anomavision.general import determine_device
-            from anomavision.inference.model.wrapper import ModelWrapper
-            from anomavision.utils import adaptive_gaussian_blur
 
+            set_seed(self.seed)
             metrics = ModelMetrics(name="Your PaDiM")
             metrics.backbone = "resnet18"
             metrics.device = str(self.device)
+            metrics.environment = self._environment()
 
             # === 1. Setup Datasets ===
             print("\n1. Loading datasets...")
@@ -211,25 +285,35 @@ class BenchmarkRunner:
                 self.dataset_path,
                 self.class_name,
                 is_train=True,
-                resize=224,
-                normalize=True,
+                resize=IMAGE_SIZE,
+                crop_size=IMAGE_SIZE,
+                normalize=NORMALIZE,
             )
 
             test_dataset = MVTecDataset(
                 self.dataset_path,
                 self.class_name,
                 is_train=False,
-                resize=224,
-                normalize=True,
+                resize=IMAGE_SIZE,
+                crop_size=IMAGE_SIZE,
+                normalize=NORMALIZE,
             )
 
-            batch_size = 8
+            batch_size = BATCH_SIZE
             train_loader = DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=False, num_workers=0
+                train_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=0,
+                pin_memory=False,
             )
 
             test_loader = DataLoader(
-                test_dataset, batch_size=batch_size, shuffle=False, num_workers=0
+                test_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=0,
+                pin_memory=False,
             )
 
             print(f"   Train samples: {len(train_dataset)}")
@@ -269,25 +353,17 @@ class BenchmarkRunner:
             except Exception as e:
                 raise RuntimeError(f"Error saving statistics: {e}")
 
-            metrics.model_size_mb = stats_path.stat().st_size / (1024 * 1024)
-            print(f"   Model size: {metrics.model_size_mb:.2f} MB")
-
-            # Try to save statistics version
-            try:
-                stats_path = self.your_model_path / "padim_model.pth"
-                model.save_statistics(str(stats_path))
-                stats_size = stats_path.stat().st_size / (1024 * 1024)
-                print(f"   Statistics file size: {stats_size:.2f} MB")
-            except Exception:
-
-                pass
+            metrics.model_size_mb = model_path.stat().st_size / (1024 * 1024)
+            metrics.compact_model_size_mb = stats_path.stat().st_size / (1024 * 1024)
+            print(f"   Full PyTorch model size: {metrics.model_size_mb:.2f} MB")
+            print(f"   Compact statistics size: {metrics.compact_model_size_mb:.2f} MB")
 
             # === 4. Export Sizes ===
             print("\n4. Testing export formats...")
 
             # ONNX export
             try:
-                dummy_input = torch.randn(1, 3, 224, 224).to(self.device)
+                dummy_input = torch.randn(1, 3, *IMAGE_SIZE, device=self.device)
                 onnx_path = self.your_model_path / "model.onnx"
                 torch.onnx.export(
                     model,
@@ -322,33 +398,23 @@ class BenchmarkRunner:
 
             # === 5. Inference Speed ===
             print("\n5. Measuring inference speed...")
-            device_str = determine_device(self.device.type)
-
+            model.eval()
             self._reset_memory()
-
-            model = ModelWrapper(model_path, device_str)
-            # model.eval()
-            inference_times = []
             start_memory = self._get_memory_usage()
-
-            batch = torch.randn(1, 3, 224, 224).to(self.device)
+            inference_times = []
+            batch = torch.randn(1, 3, *IMAGE_SIZE, device=self.device)
             with torch.no_grad():
-                # Warmup
-                for _ in range(3):
-                    _ = model.warmup(batch)
-
-                # Actual timing
-                for _ in range(100):
-
+                for _ in range(WARMUP_ITERS):
+                    _ = model.predict(batch)
+                if self.device.type == "cuda":
+                    torch.cuda.synchronize(self.device)
+                for _ in range(TIMING_ITERS):
                     if self.device.type == "cuda":
-                        torch.cuda.synchronize()
-
+                        torch.cuda.synchronize(self.device)
                     start = time.perf_counter()
                     _ = model.predict(batch)
-
                     if self.device.type == "cuda":
-                        torch.cuda.synchronize()
-
+                        torch.cuda.synchronize(self.device)
                     inference_times.append(time.perf_counter() - start)
 
             metrics.inference_memory_mb = self._get_memory_usage() - start_memory
@@ -364,11 +430,8 @@ class BenchmarkRunner:
 
             # Run evaluation
             images, y_true, masks_true, y_score, masks_score = (
-                evaluate_model_with_wrapper(model, test_loader)
+                evaluate_model_with_wrapper(model, test_loader, self.device)
             )
-            # images, image_classifications_target, masks_target, image_scores, score_maps = evaluate_model_with_wrapper(model, test_loader)
-
-            masks_score = adaptive_gaussian_blur(masks_score, kernel_size=33, sigma=4)
 
             # anodet.visualize_eval_data(
             #     y_true,
@@ -419,19 +482,16 @@ class BenchmarkRunner:
             from pytorch_lightning import Trainer
             from pytorch_lightning.callbacks import ModelCheckpoint
 
+            set_seed(self.seed)
             metrics = ModelMetrics(name="Anomalib PaDiM")
             metrics.backbone = "resnet18"
             metrics.device = str(self.device)
-            batch_size = 8
+            metrics.environment = self._environment()
+            batch_size = BATCH_SIZE
             # === 1. Setup Data Module ===
             print("\n1. Loading datasets...")
-            datamodule = MVTec(
-                root=str(self.dataset_path),
-                category=self.class_name,
-                # image_size=(224, 224),
-                train_batch_size=batch_size,
-                eval_batch_size=batch_size,
-                num_workers=0,
+            datamodule = build_anomalib_mvtec(
+                MVTec, self.dataset_path, self.class_name, batch_size
             )
 
             datamodule.setup()
@@ -485,7 +545,7 @@ class BenchmarkRunner:
             trainer.trainer.save_checkpoint(str(model_path))
 
             metrics.model_size_mb = model_path.stat().st_size / (1024 * 1024)
-            print(f"   Model size: {metrics.model_size_mb:.2f} MB")
+            print(f"   Full PyTorch checkpoint size: {metrics.model_size_mb:.2f} MB")
 
             # === 4. Export Sizes ===
             print("\n4. Testing export formats...")
@@ -511,30 +571,24 @@ class BenchmarkRunner:
 
             # === 5. Inference Speed ===
             print("\n5. Measuring inference speed...")
-            self._reset_memory()
-
             model.eval()
+            self._reset_memory()
             inference_times = []
             start_memory = self._get_memory_usage()
 
-            batch = torch.randn(1, 3, 224, 224).to(self.device)
+            batch = torch.randn(1, 3, *IMAGE_SIZE, device=self.device)
             with torch.no_grad():
-                # Warmup
-                for _ in range(3):
+                for _ in range(WARMUP_ITERS):
                     _ = model(batch)
-
-                # Actual timing
-                for _ in range(100):
-
+                if self.device.type == "cuda":
+                    torch.cuda.synchronize(self.device)
+                for _ in range(TIMING_ITERS):
                     if self.device.type == "cuda":
-                        torch.cuda.synchronize()
-
+                        torch.cuda.synchronize(self.device)
                     start = time.perf_counter()
                     _ = model(batch)
-
                     if self.device.type == "cuda":
-                        torch.cuda.synchronize()
-
+                        torch.cuda.synchronize(self.device)
                     inference_times.append(time.perf_counter() - start)
 
             metrics.inference_memory_mb = self._get_memory_usage() - start_memory
@@ -1023,6 +1077,13 @@ def main():
     )
 
     parser.add_argument(
+        "--seed",
+        type=int,
+        default=SEED,
+        help="Random seed shared by both implementations",
+    )
+
+    parser.add_argument(
         "--all_classes", action="store_true", help="Run comparison on all MVTec classes"
     )
 
@@ -1055,7 +1116,9 @@ def main():
             print("=" * 60)
 
             try:
-                runner = BenchmarkRunner(args.dataset_path, class_name, args.device)
+                runner = BenchmarkRunner(
+                    args.dataset_path, class_name, args.device, args.seed
+                )
                 results = runner.run_comparison()
                 all_results[class_name] = results
             except Exception as e:
@@ -1066,7 +1129,9 @@ def main():
         generate_summary_report(all_results)
     else:
         # Run on single class
-        runner = BenchmarkRunner(args.dataset_path, args.class_name, args.device)
+        runner = BenchmarkRunner(
+            args.dataset_path, args.class_name, args.device, args.seed
+        )
         results = runner.run_comparison()
 
         print("\n" + "=" * 60)

@@ -195,8 +195,8 @@ class TestPadimClassification:
         # Run classification
         classifications = anomavision.classification(scores, threshold)
 
-        # Check results (below threshold = normal=1, above = anomaly=0)
-        expected = torch.tensor([1, 0, 1, 0])
+        # Check results (below threshold = normal=0, above = anomaly=1)
+        expected = torch.tensor([0, 1, 0, 1])
         assert torch.equal(classifications, expected)
 
     def test_classification_with_numpy(self):
@@ -206,7 +206,7 @@ class TestPadimClassification:
 
         classifications = anomavision.classification(scores, threshold)
 
-        expected = np.array([1, 0, 1, 0])
+        expected = np.array([0, 1, 0, 1])
         np.testing.assert_array_equal(classifications, expected)
 
 

@@ -1,12 +1,13 @@
 # 🛠️ CLI Reference
 
-AnomaVision provides a unified `anomavision` command with four subcommands:
+AnomaVision provides a unified `anomavision` command with five subcommands:
 
 ```bash
 anomavision train    # Train a PaDiM anomaly detection model
 anomavision detect   # Run inference on test images
 anomavision eval     # Evaluate performance on MVTec-style datasets
-anomavision export   # Export models to ONNX, TorchScript, or OpenVINO
+anomavision export   # Export models to ONNX, TorchScript, OpenVINO, or TensorRT
+anomavision autopilot # Calibrate, profile, and package a production model
 ```
 
 Each subcommand accepts both **CLI arguments** and **config files** (`--config config.yml`).
@@ -20,6 +21,7 @@ anomavision train --help
 anomavision detect --help
 anomavision eval --help
 anomavision export --help
+anomavision autopilot --help
 ```
 
 ---
@@ -166,6 +168,36 @@ anomavision export \
   --precision fp16 \
   --quantize-dynamic
 ```
+
+---
+
+## 5. Production Autopilot — `anomavision autopilot`
+
+Production Autopilot compares PaDiM and ultra-light PatchCore artifacts on the same complete labeled test split, calibrates algorithm-specific thresholds, measures latency, checks localization health, and creates a deployment package.
+
+Set the complete dataset root in `config.yml`:
+
+```yaml
+dataset_path: "D:/01-DATA"
+class_name: "bottle"
+```
+
+Use the command below on a CPU-only Windows machine:
+
+```powershell
+anomavision autopilot `
+  --config config.yml `
+  --padim_model .\distributions\padim\bottle\anomav_exp\model.pt `
+  --patchcore_model .\distributions\patchcore\bottle\anomav_exp\model.pt `
+  --dataset_path "D:/01-DATA" `
+  --class_name bottle `
+  --device cpu `
+  --validation_split 1.0 `
+  --target_latency_ms 50 `
+  --output_dir .\production_package
+```
+
+The generated `production_autopilot_report.html` shows image AUROC, pixel AUROC, anomaly localization coverage, normal-image false-positive localization, anomaly mean mask area, latency, thresholds, and a localization verdict. `N/A` means the required spatial map or ground-truth mask was unavailable; it is not a zero score.
 
 ---
 

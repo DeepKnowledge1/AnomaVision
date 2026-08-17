@@ -272,6 +272,59 @@ def image_score(patch_scores: torch.Tensor) -> torch.Tensor:
     return image_scores
 
 
+def make_localization_mask(score_maps, image_classifications, quantile: float = 0.90):
+    """Create spatial anomaly masks from score maps without reusing image thresholds.
+
+    Image-level scores and pixel-level maps have different distributions. For each
+    image classified as anomalous, this keeps the highest-scoring spatial regions
+    using a robust per-image quantile and a relative-to-maximum floor. Normal images
+    receive an empty mask.
+    """
+    if isinstance(score_maps, torch.Tensor):
+        maps = score_maps.detach().cpu().numpy()
+    else:
+        maps = np.asarray(score_maps)
+    labels = np.asarray(image_classifications).reshape(-1)
+    if maps.ndim != 3:
+        raise ValueError(f"score_maps must have shape (B,H,W), got {maps.shape}")
+    if not 0.0 < quantile < 1.0:
+        raise ValueError("quantile must be between 0 and 1")
+    masks = np.zeros_like(maps, dtype=np.uint8)
+    for index, score_map in enumerate(maps):
+        if index >= len(labels) or not bool(labels[index]):
+            continue
+        finite = np.nan_to_num(score_map, nan=0.0, posinf=0.0, neginf=0.0)
+        minimum = float(finite.min())
+        maximum = float(finite.max())
+        if maximum <= minimum + 1e-8:
+            continue
+        cutoff = max(
+            float(np.quantile(finite, quantile)), minimum + 0.5 * (maximum - minimum)
+        )
+        masks[index] = (finite >= cutoff).astype(np.uint8)
+    return masks
+
+
+def resolve_threshold(config):
+    """Resolve an algorithm-specific threshold with a backward-compatible fallback.
+
+    ``thresh_patchcore`` and ``thresh_padim`` take precedence over the legacy
+    shared ``thresh`` value. Explicit zero is preserved as a valid threshold.
+    ``None`` means that no fixed inference threshold was configured.
+    """
+    algorithm = str(config.get("algorithm", "")).lower()
+    specific_key = f"thresh_{algorithm}"
+    specific = config.get(specific_key, None)
+    if specific is not None:
+        return specific
+    legacy = config.get("thresh", None)
+    if algorithm == "patchcore" and legacy is not None and float(legacy) > 2.0:
+        # PatchCore cosine distance is bounded near [0, 2]; do not reuse a
+        # PaDiM-scale threshold such as 13.0.
+        return config.get("patchcore_default_threshold", 0.35)
+    return legacy
+
+
 def classification(image_scores, thresh: float):
     """Calculate image classifications from image scores.
     Args:
@@ -283,14 +336,10 @@ def classification(image_scores, thresh: float):
     """
 
     if isinstance(image_scores, torch.Tensor):
-        image_classifications = image_scores.clone()
-        image_classifications[image_classifications < thresh] = 1
-        image_classifications[image_classifications >= thresh] = 0
+        image_classifications = (image_scores >= thresh).to(dtype=torch.int64)
 
     elif isinstance(image_scores, np.ndarray):
-        image_classifications = image_scores.copy()
-        image_classifications[image_classifications < thresh] = 1
-        image_classifications[image_classifications >= thresh] = 0
+        image_classifications = (image_scores >= thresh).astype(np.int64)
     else:
         raise TypeError("image_scores must be a torch.Tensor or numpy.ndarray")
 

@@ -23,6 +23,7 @@ from anomavision.utils import (
     find_optimal_threshold,
     get_logger,
     merge_config,
+    resolve_threshold,
     setup_logging,
 )
 
@@ -218,6 +219,7 @@ def run_evaluation(args):
         cfg = load_config(str(config_path)) if config_path.exists() else {}
 
     config = edict(merge_config(args, cfg))
+    config.thresh = resolve_threshold(config)
 
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
     logger = get_logger("anomavision.eval")
@@ -316,9 +318,11 @@ def run_evaluation(args):
 
     # Compute Metrics
     if config.thresh is None:
-        best_thresh, _ = find_optimal_threshold(labels, scores)
+        best_thresh, best_f1 = find_optimal_threshold(labels, scores)
+        logger.info("threshold: auto-selected %.6f (F1=%.4f)", best_thresh, best_f1)
     else:
         best_thresh = config.thresh
+        logger.info("threshold: configured %.6f", best_thresh)
 
     metrics = compute_metrics(labels, scores, thresh=best_thresh)
 
@@ -412,9 +416,9 @@ def run_evaluation(args):
 
     for k, v in metrics.items():
         if isinstance(v, float):
-            logger.info(f"{k.replace('_',' ').title():<28} {v:.6f}")
+            logger.info(f"{k.replace('_', ' ').title():<28} {v:.6f}")
         else:
-            logger.info(f"{k.replace('_',' ').title():<28} {v}")
+            logger.info(f"{k.replace('_', ' ').title():<28} {v}")
 
     logger.info("=" * 60)
 

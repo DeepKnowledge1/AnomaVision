@@ -35,6 +35,7 @@ from anomavision.general import determine_device
 from anomavision.padim_lite import (  # stats-only .pth → runtime module
     build_padim_from_stats,
 )
+from anomavision.patchcore import build_patchcore_from_stats
 from anomavision.utils import (
     create_image_transform,
     get_logger,
@@ -59,13 +60,12 @@ def load_calibration_images(
     normalize: bool = True,
     mean=[0.485, 0.456, 0.406],
     std=[0.229, 0.224, 0.225],
+    allow_random: bool = True,
 ):
     """
     Load calibration images using the same preprocessing as AnodetDataset.
     Returns a list of np.ndarrays shaped (1,C,H,W).
     """
-    from glob import glob
-
     h, w = input_shape[2], input_shape[3]
     transform = create_image_transform(
         resize=(h, w),
@@ -75,7 +75,12 @@ def load_calibration_images(
         std=std,
     )
 
-    paths = glob(os.path.join(img_dir, "*.png"))[:max_samples]
+    paths = sorted(
+        p
+        for p in Path(img_dir).rglob("*")
+        if p.is_file()
+        and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+    )[:max_samples]
     samples = []
 
     for p in paths:
@@ -86,10 +91,8 @@ def load_calibration_images(
         except Exception as e:
             print(f"Skipping {p}, error {e}")
 
-    if not samples:
-        # Fallback to random data if no images found
+    if not samples and allow_random:
         samples = [np.random.rand(*input_shape).astype("float32") for _ in range(32)]
-
     return samples
 
 
@@ -145,6 +148,40 @@ class _ExportWrapper(torch.nn.Module):
             return self.m.predict(x, export=True)  # Unified path for ONNX/OpenVINO
 
 
+def _make_tensorrt_calibrator(trt, samples, cache_path, batch_size=1):
+    """Create a TensorRT INT8 entropy calibrator from NCHW NumPy samples."""
+    import pycuda.driver as cuda
+
+    class Calibrator(trt.IInt8EntropyCalibrator2):
+        def __init__(self):
+            super().__init__()
+            self._samples = iter(samples)
+            self._cache_path = Path(cache_path)
+            self._batch_size = int(batch_size)
+            self._device_input = None
+
+        def get_batch_size(self):
+            return self._batch_size
+
+        def get_batch(self, names):
+            try:
+                sample = np.ascontiguousarray(next(self._samples), dtype=np.float32)
+            except StopIteration:
+                return None
+            if self._device_input is None:
+                self._device_input = cuda.mem_alloc(sample.nbytes)
+            cuda.memcpy_htod(self._device_input, sample)
+            return [int(self._device_input)]
+
+        def read_calibration_cache(self):
+            return self._cache_path.read_bytes() if self._cache_path.exists() else None
+
+        def write_calibration_cache(self, cache):
+            self._cache_path.write_bytes(bytes(cache))
+
+    return Calibrator()
+
+
 class ModelExporter:
     """Professional model exporter with clean interface and device-aware precision."""
 
@@ -194,9 +231,15 @@ class ModelExporter:
             "layer_indices",
             "backbone",
         }.issubset(obj.keys()):
-            self.logger.info("GOING INTO STATS PATH - building PadimLite")
+            self.logger.info("Loading PaDiM statistics artifact")
             base = build_padim_from_stats(obj, device=str(self.device))
-            self.logger.info("Export: built PadimLite from statistics (.pth).")
+        elif isinstance(obj, dict) and {
+            "memory_bank",
+            "layer_indices",
+            "backbone",
+        }.issubset(obj.keys()):
+            self.logger.info("Loading PatchCore memory-bank artifact")
+            base = build_patchcore_from_stats(obj, device=str(self.device))
         else:
             self.logger.info("GOING INTO FULL MODEL PATH")
             base = obj
@@ -399,6 +442,137 @@ class ModelExporter:
             self.logger.exception("onnx: failed after %.2fs", time.perf_counter() - t0)
             return None
 
+    def export_tensorrt(
+        self,
+        input_shape: Tuple[int, int, int, int] = (1, 3, 224, 224),
+        output_name: str = "model.engine",
+        dynamic_batch: bool = True,
+        precision: str = "fp16",
+        calib_dir: Optional[str] = None,
+        calib_samples: int = 100,
+        workspace_gb: float = 2.0,
+        min_batch: int = 1,
+        opt_batch: Optional[int] = None,
+        max_batch: Optional[int] = None,
+    ) -> Optional[Path]:
+        """Build a native TensorRT engine from an ONNX graph.
+
+        TensorRT is imported lazily because it is an NVIDIA deployment dependency.
+        INT8 mode uses real calibration images and writes a reusable calibration cache.
+        """
+        t0 = time.perf_counter()
+        temp_onnx = self.output_dir / (Path(output_name).stem + "_fp32.onnx")
+        try:
+            if self.device.type != "cuda":
+                raise RuntimeError("TensorRT export requires a CUDA device.")
+            try:
+                import tensorrt as trt
+            except ImportError as exc:
+                raise ImportError(
+                    "TensorRT export requires NVIDIA TensorRT, PyCUDA, and a CUDA runtime."
+                ) from exc
+            if precision not in {"fp32", "fp16", "int8"}:
+                raise ValueError("TensorRT precision must be fp32, fp16, or int8")
+            if precision == "int8" and not calib_dir:
+                raise ValueError("INT8 TensorRT export requires --calib-dir")
+            if min_batch < 1:
+                raise ValueError("min_batch must be at least 1")
+            opt_batch = int(opt_batch or max(min_batch, input_shape[0]))
+            max_batch = int(max_batch or max(opt_batch, 4))
+            if not min_batch <= opt_batch <= max_batch:
+                raise ValueError(
+                    "Batch profile must satisfy min_batch <= opt_batch <= max_batch"
+                )
+
+            onnx_path = self.export_onnx(
+                input_shape=input_shape,
+                output_name=temp_onnx.name,
+                dynamic_batch=dynamic_batch,
+                force_precision="fp32",
+            )
+            if onnx_path is None:
+                raise RuntimeError("Could not create the intermediate ONNX graph.")
+
+            logger = trt.Logger(trt.Logger.WARNING)
+            builder = trt.Builder(logger)
+            network = builder.create_network(
+                1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+            )
+            parser = trt.OnnxParser(network, logger)
+            with onnx_path.open("rb") as handle:
+                if not parser.parse(handle.read()):
+                    errors = [
+                        str(parser.get_error(i)) for i in range(parser.num_errors)
+                    ]
+                    raise RuntimeError(
+                        "TensorRT ONNX parse failed: " + " | ".join(errors)
+                    )
+
+            build_config = builder.create_builder_config()
+            build_config.set_memory_pool_limit(
+                trt.MemoryPoolType.WORKSPACE, int(workspace_gb * (1 << 30))
+            )
+            if precision in {"fp16", "int8"}:
+                if not builder.platform_has_fast_fp16:
+                    self.logger.warning(
+                        "TensorRT platform does not report fast FP16 support."
+                    )
+                build_config.set_flag(trt.BuilderFlag.FP16)
+            if precision == "int8":
+                if not builder.platform_has_fast_int8:
+                    self.logger.warning(
+                        "TensorRT platform does not report fast INT8 support."
+                    )
+                build_config.set_flag(trt.BuilderFlag.INT8)
+                samples = load_calibration_images(
+                    calib_dir,
+                    input_shape,
+                    max_samples=calib_samples,
+                    allow_random=False,
+                )
+                if not samples:
+                    raise ValueError(
+                        f"No calibration images found in {calib_dir}; random calibration is disabled for TensorRT."
+                    )
+                calibrator = _make_tensorrt_calibrator(
+                    trt, samples, self.output_dir / (Path(output_name).stem + ".calib")
+                )
+                build_config.int8_calibrator = calibrator
+
+            if dynamic_batch:
+                profile = builder.create_optimization_profile()
+                input_tensor = network.get_input(0)
+                _, channels, height, width = input_shape
+                profile.set_shape(
+                    input_tensor.name,
+                    (min_batch, channels, height, width),
+                    (opt_batch, channels, height, width),
+                    (max_batch, channels, height, width),
+                )
+                build_config.add_optimization_profile(profile)
+
+            serialized = builder.build_serialized_network(network, build_config)
+            if serialized is None:
+                raise RuntimeError("TensorRT failed to build the engine.")
+            output_path = self.output_dir / output_name
+            output_path.write_bytes(bytes(serialized))
+            self.logger.info(
+                "tensorrt: ok (%.2fs) file=%s size=%.1fMB precision=%s dynamic_batch=%s",
+                time.perf_counter() - t0,
+                output_path,
+                output_path.stat().st_size / (1024 * 1024),
+                precision.upper(),
+                dynamic_batch,
+            )
+            return output_path
+        except Exception:
+            self.logger.exception(
+                "tensorrt: failed after %.2fs", time.perf_counter() - t0
+            )
+            return None
+        finally:
+            temp_onnx.unlink(missing_ok=True)
+
     def export_torchscript(
         self,
         input_shape: Tuple[int, int, int, int] = (1, 3, 224, 224),
@@ -590,7 +764,7 @@ class ModelExporter:
 def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     """Command line interface."""
     parser = argparse.ArgumentParser(
-        description="Export PaDiM models to ONNX, TorchScript, and OpenVINO (with optional quantization)",
+        description="Export AnomaVision models to ONNX, TensorRT, TorchScript, and OpenVINO.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         add_help=add_help,
     )
@@ -631,7 +805,7 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--format",
-        choices=["onnx", "openvino", "torchscript", "all"],
+        choices=["onnx", "tensorrt", "openvino", "torchscript", "all"],
         help="Export format",
     )
 
@@ -652,6 +826,42 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     )
 
     parser.add_argument("--opset", type=int, default=18, help="ONNX opset version")
+    parser.add_argument(
+        "--tensorrt-precision",
+        choices=["fp32", "fp16", "int8"],
+        default="fp16",
+        help="TensorRT engine precision",
+    )
+    parser.add_argument(
+        "--calib-dir",
+        type=str,
+        default=None,
+        help="Directory of normal images used for TensorRT INT8 calibration",
+    )
+    parser.add_argument(
+        "--workspace-gb",
+        type=float,
+        default=2.0,
+        help="TensorRT builder workspace limit in GiB",
+    )
+    parser.add_argument(
+        "--min-batch",
+        type=int,
+        default=1,
+        help="TensorRT dynamic profile minimum batch",
+    )
+    parser.add_argument(
+        "--opt-batch",
+        type=int,
+        default=1,
+        help="TensorRT dynamic profile optimal batch",
+    )
+    parser.add_argument(
+        "--max-batch",
+        type=int,
+        default=4,
+        help="TensorRT dynamic profile maximum batch",
+    )
     parser.add_argument(
         "--static-batch", action="store_true", help="Disable dynamic batch size"
     )
@@ -692,6 +902,27 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     return parser
 
 
+def _apply_export_defaults(config):
+    """Populate optional export settings omitted by older configs or dispatchers."""
+    defaults = {
+        "calib_dir": None,
+        "calib_samples": 100,
+        "workspace_gb": 2.0,
+        "min_batch": 1,
+        "opt_batch": 1,
+        "max_batch": 4,
+        "tensorrt_precision": "fp16",
+        "quantize_dynamic": False,
+        "quantize_static": False,
+        "static_batch": False,
+        "optimize": False,
+    }
+    for key, value in defaults.items():
+        if not hasattr(config, key):
+            config[key] = value
+    return config
+
+
 def main(args=None):
     if args is None:
         args = create_parser().parse_args()
@@ -716,7 +947,7 @@ def main(args=None):
         if not cfg:
             cfg = {}
 
-    config = edict(merge_config(args, cfg))
+    config = _apply_export_defaults(edict(merge_config(args, cfg)))
 
     # Setup logging & logger
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
@@ -740,6 +971,7 @@ def main(args=None):
     # Generate output names
     precision_suffix = "" if config.precision == "auto" else f"_{config.precision}"
     onnx_name = f"{model_stem}{precision_suffix}.onnx"
+    tensorrt_name = f"{model_stem}_{config.tensorrt_precision}.engine"
     openvino_name = f"{model_stem}_openvino{precision_suffix}"
     torchscript_name = f"{model_stem}{precision_suffix}.torchscript"
 
@@ -766,7 +998,7 @@ def main(args=None):
     started = time.perf_counter()
     success = True
 
-    calib_dir = os.path.join(
+    calib_dir = config.calib_dir or os.path.join(
         os.path.realpath(config.dataset_path), config.class_name, "train", "good"
     )
 
@@ -783,6 +1015,23 @@ def main(args=None):
                     calib_samples=config.calib_samples,
                     calib_dir=calib_dir,
                     force_precision=force_precision,
+                )
+                is not None
+            )
+
+        if config.format in ["tensorrt", "all"]:
+            success &= (
+                exporter.export_tensorrt(
+                    input_shape=tuple(input_shape),
+                    output_name=tensorrt_name,
+                    dynamic_batch=not config.static_batch,
+                    precision=config.tensorrt_precision,
+                    calib_dir=calib_dir,
+                    calib_samples=config.calib_samples,
+                    workspace_gb=config.workspace_gb,
+                    min_batch=config.min_batch,
+                    opt_batch=config.opt_batch,
+                    max_batch=config.max_batch,
                 )
                 is not None
             )
