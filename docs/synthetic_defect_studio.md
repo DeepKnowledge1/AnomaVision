@@ -81,3 +81,13 @@ The mask is a grayscale image in which white pixels identify the synthetic defec
 ## Important limitation
 
 Synthetic defects are useful for controlled testing, but they are not a substitute for real factory examples. Use them together with real normal and defective images because generated scratches, stains, dents, and holes may not reproduce the full texture, lighting, camera, and manufacturing variation of real defects.
+
+## Reuse real defects at new locations
+
+The **Reuse Real Defects** tab is a reference-driven workflow. Upload one normal target image and one or more defective reference images. The studio extracts each defect from its paired mask when supplied, or uses a conservative local-contrast heuristic when a mask is not available.
+
+The studio then applies controlled random transformations and places the defect at new locations. You can control the number of copies, scale range, rotation range, automatic-mask sensitivity, and seed. The output contains one combined image-level mask and a metadata record containing every placement coordinate, scale, rotation, source index, and seed.
+
+For the most accurate results, upload masks in the same order as the defective reference images. A real defect image without a paired mask may include normal edges or background texture in the extracted region, so heuristic extraction should be reviewed before using the output for training.
+
+This workflow is especially useful when a factory has a small number of real defect examples but needs more variation in location, orientation, and scale. It preserves the appearance of the uploaded defect instead of inventing a completely new texture.

@@ -149,7 +149,7 @@ PatchCore compares image patches with a compact normal-feature memory bank. Its 
 
 ## Synthetic Defect Studio
 
-Create deterministic scratches, cracks, stains, dents, holes, or texture-preserving CutPaste defects from normal images, with exact ground-truth masks. Use the polished **Synthetic Studio** UI for one sample, or run `anomavision synthesize --input_dir .\\normal_images --output_dir .\\synthetic_dataset` for a bounded dataset with train/validation folders, masks, and a manifest. See [`docs/synthetic_defect_studio.md`](docs/synthetic_defect_studio.md) for the complete workflow and limitations.
+Create deterministic scratches, cracks, stains, dents, holes, or texture-preserving CutPaste defects from normal images, with exact ground-truth masks. Use the polished **Synthetic Studio** UI for one sample, or run `anomavision synthesize --input_dir .\\normal_images --output_dir .\\synthetic_dataset` for a bounded dataset with train/validation folders, masks, and a manifest. You can also upload real defect examples in **Reuse Real Defects** and place them at new locations with controlled scale, rotation, copies, and seed. See [`docs/synthetic_defect_studio.md`](docs/synthetic_defect_studio.md) for the complete workflow and limitations.
 
 ## Choosing a model
 

@@ -28,7 +28,11 @@ import numpy as np
 import torch
 from PIL import Image
 
-from anomavision.synthetic_defects import generate_synthetic_defect, save_studio_outputs
+from anomavision.synthetic_defects import (
+    generate_synthetic_defect,
+    reuse_real_defects,
+    save_studio_outputs,
+)
 
 # ── lazy import so the app still starts even if anomavision isn't installed ──
 try:
@@ -319,6 +323,57 @@ def run_synthetic_studio(
         return defective, mask, metadata_note, files
     except Exception as exc:
         return None, None, f"Generation error: `{exc}`", None
+
+
+def _uploaded_image(item) -> Image.Image:
+    """Load a Gradio filepath or uploaded-file object as RGB PIL."""
+    path = item if isinstance(item, (str, os.PathLike)) else getattr(item, "name", None)
+    if not path:
+        path = getattr(item, "path", None)
+    if not path:
+        raise ValueError("uploaded file has no readable path")
+    return Image.open(path).convert("RGB")
+
+
+def run_real_defect_reuse(
+    normal_image: Optional[Image.Image],
+    defect_files,
+    mask_files,
+    copies_per_source: int,
+    scale_min: float,
+    scale_max: float,
+    rotation_min: float,
+    rotation_max: float,
+    seed: int,
+    sensitivity: float,
+):
+    """Reuse uploaded real defects at reproducible random target locations."""
+    if normal_image is None:
+        return None, None, "Upload a normal target image first.", None
+    if not defect_files:
+        return None, None, "Upload at least one real defective reference image.", None
+    try:
+        defect_images = [_uploaded_image(item) for item in defect_files]
+        masks = [_uploaded_image(item).convert("L") for item in (mask_files or [])]
+        defective, mask, metadata = reuse_real_defects(
+            normal_image,
+            defect_images,
+            masks,
+            copies_per_source=int(copies_per_source),
+            scale_range=(float(scale_min), float(scale_max)),
+            rotation_range=(float(rotation_min), float(rotation_max)),
+            seed=int(seed),
+            sensitivity=float(sensitivity),
+        )
+        files = save_studio_outputs(defective, mask, metadata)
+        note = "### Real defects reused\\n\\n" + "\\n".join(
+            f"- **{key.replace('_', ' ').title()}:** {value}"
+            for key, value in metadata.items()
+            if key != "placements"
+        )
+        return defective, mask, note, files
+    except Exception as exc:
+        return None, None, f"Reuse error: `{exc}`", None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1066,7 +1121,97 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                 outputs=[studio_output, studio_mask, studio_metadata, studio_files],
             )
 
-        # ── Tab 4: Compare Models ─────────────────────────────────────────────
+        # ── Tab 4: Reuse Real Defects ─────────────────────────────────────────
+        with gr.Tab("♻️ Reuse Real Defects"):
+            gr.HTML("""
+            <div style="padding:1.2rem 0 0.4rem;">
+              <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;
+                          color:#7c82a8;margin-bottom:0.5rem;">Reference-driven synthesis</div>
+              <div style="font-size:1.4rem;font-weight:800;color:#1e1b4b;letter-spacing:-0.02em;margin-bottom:0.6rem;">
+                Reuse Real Defects at New Locations
+              </div>
+              <p style="color:#7c82a8;font-size:0.9rem;line-height:1.6;max-width:760px;">
+                Upload a normal target and one or more real defective reference images. AnomaVision
+                extracts each defect, transforms it, and places it at reproducible random locations.
+                Upload paired masks when available for the most accurate result.
+              </p>
+            </div>
+            """)
+            with gr.Row(equal_height=False):
+                with gr.Column(scale=1, min_width=300):
+                    reuse_target = gr.Image(
+                        type="pil", label="Normal target image", height=240
+                    )
+                    reuse_defects = gr.Files(
+                        label="Real defective reference images",
+                        file_count="multiple",
+                        type="filepath",
+                    )
+                    reuse_masks = gr.Files(
+                        label="Optional paired masks (same order)",
+                        file_count="multiple",
+                        type="filepath",
+                    )
+                    with gr.Row():
+                        reuse_copies = gr.Number(
+                            value=1,
+                            minimum=1,
+                            maximum=20,
+                            precision=0,
+                            label="Copies per defect",
+                        )
+                        reuse_seed = gr.Number(value=42, precision=0, label="Seed")
+                    with gr.Row():
+                        reuse_scale_min = gr.Number(
+                            value=0.8, minimum=0.1, maximum=4.0, label="Scale min"
+                        )
+                        reuse_scale_max = gr.Number(
+                            value=1.2, minimum=0.1, maximum=4.0, label="Scale max"
+                        )
+                    with gr.Row():
+                        reuse_rotation_min = gr.Number(
+                            value=-15, minimum=-180, maximum=180, label="Rotation min"
+                        )
+                        reuse_rotation_max = gr.Number(
+                            value=15, minimum=-180, maximum=180, label="Rotation max"
+                        )
+                    reuse_sensitivity = gr.Slider(
+                        0.05, 0.5, 0.18, step=0.01, label="Auto-mask sensitivity"
+                    )
+                    reuse_btn = gr.Button(
+                        "♻️ Generate from Real Defects", variant="primary"
+                    )
+                with gr.Column(scale=2):
+                    with gr.Row():
+                        reuse_output = gr.Image(label="Generated target", type="pil")
+                        reuse_mask_output = gr.Image(
+                            label="Combined ground-truth mask", type="pil"
+                        )
+                    reuse_metadata = gr.Markdown(
+                        "Upload a normal target and at least one defective reference to begin."
+                    )
+                    reuse_files = gr.File(
+                        label="Download generated sample", file_count="multiple"
+                    )
+
+            reuse_btn.click(
+                fn=run_real_defect_reuse,
+                inputs=[
+                    reuse_target,
+                    reuse_defects,
+                    reuse_masks,
+                    reuse_copies,
+                    reuse_scale_min,
+                    reuse_scale_max,
+                    reuse_rotation_min,
+                    reuse_rotation_max,
+                    reuse_seed,
+                    reuse_sensitivity,
+                ],
+                outputs=[reuse_output, reuse_mask_output, reuse_metadata, reuse_files],
+            )
+
+        # ── Tab 5: Compare Models ─────────────────────────────────────────────
         with gr.Tab("⚖️ Compare Models"):
             gr.HTML("""
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
