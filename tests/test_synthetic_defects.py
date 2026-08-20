@@ -96,4 +96,20 @@ def test_real_defect_reuse_is_deterministic_and_places_multiple_copies():
     assert np.array_equal(np.asarray(generated_a[0]), np.asarray(generated_b[0]))
     assert np.array_equal(np.asarray(generated_a[1]), np.asarray(generated_b[1]))
     assert generated_a[2]["placement_count"] == 3
-    assert np.asarray(generated_a[1]).max() > 0
+    combined = np.asarray(generated_a[1])
+    assert combined.max() == 255
+    assert set(np.unique(combined)).issubset({0, 255})
+
+
+def test_real_defect_reuse_resizes_mask_and_rejects_invalid_sensitivity():
+    normal = _normal_image()
+    defect = Image.new("RGB", (32, 32), (128, 128, 128))
+    mask = Image.new("L", (16, 16), 0)
+    mask.paste(255, (4, 4, 12, 12))
+
+    _, combined, _ = reuse_real_defects(normal, [defect], [mask], seed=3)
+    assert combined.size == normal.size
+    assert set(np.unique(np.asarray(combined))).issubset({0, 255})
+
+    with pytest.raises(ValueError, match="sensitivity"):
+        reuse_real_defects(normal, [defect], [mask], sensitivity=0.0)

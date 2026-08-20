@@ -361,11 +361,15 @@ def extract_defect_mask(
     """
     image = _as_rgb_array(defective_image)
     height, width = image.shape[:2]
+    if not 0.0 < float(sensitivity) <= 1.0:
+        raise ValueError("sensitivity must be in the range (0, 1]")
     if mask is not None:
         mask_array = np.asarray(
             mask.convert("L") if isinstance(mask, Image.Image) else mask,
             dtype=np.uint8,
         )
+        if mask_array.ndim != 2:
+            raise ValueError("defect mask must be a 2D grayscale image")
         if mask_array.shape != (height, width):
             mask_array = np.asarray(
                 Image.fromarray(mask_array).resize(
@@ -393,18 +397,38 @@ def extract_defect_mask(
 
 
 def _remove_small_components(mask: np.ndarray, min_pixels: int) -> np.ndarray:
-    """Keep a compact mask without requiring OpenCV."""
+    """Remove disconnected regions smaller than ``min_pixels`` without OpenCV."""
     if not mask.any():
         return mask
-    ys, xs = np.where(mask)
-    if len(xs) <= min_pixels:
-        return np.zeros_like(mask, dtype=bool)
-    # A bounding-box crop is deliberately conservative and stable for thin defects.
-    y0, y1 = max(0, int(ys.min())), min(mask.shape[0], int(ys.max()) + 1)
-    x0, x1 = max(0, int(xs.min())), min(mask.shape[1], int(xs.max()) + 1)
-    compact = np.zeros_like(mask, dtype=bool)
-    compact[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
-    return compact
+    height, width = mask.shape
+    visited = np.zeros_like(mask, dtype=bool)
+    kept = np.zeros_like(mask, dtype=bool)
+    for start_y, start_x in zip(*np.where(mask & ~visited)):
+        if visited[start_y, start_x]:
+            continue
+        stack = [(int(start_y), int(start_x))]
+        component = []
+        visited[start_y, start_x] = True
+        while stack:
+            y, x = stack.pop()
+            component.append((y, x))
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dy == 0 and dx == 0:
+                        continue
+                    ny, nx = y + dy, x + dx
+                    if (
+                        0 <= ny < height
+                        and 0 <= nx < width
+                        and mask[ny, nx]
+                        and not visited[ny, nx]
+                    ):
+                        visited[ny, nx] = True
+                        stack.append((ny, nx))
+        if len(component) >= min_pixels:
+            ys, xs = zip(*component)
+            kept[np.asarray(ys), np.asarray(xs)] = True
+    return kept
 
 
 def reuse_real_defects(
@@ -465,11 +489,15 @@ def reuse_real_defects(
             )
             patch_scaled = patch.resize(new_size, Image.Resampling.BICUBIC)
             alpha_scaled = alpha.resize(new_size, Image.Resampling.BILINEAR)
+            alpha_mask = alpha.resize(new_size, Image.Resampling.NEAREST)
             patch_scaled = patch_scaled.rotate(
                 angle, expand=True, resample=Image.Resampling.BICUBIC
             )
             alpha_scaled = alpha_scaled.rotate(
                 angle, expand=True, resample=Image.Resampling.BILINEAR
+            )
+            alpha_mask = alpha_mask.rotate(
+                angle, expand=True, resample=Image.Resampling.NEAREST
             )
             if patch_scaled.width > width or patch_scaled.height > height:
                 ratio = (
@@ -481,11 +509,12 @@ def reuse_real_defects(
                 )
                 patch_scaled = patch_scaled.resize(size, Image.Resampling.BICUBIC)
                 alpha_scaled = alpha_scaled.resize(size, Image.Resampling.BILINEAR)
+                alpha_mask = alpha_mask.resize(size, Image.Resampling.NEAREST)
             x = int(rng.integers(0, max(1, width - patch_scaled.width + 1)))
             y = int(rng.integers(0, max(1, height - patch_scaled.height + 1)))
             result.paste(patch_scaled, (x, y), alpha_scaled)
             placed_mask = Image.new("L", target.size, 0)
-            placed_mask.paste(alpha_scaled, (x, y))
+            placed_mask.paste(alpha_mask, (x, y))
             combined_mask = Image.fromarray(
                 np.maximum(np.asarray(combined_mask), np.asarray(placed_mask)).astype(
                     np.uint8
