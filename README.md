@@ -147,6 +147,10 @@ PatchCore compares image patches with a compact normal-feature memory bank. Its 
 
 ![PatchCore input, boundary, and heatmap example](notebooks/example_images/patchcore_example_image.png)
 
+## Synthetic Defect Studio
+
+Create deterministic scratches, cracks, stains, dents, or holes from a normal image, with an exact ground-truth mask for testing and demos. Start the UI with `uv run python apps/ui/gradio_app.py`, open **Synthetic Studio**, and download the generated image, mask, and metadata. See [`docs/synthetic_defect_studio.md`](docs/synthetic_defect_studio.md) for the Python API and limitations.
+
 ## Choosing a model
 
 | Model | Best starting point | Memory use | Production note |

@@ -17,6 +17,7 @@ Environment variables (all optional):
     SAMPLE_IMAGES_DIR             directory with sample images (default: "sample_images")
 """
 
+import json
 import os
 import time
 from pathlib import Path
@@ -26,6 +27,8 @@ import gradio as gr
 import numpy as np
 import torch
 from PIL import Image
+
+from anomavision.synthetic_defects import generate_synthetic_defect, save_studio_outputs
 
 # ── lazy import so the app still starts even if anomavision isn't installed ──
 try:
@@ -296,6 +299,26 @@ def run_inference(
         boundary_pil,
         highlighted_pil,
     )
+
+
+def run_synthetic_studio(
+    image: Optional[Image.Image], defect_type: str, severity: str, seed: int
+):
+    """Generate a deterministic defect, mask, metadata note, and download files."""
+    if image is None:
+        return None, None, "Upload a normal reference image first.", None
+    try:
+        defective, mask, metadata = generate_synthetic_defect(
+            image, defect_type=defect_type, severity=severity, seed=int(seed)
+        )
+        files = save_studio_outputs(defective, mask, metadata)
+        metadata_note = "### Synthetic sample generated\\n\\n" + "\\n".join(
+            f"- **{key.replace('_', ' ').title()}:** {value}"
+            for key, value in metadata.items()
+        )
+        return defective, mask, metadata_note, files
+    except Exception as exc:
+        return None, None, f"Generation error: `{exc}`", None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -978,7 +1001,65 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                 outputs=[sketch_result, sketch_heat, sketch_overlay],
             )
 
-        # ── Tab 3: Compare Models ─────────────────────────────────────────────
+        # ── Tab 3: Synthetic Defect Studio ───────────────────────────────────
+        with gr.Tab("🧪 Synthetic Studio"):
+            gr.HTML("""
+            <div style="padding:1.2rem 0 0.4rem;">
+              <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;
+                          color:#7c82a8;margin-bottom:0.5rem;">Controlled defect generation</div>
+              <div style="font-size:1.4rem;font-weight:800;color:#1e1b4b;letter-spacing:-0.02em;margin-bottom:0.6rem;">
+                Synthetic Defect Studio
+              </div>
+              <p style="color:#7c82a8;font-size:0.9rem;line-height:1.6;max-width:720px;">
+                Start with a normal product image, choose a defect, and generate a reproducible
+                test sample with an exact ground-truth mask. Use it for demos, localization checks,
+                and controlled model experiments—not as a replacement for real factory data.
+              </p>
+            </div>
+            """)
+            with gr.Row(equal_height=False):
+                with gr.Column(scale=1, min_width=280):
+                    studio_input = gr.Image(
+                        type="pil", label="Normal reference image", height=280
+                    )
+                    studio_defect = gr.Dropdown(
+                        choices=["scratch", "crack", "stain", "dent", "hole"],
+                        value="scratch",
+                        label="Defect type",
+                    )
+                    studio_severity = gr.Radio(
+                        choices=["low", "medium", "high"],
+                        value="medium",
+                        label="Severity",
+                    )
+                    studio_seed = gr.Number(
+                        value=42, precision=0, minimum=0, label="Seed"
+                    )
+                    studio_btn = gr.Button(
+                        "🧪 Generate Synthetic Defect", variant="primary"
+                    )
+                with gr.Column(scale=2):
+                    with gr.Row():
+                        studio_output = gr.Image(
+                            label="Synthetic defect image", type="pil"
+                        )
+                        studio_mask = gr.Image(
+                            label="Exact ground-truth mask", type="pil"
+                        )
+                    studio_metadata = gr.Markdown(
+                        "Generate a sample to see its metadata and mask coverage."
+                    )
+                    studio_files = gr.File(
+                        label="Download generated sample", file_count="multiple"
+                    )
+
+            studio_btn.click(
+                fn=run_synthetic_studio,
+                inputs=[studio_input, studio_defect, studio_severity, studio_seed],
+                outputs=[studio_output, studio_mask, studio_metadata, studio_files],
+            )
+
+        # ── Tab 4: Compare Models ─────────────────────────────────────────────
         with gr.Tab("⚖️ Compare Models"):
             gr.HTML("""
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
