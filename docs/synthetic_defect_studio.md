@@ -13,6 +13,7 @@ The generator is deliberately lightweight and CPU-friendly. It uses deterministi
 | `stain` | A soft, colored surface region. |
 | `dent` | A shaded circular indentation with a highlight rim. |
 | `hole` | A dark circular missing-material region. |
+| `cutpaste` | A texture-preserving patch copied from the same image and blended at another location. |
 
 ## Gradio workflow
 
@@ -25,6 +26,35 @@ uv run python apps/ui/gradio_app.py
 Open the local address printed by Gradio, then select **Synthetic Studio**. Upload a normal image, choose a defect type and severity, set a seed, and click **Generate Synthetic Defect**.
 
 The studio displays the synthetic defect and its exact ground-truth mask. It also provides downloadable `synthetic_defect.png`, `ground_truth_mask.png`, and `metadata.json` files.
+
+## Generate a dataset from the CLI
+
+For repeatable experiments, generate a bounded dataset directly from a folder of normal images:
+
+```powershell
+anomavision synthesize `
+  --input_dir .\normal_images `
+  --output_dir .\synthetic_dataset `
+  --defect_types scratch crack stain dent hole cutpaste `
+  --severity medium `
+  --copies_per_type 2 `
+  --val_ratio 0.2 `
+  --seed 42
+```
+
+The exporter writes:
+
+```text
+synthetic_dataset/
+├── images/train/{normal,anomaly}/
+├── images/val/{normal,anomaly}/
+├── masks/train/{normal,anomaly}/
+├── masks/val/{normal,anomaly}/
+├── manifest.jsonl
+└── dataset_manifest.json
+```
+
+`manifest.jsonl` links every image to its mask, label, source image, defect type, severity, and seed. The exporter uses a deterministic seed, validates the requested defect types, and stops when `--max_samples` is reached so an accidental large input folder cannot create an unbounded dataset.
 
 ## Python API
 

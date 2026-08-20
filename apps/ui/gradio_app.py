@@ -1023,7 +1023,14 @@ with gr.Blocks(title="AnomaVision — Industrial Anomaly Detection") as demo:
                         type="pil", label="Normal reference image", height=280
                     )
                     studio_defect = gr.Dropdown(
-                        choices=["scratch", "crack", "stain", "dent", "hole"],
+                        choices=[
+                            "scratch",
+                            "crack",
+                            "stain",
+                            "dent",
+                            "hole",
+                            "cutpaste",
+                        ],
                         value="scratch",
                         label="Defect type",
                     )

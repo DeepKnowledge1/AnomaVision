@@ -149,7 +149,7 @@ PatchCore compares image patches with a compact normal-feature memory bank. Its 
 
 ## Synthetic Defect Studio
 
-Create deterministic scratches, cracks, stains, dents, or holes from a normal image, with an exact ground-truth mask for testing and demos. Start the UI with `uv run python apps/ui/gradio_app.py`, open **Synthetic Studio**, and download the generated image, mask, and metadata. See [`docs/synthetic_defect_studio.md`](docs/synthetic_defect_studio.md) for the Python API and limitations.
+Create deterministic scratches, cracks, stains, dents, holes, or texture-preserving CutPaste defects from normal images, with exact ground-truth masks. Use the polished **Synthetic Studio** UI for one sample, or run `anomavision synthesize --input_dir .\\normal_images --output_dir .\\synthetic_dataset` for a bounded dataset with train/validation folders, masks, and a manifest. See [`docs/synthetic_defect_studio.md`](docs/synthetic_defect_studio.md) for the complete workflow and limitations.
 
 ## Choosing a model
 
