@@ -4,7 +4,10 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from anomavision.synthetic_defects import generate_synthetic_defect
+from anomavision.synthetic_defects import (
+    generate_synthetic_dataset,
+    generate_synthetic_defect,
+)
 
 
 def _normal_image() -> Image.Image:
@@ -24,7 +27,9 @@ def test_generation_is_deterministic_and_returns_exact_mask():
     assert np.asarray(first[1]).max() == 255
 
 
-@pytest.mark.parametrize("defect_type", ["scratch", "crack", "stain", "dent", "hole"])
+@pytest.mark.parametrize(
+    "defect_type", ["scratch", "crack", "stain", "dent", "hole", "cutpaste"]
+)
 def test_all_defect_types_change_pixels_and_produce_mask(defect_type):
     source = np.asarray(_normal_image())
     defective, mask, metadata = generate_synthetic_defect(
@@ -39,3 +44,25 @@ def test_all_defect_types_change_pixels_and_produce_mask(defect_type):
 def test_invalid_defect_type_is_rejected():
     with pytest.raises(ValueError, match="unsupported defect_type"):
         generate_synthetic_defect(_normal_image(), defect_type="rust")
+
+
+def test_dataset_export_writes_manifest_and_normal_masks(tmp_path):
+    source_dir = tmp_path / "normal"
+    source_dir.mkdir()
+    _normal_image().save(source_dir / "part.png")
+
+    summary = generate_synthetic_dataset(
+        source_dir,
+        tmp_path / "dataset",
+        defect_types=["scratch", "cutpaste"],
+        copies_per_type=1,
+        val_ratio=0.0,
+        seed=4,
+    )
+
+    assert summary["normal_samples"] == 1
+    assert summary["anomaly_samples"] == 2
+    manifest = (tmp_path / "dataset" / "manifest.jsonl").read_text()
+    assert manifest.count("\n") == 3
+    normal_mask = next((tmp_path / "dataset" / "masks").rglob("normal/*.png"))
+    assert np.asarray(Image.open(normal_mask)).max() == 0

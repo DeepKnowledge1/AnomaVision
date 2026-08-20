@@ -69,6 +69,7 @@ For detailed help on each command:
     _add_detect_parser(subparsers)
     _add_eval_parser(subparsers)
     _add_autopilot_parser(subparsers)
+    _add_synthetic_parser(subparsers)
 
     return parser
 
@@ -145,6 +146,17 @@ def _add_autopilot_parser(subparsers) -> None:
     ).set_defaults(func=_dispatch_autopilot)
 
 
+def _add_synthetic_parser(subparsers) -> None:
+    from anomavision.synthetic import create_parser as _cp
+
+    subparsers.add_parser(
+        "synthesize",
+        help="Generate reproducible synthetic defect datasets",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_synthetic)
+
+
 # ============================================================
 # Dispatch functions — one line each, Namespace passed directly.
 # No sys.argv manipulation. No double-parsing.
@@ -179,6 +191,12 @@ def _dispatch_autopilot(args: argparse.Namespace) -> None:
     from anomavision import autopilot
 
     autopilot.main(args)
+
+
+def _dispatch_synthetic(args: argparse.Namespace) -> None:
+    from anomavision import synthetic
+
+    synthetic.main(args)
 
 
 # ============================================================

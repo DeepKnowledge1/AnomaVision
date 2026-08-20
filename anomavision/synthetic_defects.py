@@ -24,13 +24,13 @@ def _seed_value(seed: int | str) -> int:
 
 def _severity_value(severity: str | float) -> float:
     if isinstance(severity, str):
-        return {"low": 0.3, "medium": 0.55, "high": 0.85}.get(
-            severity.lower(), 0.55
-        )
+        return {"low": 0.3, "medium": 0.55, "high": 0.85}.get(severity.lower(), 0.55)
     return float(np.clip(float(severity), 0.1, 1.0))
 
 
-def _geometry(width: int, height: int, rng: np.random.Generator) -> Tuple[int, int, int]:
+def _geometry(
+    width: int, height: int, rng: np.random.Generator
+) -> Tuple[int, int, int]:
     margin = max(8, min(width, height) // 8)
     cx = int(rng.integers(margin, max(margin + 1, width - margin)))
     cy = int(rng.integers(margin, max(margin + 1, height - margin)))
@@ -48,7 +48,9 @@ def _line_points(cx: int, cy: int, radius: int, rng: np.random.Generator):
     return [(x0, y0), (cx, cy), (x1, y1)]
 
 
-def _blend_color(base: np.ndarray, color: Tuple[int, int, int], alpha: float) -> np.ndarray:
+def _blend_color(
+    base: np.ndarray, color: Tuple[int, int, int], alpha: float
+) -> np.ndarray:
     overlay = np.empty_like(base)
     overlay[...] = np.asarray(color, dtype=np.uint8)
     return np.clip(
@@ -73,13 +75,15 @@ def generate_synthetic_defect(
             raise ValueError("image must be an RGB image")
 
     defect = defect_type.strip().lower().replace(" ", "_")
-    supported = {"scratch", "crack", "stain", "dent", "hole"}
+    supported = {"scratch", "crack", "stain", "dent", "hole", "cutpaste"}
     if defect not in supported:
         raise ValueError(f"unsupported defect_type: {defect_type}")
 
     strength = _severity_value(severity)
     rng = np.random.default_rng(_seed_value(seed))
     height, width = source.shape[:2]
+    if min(width, height) < 16:
+        raise ValueError("image must be at least 16x16 pixels")
     cx, cy, radius = _geometry(width, height, rng)
     mask_layer = Image.new("L", (width, height), 0)
     draw = ImageDraw.Draw(mask_layer)
@@ -92,7 +96,11 @@ def generate_synthetic_defect(
         if defect == "crack":
             for branch in range(2):
                 offset = int((branch - 0.5) * radius * 0.7)
-                branch_points = [(cx, cy), (cx + offset, cy - radius), (cx + offset * 2, cy)]
+                branch_points = [
+                    (cx, cy),
+                    (cx + offset, cy - radius),
+                    (cx + offset * 2, cy),
+                ]
                 draw.line(branch_points, fill=255, width=max(1, width_px))
         mask = np.asarray(mask_layer, dtype=np.uint8) > 0
         result = _blend_color(result, (20, 20, 20), 0.45 + 0.4 * strength)
@@ -117,6 +125,52 @@ def generate_synthetic_defect(
         result = _blend_color(result, (35, 35, 35), dent_alpha[..., None])
         rim = np.logical_and(mask, distance > 0.55)
         result[rim] = _blend_color(result[rim], (245, 245, 245), 0.25)
+
+    elif defect == "cutpaste":
+        patch_radius = max(4, int(radius * (0.7 + 0.8 * strength)))
+        src_x = int(
+            rng.integers(patch_radius, max(patch_radius + 1, width - patch_radius))
+        )
+        src_y = int(
+            rng.integers(patch_radius, max(patch_radius + 1, height - patch_radius))
+        )
+        dst_x = int(
+            rng.integers(patch_radius, max(patch_radius + 1, width - patch_radius))
+        )
+        dst_y = int(
+            rng.integers(patch_radius, max(patch_radius + 1, height - patch_radius))
+        )
+        src_box = (
+            src_x - patch_radius,
+            src_y - patch_radius,
+            src_x + patch_radius,
+            src_y + patch_radius,
+        )
+        dst_box = (
+            dst_x - patch_radius,
+            dst_y - patch_radius,
+            dst_x + patch_radius,
+            dst_y + patch_radius,
+        )
+        patch = Image.fromarray(source).crop(src_box)
+        draw.rectangle(dst_box, fill=255)
+        pasted = np.asarray(patch.resize((2 * patch_radius, 2 * patch_radius))).astype(
+            np.float32
+        )
+        pasted = np.clip(
+            pasted * (1.0 - 0.25 * strength) + 255.0 * 0.1 * strength,
+            0,
+            255,
+        ).astype(np.uint8)
+        y0, y1 = dst_y - patch_radius, dst_y + patch_radius
+        x0, x1 = dst_x - patch_radius, dst_x + patch_radius
+        alpha = 0.35 + 0.55 * strength
+        result[y0:y1, x0:x1] = np.clip(
+            result[y0:y1, x0:x1].astype(np.float32) * (1.0 - alpha)
+            + pasted.astype(np.float32) * alpha,
+            0,
+            255,
+        ).astype(np.uint8)
 
     else:  # hole
         box = (cx - radius, cy - radius, cx + radius, cy + radius)
@@ -151,3 +205,134 @@ def save_studio_outputs(
     mask.save(mask_path)
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     return [str(defect_path), str(mask_path), str(metadata_path)]
+
+
+def generate_synthetic_dataset(
+    input_dir: str | Path,
+    output_dir: str | Path,
+    *,
+    defect_types: list[str] | tuple[str, ...] = (
+        "scratch",
+        "crack",
+        "stain",
+        "dent",
+        "hole",
+        "cutpaste",
+    ),
+    severity: str = "medium",
+    copies_per_type: int = 1,
+    seed: int = 42,
+    val_ratio: float = 0.2,
+    max_samples: int = 10_000,
+) -> Dict[str, object]:
+    """Create a reproducible normal/anomaly dataset with masks and manifest.
+
+    The output layout is ``images/{train,val}/{normal,anomaly}`` and
+    ``masks/{train,val}/{normal,anomaly}``. Normal masks are all-black; anomaly
+    masks are exact binary masks generated with the synthetic image.
+    """
+    input_path = Path(input_dir)
+    output_path = Path(output_dir)
+    if not input_path.is_dir():
+        raise ValueError(f"input_dir does not exist or is not a directory: {input_dir}")
+    if copies_per_type < 1 or copies_per_type > 100:
+        raise ValueError("copies_per_type must be between 1 and 100")
+    if not 0.0 <= val_ratio < 1.0:
+        raise ValueError("val_ratio must be in the range [0, 1)")
+    normalized_types = [item.strip().lower().replace(" ", "_") for item in defect_types]
+    supported = {"scratch", "crack", "stain", "dent", "hole", "cutpaste"}
+    unknown = set(normalized_types) - supported
+    if unknown:
+        raise ValueError(f"unsupported defect types: {sorted(unknown)}")
+
+    source_files = sorted(
+        path
+        for path in input_path.rglob("*")
+        if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+    )
+    if not source_files:
+        raise ValueError(f"no supported images found in {input_dir}")
+
+    output_path.mkdir(parents=True, exist_ok=True)
+    records: list[Dict[str, object]] = []
+    sample_count = 0
+    rng = np.random.default_rng(_seed_value(seed))
+
+    for source_index, source_file in enumerate(source_files):
+        split = "val" if rng.random() < val_ratio else "train"
+        source = Image.open(source_file).convert("RGB")
+        image_id = f"{source_index:06d}_{source_file.stem}"
+        normal_rel = Path("images") / split / "normal" / f"{image_id}.png"
+        normal_mask_rel = Path("masks") / split / "normal" / f"{image_id}.png"
+        normal_path = output_path / normal_rel
+        normal_mask_path = output_path / normal_mask_rel
+        normal_path.parent.mkdir(parents=True, exist_ok=True)
+        normal_mask_path.parent.mkdir(parents=True, exist_ok=True)
+        source.save(normal_path)
+        Image.new("L", source.size, 0).save(normal_mask_path)
+        records.append(
+            {
+                "image": normal_rel.as_posix(),
+                "mask": normal_mask_rel.as_posix(),
+                "label": "normal",
+                "defect_type": None,
+                "severity": None,
+                "seed": seed,
+                "source": str(source_file),
+            }
+        )
+
+        for defect_type in normalized_types:
+            for copy_index in range(copies_per_type):
+                sample_count += 1
+                if sample_count > max_samples:
+                    raise ValueError(
+                        f"sample limit exceeded ({max_samples}); reduce copies_per_type or input size"
+                    )
+                sample_seed = int(seed) + source_index * 100_003 + copy_index * 1_009
+                defective, mask, metadata = generate_synthetic_defect(
+                    source,
+                    defect_type=defect_type,
+                    severity=severity,
+                    seed=sample_seed,
+                )
+                defect_id = f"{image_id}_{defect_type}_{copy_index:03d}"
+                image_rel = Path("images") / split / "anomaly" / f"{defect_id}.png"
+                mask_rel = Path("masks") / split / "anomaly" / f"{defect_id}.png"
+                image_path = output_path / image_rel
+                mask_path = output_path / mask_rel
+                image_path.parent.mkdir(parents=True, exist_ok=True)
+                mask_path.parent.mkdir(parents=True, exist_ok=True)
+                defective.save(image_path)
+                mask.save(mask_path)
+                records.append(
+                    {
+                        "image": image_rel.as_posix(),
+                        "mask": mask_rel.as_posix(),
+                        "label": "anomaly",
+                        "source": str(source_file),
+                        **metadata,
+                    }
+                )
+
+    manifest_path = output_path / "manifest.jsonl"
+    manifest_path.write_text(
+        "".join(json.dumps(record, sort_keys=True) + "\n" for record in records),
+        encoding="utf-8",
+    )
+    summary = {
+        "format": "anomavision-synthetic-v1",
+        "source_dir": str(input_path),
+        "samples": len(records),
+        "normal_samples": sum(record["label"] == "normal" for record in records),
+        "anomaly_samples": sum(record["label"] == "anomaly" for record in records),
+        "defect_types": normalized_types,
+        "severity": severity,
+        "seed": seed,
+        "val_ratio": val_ratio,
+        "manifest": "manifest.jsonl",
+    }
+    (output_path / "dataset_manifest.json").write_text(
+        json.dumps(summary, indent=2), encoding="utf-8"
+    )
+    return summary
