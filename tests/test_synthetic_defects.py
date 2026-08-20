@@ -7,6 +7,7 @@ from PIL import Image
 from anomavision.synthetic_defects import (
     generate_synthetic_dataset,
     generate_synthetic_defect,
+    reuse_real_defects,
 )
 
 
@@ -66,3 +67,33 @@ def test_dataset_export_writes_manifest_and_normal_masks(tmp_path):
     assert manifest.count("\n") == 3
     normal_mask = next((tmp_path / "dataset" / "masks").rglob("normal/*.png"))
     assert np.asarray(Image.open(normal_mask)).max() == 0
+
+
+def test_real_defect_reuse_is_deterministic_and_places_multiple_copies():
+    normal = _normal_image()
+    defective, mask, _ = generate_synthetic_defect(
+        normal, defect_type="scratch", severity="high", seed=9
+    )
+    generated_a = reuse_real_defects(
+        normal,
+        [defective],
+        [mask],
+        copies_per_source=3,
+        scale_range=(0.8, 1.2),
+        rotation_range=(-10, 10),
+        seed=11,
+    )
+    generated_b = reuse_real_defects(
+        normal,
+        [defective],
+        [mask],
+        copies_per_source=3,
+        scale_range=(0.8, 1.2),
+        rotation_range=(-10, 10),
+        seed=11,
+    )
+
+    assert np.array_equal(np.asarray(generated_a[0]), np.asarray(generated_b[0]))
+    assert np.array_equal(np.asarray(generated_a[1]), np.asarray(generated_b[1]))
+    assert generated_a[2]["placement_count"] == 3
+    assert np.asarray(generated_a[1]).max() > 0

@@ -336,3 +336,186 @@ def generate_synthetic_dataset(
         json.dumps(summary, indent=2), encoding="utf-8"
     )
     return summary
+
+
+def _as_rgb_array(image: Image.Image | np.ndarray) -> np.ndarray:
+    if isinstance(image, Image.Image):
+        return np.asarray(image.convert("RGB"), dtype=np.uint8)
+    array = np.asarray(image, dtype=np.uint8)
+    if array.ndim != 3 or array.shape[2] != 3:
+        raise ValueError("image must be an RGB image")
+    return array
+
+
+def extract_defect_mask(
+    defective_image: Image.Image | np.ndarray,
+    mask: Image.Image | np.ndarray | None = None,
+    *,
+    sensitivity: float = 0.18,
+) -> Image.Image:
+    """Return a defect mask, preferring an uploaded mask over heuristic extraction.
+
+    When no mask is supplied, a lightweight local-contrast heuristic is used. For
+    production-quality annotations, upload a paired binary mask because a single
+    defective image cannot always distinguish a defect from normal object edges.
+    """
+    image = _as_rgb_array(defective_image)
+    height, width = image.shape[:2]
+    if mask is not None:
+        mask_array = np.asarray(
+            mask.convert("L") if isinstance(mask, Image.Image) else mask,
+            dtype=np.uint8,
+        )
+        if mask_array.shape != (height, width):
+            mask_array = np.asarray(
+                Image.fromarray(mask_array).resize(
+                    (width, height), Image.Resampling.NEAREST
+                )
+            )
+        return Image.fromarray(
+            np.where(mask_array > 0, 255, 0).astype(np.uint8), mode="L"
+        )
+
+    gray = image.astype(np.float32).mean(axis=2)
+    blurred = np.asarray(
+        Image.fromarray(np.clip(gray, 0, 255).astype(np.uint8)).filter(
+            ImageFilter.GaussianBlur(max(2, min(width, height) // 24))
+        ),
+        dtype=np.float32,
+    )
+    residual = np.abs(gray - blurred)
+    threshold = max(4.0, float(np.percentile(residual, 100.0 - 100.0 * sensitivity)))
+    extracted = residual >= threshold
+    extracted = _remove_small_components(
+        extracted, min_pixels=max(4, (width * height) // 5000)
+    )
+    return Image.fromarray((extracted * 255).astype(np.uint8), mode="L")
+
+
+def _remove_small_components(mask: np.ndarray, min_pixels: int) -> np.ndarray:
+    """Keep a compact mask without requiring OpenCV."""
+    if not mask.any():
+        return mask
+    ys, xs = np.where(mask)
+    if len(xs) <= min_pixels:
+        return np.zeros_like(mask, dtype=bool)
+    # A bounding-box crop is deliberately conservative and stable for thin defects.
+    y0, y1 = max(0, int(ys.min())), min(mask.shape[0], int(ys.max()) + 1)
+    x0, x1 = max(0, int(xs.min())), min(mask.shape[1], int(xs.max()) + 1)
+    compact = np.zeros_like(mask, dtype=bool)
+    compact[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
+    return compact
+
+
+def reuse_real_defects(
+    normal_image: Image.Image | np.ndarray,
+    defect_images: list[Image.Image | np.ndarray],
+    defect_masks: list[Image.Image | np.ndarray | None] | None = None,
+    *,
+    copies_per_source: int = 1,
+    scale_range: tuple[float, float] = (0.8, 1.2),
+    rotation_range: tuple[float, float] = (-15.0, 15.0),
+    seed: int = 42,
+    sensitivity: float = 0.18,
+) -> Tuple[Image.Image, Image.Image, Dict[str, object]]:
+    """Place real defect appearances at reproducible random locations.
+
+    Each reference defect is cropped to its mask, transformed, and alpha-composited
+    onto the normal target. The returned mask is the union of all placed defects.
+    """
+    if not defect_images:
+        raise ValueError("at least one defect image is required")
+    if copies_per_source < 1 or copies_per_source > 20:
+        raise ValueError("copies_per_source must be between 1 and 20")
+    low_scale, high_scale = sorted((float(scale_range[0]), float(scale_range[1])))
+    if low_scale <= 0 or high_scale > 4:
+        raise ValueError("scale_range must be positive and no greater than 4.0")
+    low_angle, high_angle = sorted((float(rotation_range[0]), float(rotation_range[1])))
+    if high_angle - low_angle > 180:
+        raise ValueError("rotation_range must span at most 180 degrees")
+
+    target = Image.fromarray(_as_rgb_array(normal_image), mode="RGB")
+    width, height = target.size
+    result = target.copy()
+    combined_mask = Image.new("L", target.size, 0)
+    rng = np.random.default_rng(_seed_value(seed))
+    masks = defect_masks or []
+    placements = []
+
+    for source_index, defect_image in enumerate(defect_images):
+        defect = Image.fromarray(_as_rgb_array(defect_image), mode="RGB")
+        provided_mask = masks[source_index] if source_index < len(masks) else None
+        extracted_mask = extract_defect_mask(
+            defect, provided_mask, sensitivity=sensitivity
+        )
+        bbox = extracted_mask.getbbox()
+        if bbox is None:
+            raise ValueError(
+                f"no defect pixels found in reference image {source_index}"
+            )
+        patch = defect.crop(bbox)
+        alpha = extracted_mask.crop(bbox)
+
+        for copy_index in range(copies_per_source):
+            scale = float(rng.uniform(low_scale, high_scale))
+            angle = float(rng.uniform(low_angle, high_angle))
+            new_size = (
+                max(4, int(patch.width * scale)),
+                max(4, int(patch.height * scale)),
+            )
+            patch_scaled = patch.resize(new_size, Image.Resampling.BICUBIC)
+            alpha_scaled = alpha.resize(new_size, Image.Resampling.BILINEAR)
+            patch_scaled = patch_scaled.rotate(
+                angle, expand=True, resample=Image.Resampling.BICUBIC
+            )
+            alpha_scaled = alpha_scaled.rotate(
+                angle, expand=True, resample=Image.Resampling.BILINEAR
+            )
+            if patch_scaled.width > width or patch_scaled.height > height:
+                ratio = (
+                    min(width / patch_scaled.width, height / patch_scaled.height) * 0.8
+                )
+                size = (
+                    max(4, int(patch_scaled.width * ratio)),
+                    max(4, int(patch_scaled.height * ratio)),
+                )
+                patch_scaled = patch_scaled.resize(size, Image.Resampling.BICUBIC)
+                alpha_scaled = alpha_scaled.resize(size, Image.Resampling.BILINEAR)
+            x = int(rng.integers(0, max(1, width - patch_scaled.width + 1)))
+            y = int(rng.integers(0, max(1, height - patch_scaled.height + 1)))
+            result.paste(patch_scaled, (x, y), alpha_scaled)
+            placed_mask = Image.new("L", target.size, 0)
+            placed_mask.paste(alpha_scaled, (x, y))
+            combined_mask = Image.fromarray(
+                np.maximum(np.asarray(combined_mask), np.asarray(placed_mask)).astype(
+                    np.uint8
+                ),
+                mode="L",
+            )
+            placements.append(
+                {
+                    "source_index": source_index,
+                    "copy_index": copy_index,
+                    "x": x,
+                    "y": y,
+                    "width": patch_scaled.width,
+                    "height": patch_scaled.height,
+                    "scale": round(scale, 5),
+                    "rotation_degrees": round(angle, 5),
+                }
+            )
+
+    metadata: Dict[str, object] = {
+        "mode": "real_defect_reuse",
+        "seed": seed,
+        "source_count": len(defect_images),
+        "copies_per_source": copies_per_source,
+        "placement_count": len(placements),
+        "scale_range": [low_scale, high_scale],
+        "rotation_range": [low_angle, high_angle],
+        "mask_area_percent": round(
+            float(np.asarray(combined_mask).mean() / 255 * 100), 3
+        ),
+        "placements": placements,
+    }
+    return result, combined_mask, metadata
