@@ -52,6 +52,50 @@ uv run python -m anomavision.hailo_export `
 
 The exact compiler command depends on the installed Hailo Dataflow Compiler release and target accelerator. It should include representative-image calibration and must produce a HEF whose outputs are exactly `image_scores` and `score_map`.
 
+## Compile both models with the Hailo Dataflow Compiler
+
+Run `scripts/compile_hailo8.py` inside the Hailo Dataflow Compiler environment. It compiles both exported complete graphs independently and writes one HEF per algorithm:
+
+```powershell
+uv run python scripts/compile_hailo8.py `
+  --padim-onnx .\hailo\padim_k26\anomavision_padim_k26_end_to_end.onnx `
+  --patchcore-onnx .\hailo\patchcore_k26\anomavision_patchcore_k26_end_to_end.onnx `
+  --calibration-dir .\normal_calibration `
+  --output-dir .\hailo8_compile `
+  --hw-arch hailo8 `
+  --calibration-limit 1024
+```
+
+Expected outputs are:
+
+```text
+hailo8_compile\padim\anomavision_padim_k26_hailo8.hef
+hailo8_compile\patchcore\anomavision_patchcore_k26_hailo8.hef
+hailo8_compile\compile_all_manifest.json
+```
+
+The script uses the Hailo `ClientRunner` flow: ONNX translation, calibration/optimization, compilation, and HEF creation. It fails if the Hailo SDK is missing, calibration images are absent, the ONNX input is not fixed NCHW RGB, or the compiler returns no HEF bytes. It does not silently replace distance calculation with CPU or ONNX Runtime postprocessing.
+
+## Verify supported layers and fallback status
+
+Run the verification script after compilation:
+
+```powershell
+uv run python scripts/verify_hailo8_graph.py `
+  --padim-onnx .\hailo\padim_k26\anomavision_padim_k26_end_to_end.onnx `
+  --patchcore-onnx .\hailo\patchcore_k26\anomavision_patchcore_k26_end_to_end.onnx `
+  --padim-hef .\hailo8_compile\padim\anomavision_padim_k26_hailo8.hef `
+  --patchcore-hef .\hailo8_compile\patchcore\anomavision_patchcore_k26_hailo8.hef `
+  --padim-har .\hailo8_compile\padim\anomavision_padim_k26_hailo8.har `
+  --patchcore-har .\hailo8_compile\patchcore\anomavision_patchcore_k26_hailo8.har `
+  --compiler-log .\hailo8_compile\compiler.log `
+  --output .\hailo8_compile\verification.json
+```
+
+The verifier checks that both ONNX graphs expose the complete `image_scores` and `score_map` outputs, lists all graph operators, requires a non-empty HEF, and scans the HAR/compiler evidence for CPU, ONNX Runtime, host-postprocess, or fallback markers. A HEF without a same-build HAR or compiler log is reported as **not proven fallback-free** rather than being accepted automatically.
+
+Without the Hailo compiler artifacts, the only valid result is `onnx_only_not_hardware_verified`. A successful ONNX export is not evidence that Hailo-8 supports every operation.
+
 ## Kria runtime
 
 Copy the generated HEF and the runtime package to the Linux image running on the Kria K26. The runtime adapter is:
