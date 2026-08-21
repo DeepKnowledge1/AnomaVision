@@ -3,13 +3,25 @@ AnomaVision - Hugging Face Spaces Entry Point
 Starts both FastAPI backend and Gradio frontend in a single process
 """
 
+import importlib.util
 import multiprocessing
-import os
 import sys
 import time
+from pathlib import Path
 
-# Add the apps directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+FASTAPI_MODULE_PATH = PROJECT_ROOT / "apps" / "api" / "fastapi_app.py"
+GRADIO_MODULE_PATH = PROJECT_ROOT / "apps" / "ui" / "gradio_app.py"
+
+
+def load_module_from_path(module_name: str, module_path: Path):
+    """Load a project module by path, avoiding apps.py/package name collisions."""
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def run_fastapi():
@@ -17,8 +29,10 @@ def run_fastapi():
     try:
         import uvicorn
 
-        # Import from apps.api package
-        from apps.api.fastapi_app import app
+        fastapi_module = load_module_from_path(
+            "anomavision_fastapi_app", FASTAPI_MODULE_PATH
+        )
+        app = fastapi_module.app
 
         print("🚀 Starting FastAPI backend on port 8000...")
         uvicorn.run(
@@ -38,8 +52,7 @@ def run_gradio():
     import gradio as gr
     import requests
 
-    # Import from apps.ui package
-    from apps.ui.gradio_app import create_interface
+    gradio_module = load_module_from_path("anomavision_gradio_app", GRADIO_MODULE_PATH)
 
     # Wait for FastAPI to be ready
     print("⏳ Waiting for FastAPI backend to start...")
@@ -68,7 +81,7 @@ def run_gradio():
     # Start Gradio
     print("🎨 Starting Gradio interface on port 7860...")
     try:
-        demo = create_interface()
+        demo = gradio_module.demo
         demo.launch(
             server_name="0.0.0.0",
             server_port=7860,
