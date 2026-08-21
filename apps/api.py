@@ -35,6 +35,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel
 
+from anomavision.synthetic_defects import reuse_real_defects
+
 # import ui  # Gradio blocks defined in ui.py
 
 
@@ -96,8 +98,16 @@ class ConfigModel(BaseModel):
     resize_height: int = 224
 
 
+class SyntheticReuseResult(BaseModel):
+    generated_image_base64: str
+    ground_truth_mask_base64: str
+    metadata: dict
+
+
 # Runtime-mutable config (REST clients can adjust without restart)
 _resize_size: tuple = (224, 224)
+_MAX_SYNTHETIC_UPLOAD_BYTES = 20 * 1024 * 1024
+_MAX_SYNTHETIC_REFERENCES = 8
 
 
 # -----------------------------------------------------------------------------
@@ -129,6 +139,27 @@ def _numpy_to_base64(arr, resize_to: tuple) -> str:
 async def _encode_async(arr, resize_to: tuple) -> str:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _numpy_to_base64, arr, resize_to)
+
+
+def _pil_to_base64(image: Image.Image) -> str:
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG", compress_level=1)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+async def _read_upload_image(upload: UploadFile) -> Image.Image:
+    if not (upload.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="All uploads must be images")
+    contents = await upload.read()
+    if len(contents) > _MAX_SYNTHETIC_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Each image must be smaller than {_MAX_SYNTHETIC_UPLOAD_BYTES // (1024 * 1024)} MB",
+        )
+    try:
+        return Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid image upload: {exc}")
 
 
 # -----------------------------------------------------------------------------
@@ -244,6 +275,60 @@ async def predict(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/synthetic/reuse", response_model=SyntheticReuseResult)
+async def synthetic_reuse(
+    normal_file: UploadFile = File(...),
+    defect_files: list[UploadFile] = File(...),
+    mask_files: Optional[list[UploadFile]] = File(None),
+    copies_per_source: int = 1,
+    scale_min: float = 0.8,
+    scale_max: float = 1.2,
+    rotation_min: float = -15.0,
+    rotation_max: float = 15.0,
+    seed: int = 42,
+    sensitivity: float = 0.18,
+):
+    """Generate a target image by reusing uploaded real defects at new locations."""
+    if not defect_files:
+        raise HTTPException(status_code=400, detail="Upload at least one defect image")
+    if len(defect_files) > _MAX_SYNTHETIC_REFERENCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload at most {_MAX_SYNTHETIC_REFERENCES} defect reference images",
+        )
+    try:
+        normal_image = await _read_upload_image(normal_file)
+        defect_images = [await _read_upload_image(item) for item in defect_files]
+        masks = []
+        for item in mask_files or []:
+            mask_image = await _read_upload_image(item)
+            masks.append(mask_image.convert("L"))
+        generated, mask, metadata = await asyncio.to_thread(
+            reuse_real_defects,
+            normal_image,
+            defect_images,
+            masks,
+            copies_per_source=copies_per_source,
+            scale_range=(scale_min, scale_max),
+            rotation_range=(rotation_min, rotation_max),
+            seed=seed,
+            sensitivity=sensitivity,
+        )
+        return SyntheticReuseResult(
+            generated_image_base64=_pil_to_base64(generated),
+            ground_truth_mask_base64=_pil_to_base64(mask),
+            metadata=metadata,
+        )
+    except HTTPException:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Synthetic generation failed: {exc}"
+        )
 
 
 def _load_image_np(contents: bytes):

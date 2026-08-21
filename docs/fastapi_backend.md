@@ -119,30 +119,41 @@ curl -X POST "http://localhost:8000/predict?include_visualizations=true" \
 
 ### Batch Predict
 
-**POST** `/predict/batch`
+**POST** `/predict-batch`
 
-Process multiple images in a single request.
+Process multiple images in a single request. The endpoint accepts up to 10 image files and returns one result or error per input file.
 
-**Parameters:**
-- `files` (required): Multiple image files
-- `include_visualizations` (optional, default: false)
+### Procedural Synthetic Defect
 
-**Response:**
+**POST** `/synthetic/generate`
+
+Create one deterministic industrial defect on an uploaded normal image. Supported `defect_type` values are `scratch`, `crack`, `stain`, `dent`, `hole`, and `cutpaste`; `severity` accepts `low`, `medium`, or `high`. The response contains base64-encoded PNGs for the generated image and exact binary ground-truth mask, plus metadata.
+
+```bash
+curl -X POST "http://localhost:8000/synthetic/generate?defect_type=scratch&severity=medium&seed=42" \\
+  -F "image_file=@normal.png"
+```
+
+### Real Defect Reuse
+
+**POST** `/synthetic/reuse`
+
+Place one or more uploaded real defect references at reproducible new locations on a normal target image. Upload optional masks in the same order as the defect references; when a mask is omitted, the service uses a lightweight local-contrast heuristic. Each request supports up to 8 references, 1–20 copies per source, and image uploads up to 20 MB each.
+
+```bash
+curl -X POST "http://localhost:8000/synthetic/reuse?copies_per_source=2&scale_min=0.8&scale_max=1.2&rotation_min=-15&rotation_max=15&seed=42" \\
+  -F "normal_file=@normal.png" \\
+  -F "defect_files=@defect_reference.png" \\
+  -F "mask_files=@defect_mask.png"
+```
+
+Both synthetic endpoints return this common response shape:
+
 ```json
 {
-  "results": [
-    {
-      "filename": "image1.jpg",
-      "anomaly_score": 0.85,
-      "is_anomaly": true
-    },
-    {
-      "filename": "image2.jpg",
-      "anomaly_score": 0.23,
-      "is_anomaly": false
-    }
-  ],
-  "total_processed": 2
+  "generated_image_base64": "base64_encoded_png",
+  "ground_truth_mask_base64": "base64_encoded_png",
+  "metadata": {"mode": "procedural_or_real_defect_reuse", "seed": 42}
 }
 ```
 

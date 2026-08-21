@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import os
@@ -16,6 +17,7 @@ import anomavision
 from anomavision.general import determine_device
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.inference.modelType import ModelType
+from anomavision.synthetic_defects import generate_synthetic_defect, reuse_real_defects
 
 matplotlib.use("Agg")  # non-interactive backend
 
@@ -109,6 +111,16 @@ class ConfigModel(BaseModel):
     resize_height: int = 224
 
 
+class SyntheticReuseResult(BaseModel):
+    generated_image_base64: str
+    ground_truth_mask_base64: str
+    metadata: dict
+
+
+MAX_SYNTHETIC_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_SYNTHETIC_REFERENCES = 8
+
+
 @app.get("/")
 async def root():
     return {
@@ -120,6 +132,8 @@ async def root():
             "batch_predict": "/predict-batch",
             "model_info": "/model-info",
             "config": "/config",
+            "synthetic_generate": "/synthetic/generate",
+            "synthetic_reuse": "/synthetic/reuse",
             "docs": "/docs",
             "redoc": "/redoc",
         },
@@ -172,6 +186,28 @@ def numpy_to_base64(image_array: np.ndarray, resize_to: tuple[int, int] = None) 
         return base64.b64encode(buf.getvalue()).decode("utf-8")
     except Exception:
         return ""
+
+
+async def read_synthetic_upload(upload: UploadFile) -> Image.Image:
+    """Read and validate one bounded image upload for synthetic generation."""
+    if not upload.content_type or not upload.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="All uploads must be images")
+    contents = await upload.read()
+    if len(contents) > MAX_SYNTHETIC_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Each image must be smaller than {MAX_SYNTHETIC_UPLOAD_BYTES // (1024 * 1024)} MB",
+        )
+    try:
+        return Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid image upload: {exc}")
+
+
+def pil_to_base64(image: Image.Image) -> str:
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG", compress_level=1)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
 def create_visualizations(
@@ -282,6 +318,104 @@ async def predict_anomaly(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+
+@app.post("/synthetic/generate", response_model=SyntheticReuseResult)
+async def synthetic_generate(
+    image_file: UploadFile = File(...),
+    defect_type: str = "scratch",
+    severity: str = "medium",
+    seed: int = 42,
+):
+    """Apply one deterministic procedural defect to an uploaded normal image."""
+    image = await read_synthetic_upload(image_file)
+    try:
+        generated, mask, metadata = await asyncio.to_thread(
+            generate_synthetic_defect,
+            image,
+            defect_type=defect_type,
+            severity=severity,
+            seed=seed,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Synthetic generation failed: {exc}"
+        )
+
+    return SyntheticReuseResult(
+        generated_image_base64=pil_to_base64(generated),
+        ground_truth_mask_base64=pil_to_base64(mask),
+        metadata=metadata,
+    )
+
+
+@app.post("/synthetic/reuse", response_model=SyntheticReuseResult)
+async def synthetic_reuse(
+    normal_file: UploadFile = File(...),
+    defect_files: list[UploadFile] = File(...),
+    mask_files: Optional[list[UploadFile]] = File(None),
+    copies_per_source: int = 1,
+    scale_min: float = 0.8,
+    scale_max: float = 1.2,
+    rotation_min: float = -15.0,
+    rotation_max: float = 15.0,
+    seed: int = 42,
+    sensitivity: float = 0.18,
+):
+    """Reuse uploaded real defects at new locations on a normal target image."""
+    if not defect_files:
+        raise HTTPException(status_code=400, detail="Upload at least one defect image")
+    if len(defect_files) > MAX_SYNTHETIC_REFERENCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload at most {MAX_SYNTHETIC_REFERENCES} defect reference images",
+        )
+    if copies_per_source < 1 or copies_per_source > 32:
+        raise HTTPException(
+            status_code=400, detail="copies_per_source must be between 1 and 32"
+        )
+    if scale_min <= 0 or scale_max < scale_min:
+        raise HTTPException(status_code=400, detail="Invalid scale range")
+    if rotation_max < rotation_min:
+        raise HTTPException(status_code=400, detail="Invalid rotation range")
+    if not 0 < sensitivity <= 1:
+        raise HTTPException(
+            status_code=400, detail="sensitivity must be greater than 0 and at most 1"
+        )
+
+    normal_image = await read_synthetic_upload(normal_file)
+    defect_images = [await read_synthetic_upload(item) for item in defect_files]
+    masks = []
+    for item in mask_files or []:
+        mask = await read_synthetic_upload(item)
+        masks.append(mask.convert("L"))
+
+    try:
+        generated, ground_truth_mask, metadata = await asyncio.to_thread(
+            reuse_real_defects,
+            normal_image,
+            defect_images,
+            masks,
+            copies_per_source=copies_per_source,
+            scale_range=(scale_min, scale_max),
+            rotation_range=(rotation_min, rotation_max),
+            seed=seed,
+            sensitivity=sensitivity,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Synthetic generation failed: {exc}"
+        )
+
+    return SyntheticReuseResult(
+        generated_image_base64=pil_to_base64(generated),
+        ground_truth_mask_base64=pil_to_base64(ground_truth_mask),
+        metadata=metadata,
+    )
 
 
 @app.post("/predict-batch")
