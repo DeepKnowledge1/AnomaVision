@@ -24,7 +24,11 @@ def _seed_value(seed: int | str) -> int:
 
 def _severity_value(severity: str | float) -> float:
     if isinstance(severity, str):
-        return {"low": 0.3, "medium": 0.55, "high": 0.85}.get(severity.lower(), 0.55)
+        values = {"low": 0.3, "medium": 0.55, "high": 0.85}
+        normalized = severity.strip().lower()
+        if normalized not in values:
+            raise ValueError("severity must be low, medium, or high")
+        return values[normalized]
     return float(np.clip(float(severity), 0.1, 1.0))
 
 
@@ -58,6 +62,95 @@ def _blend_color(
         0,
         255,
     ).astype(np.uint8)
+
+
+def _surface_aware_realism(
+    source: np.ndarray,
+    rendered: np.ndarray,
+    mask_layer: Image.Image,
+    strength: float,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, Image.Image]:
+    """Soften synthetic edges and modulate appearance by the host surface.
+
+    The pass is deliberately deterministic and CPU-only. It avoids flat painted
+    colors by preserving local luminance/texture and introduces imperfect,
+    sub-pixel boundaries typical of industrial camera images.
+    """
+    height, width = source.shape[:2]
+    hard = np.asarray(mask_layer, dtype=np.float32) / 255.0
+    grid_h = max(4, height // 18)
+    grid_w = max(4, width // 18)
+    noise_small = rng.random((grid_h, grid_w), dtype=np.float32)
+    noise = (
+        np.asarray(
+            Image.fromarray((noise_small * 255).astype(np.uint8)).resize(
+                (width, height), Image.Resampling.BICUBIC
+            ),
+            dtype=np.float32,
+        )
+        / 255.0
+    )
+    organic = np.clip(hard * (0.72 + 0.56 * noise), 0.0, 1.0)
+    organic = (
+        np.asarray(
+            Image.fromarray((organic * 255).astype(np.uint8)).filter(
+                ImageFilter.GaussianBlur(max(1, int(min(width, height) * 0.004)))
+            ),
+            dtype=np.float32,
+        )
+        / 255.0
+    )
+
+    source_float = source.astype(np.float32)
+    rendered_float = rendered.astype(np.float32)
+    surface = np.asarray(
+        Image.fromarray(source).filter(
+            ImageFilter.GaussianBlur(max(2, min(width, height) // 40))
+        ),
+        dtype=np.float32,
+    )
+    local_luma = source_float.mean(axis=2) - surface.mean(axis=2)
+    delta = rendered_float - source_float
+    texture_gain = 0.82 + 0.18 * np.clip(1.0 - local_luma / 64.0, 0.65, 1.35)
+    blended = source_float + delta * organic[..., None] * texture_gain[..., None]
+
+    # A faint, irregular surrounding response prevents sticker-like edges while
+    # keeping the exact binary mask available for training annotations.
+    halo = (
+        np.asarray(
+            Image.fromarray((organic * 255).astype(np.uint8)).filter(
+                ImageFilter.GaussianBlur(max(1, int(min(width, height) * 0.012)))
+            ),
+            dtype=np.float32,
+        )
+        / 255.0
+    )
+    halo = np.clip(halo - organic * 0.65, 0.0, 1.0)
+    blended += halo[..., None] * (2.0 + 5.0 * strength)
+    # Keep annotation masks binary even though the internal alpha is soft.
+    binary_mask = (organic >= 0.5).astype(np.uint8) * 255
+    return np.clip(blended, 0, 255).astype(np.uint8), Image.fromarray(
+        binary_mask, mode="L"
+    )
+
+
+def _match_patch_to_surface(
+    patch: Image.Image, target_region: np.ndarray, strength: float
+) -> Image.Image:
+    """Match patch luminance statistics to its host while preserving defect contrast."""
+    patch_array = np.asarray(patch.convert("RGB"), dtype=np.float32)
+    target = np.asarray(target_region, dtype=np.float32)
+    patch_luma = patch_array.mean(axis=2)
+    target_luma = target.mean(axis=2)
+    patch_mean, target_mean = patch_luma.mean(), target_luma.mean()
+    patch_std = max(2.0, patch_luma.std())
+    target_std = max(2.0, target_luma.std())
+    contrast = np.clip(target_std / patch_std, 0.65, 1.35)
+    # Match only part-way: full histogram matching can erase the defect signal.
+    adjusted = (patch_array - patch_mean) * (0.35 + 0.35 * strength) * contrast
+    adjusted += patch_mean * 0.35 + target_mean * 0.65
+    return Image.fromarray(np.clip(adjusted, 0, 255).astype(np.uint8), mode="RGB")
 
 
 def generate_synthetic_defect(
@@ -182,13 +275,22 @@ def generate_synthetic_defect(
         ring_mask = np.asarray(ring, dtype=np.uint8) > 0
         result[ring_mask] = _blend_color(result[ring_mask], (220, 220, 220), 0.35)
 
-    mask_image = mask_layer.convert("L")
+    result, mask_image = _surface_aware_realism(
+        source, result, mask_layer, strength, rng
+    )
     metadata: Dict[str, object] = {
         "defect_type": defect,
         "severity": severity,
         "seed": seed,
         "image_size": [width, height],
         "mask_area_percent": round(float(np.asarray(mask_image).mean() / 255 * 100), 3),
+        "synthesis_profile": "surface_aware_v2",
+        "characteristics": [
+            "irregular_geometry",
+            "local_texture_modulation",
+            "soft_boundary",
+            "subtle_context_cues",
+        ],
     }
     return Image.fromarray(result, mode="RGB"), mask_image, metadata
 
@@ -512,6 +614,17 @@ def reuse_real_defects(
                 alpha_mask = alpha_mask.resize(size, Image.Resampling.NEAREST)
             x = int(rng.integers(0, max(1, width - patch_scaled.width + 1)))
             y = int(rng.integers(0, max(1, height - patch_scaled.height + 1)))
+            target_region = np.asarray(
+                result.crop((x, y, x + patch_scaled.width, y + patch_scaled.height))
+            )
+            patch_scaled = _match_patch_to_surface(
+                patch_scaled, target_region, strength=0.55
+            )
+            # Two-stage feathering prevents a visible cut edge while retaining a
+            # sufficiently strong center for the defect signal.
+            alpha_scaled = alpha_scaled.filter(
+                ImageFilter.GaussianBlur(max(1, int(min(patch_scaled.size) * 0.012)))
+            )
             result.paste(patch_scaled, (x, y), alpha_scaled)
             placed_mask = Image.new("L", target.size, 0)
             placed_mask.paste(alpha_mask, (x, y))
@@ -542,6 +655,13 @@ def reuse_real_defects(
         "placement_count": len(placements),
         "scale_range": [low_scale, high_scale],
         "rotation_range": [low_angle, high_angle],
+        "synthesis_profile": "surface_aware_reuse_v2",
+        "characteristics": [
+            "illumination_matched_patch",
+            "contrast_matched_patch",
+            "feathered_alpha_boundary",
+            "binary_union_mask",
+        ],
         "mask_area_percent": round(
             float(np.asarray(combined_mask).mean() / 255 * 100), 3
         ),

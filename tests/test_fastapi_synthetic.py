@@ -9,9 +9,10 @@ import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
 
-
 MODULE_PATH = Path(__file__).resolve().parents[1] / "apps" / "api" / "fastapi_app.py"
-spec = importlib.util.spec_from_file_location("anomavision_fastapi_app_test", MODULE_PATH)
+spec = importlib.util.spec_from_file_location(
+    "anomavision_fastapi_app_test", MODULE_PATH
+)
 assert spec is not None and spec.loader is not None
 api = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(api)

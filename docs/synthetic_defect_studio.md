@@ -2,7 +2,7 @@
 
 Synthetic Defect Studio creates controlled defect examples from a normal reference image. It is designed for demonstrations, localization checks, regression tests, and controlled experiments when real defect images are limited.
 
-The generator is deliberately lightweight and CPU-friendly. It uses deterministic Pillow drawing and image-processing operations rather than a large generative model. The same input, defect type, severity, and seed produce the same result.
+The current generator uses a deterministic, CPU-friendly **surface-aware v2** pipeline. It combines irregular geometry, multi-scale mask variation, soft internal alpha, local luminance and texture modulation, and subtle surrounding cues instead of painting a fixed geometric shape with a flat color. The same input, defect type, severity, and seed produce the same result.
 
 ## Supported defects
 
@@ -76,7 +76,7 @@ mask.save("ground_truth_mask.png")
 print(metadata)
 ```
 
-The mask is a grayscale image in which white pixels identify the synthetic defect region. The metadata includes the defect type, severity, seed, image dimensions, and mask coverage percentage.
+The mask is a binary grayscale image in which white pixels identify the synthetic defect region. The metadata includes the defect type, severity, seed, image dimensions, mask coverage percentage, and `synthesis_profile` (`surface_aware_v2`). The internal alpha used for blending is soft, but the exported annotation remains binary for training compatibility.
 
 ## Important limitation
 
@@ -86,8 +86,8 @@ Synthetic defects are useful for controlled testing, but they are not a substitu
 
 The **Reuse Real Defects** tab is a reference-driven workflow. Upload one normal target image and one or more defective reference images. The studio extracts each defect from its paired mask when supplied, or uses a conservative local-contrast heuristic when a mask is not available.
 
-The studio then applies controlled random transformations and places the defect at new locations. You can control the number of copies, scale range, rotation range, automatic-mask sensitivity, and seed. The output contains one combined image-level mask and a metadata record containing every placement coordinate, scale, rotation, source index, and seed.
+The studio then applies controlled random transformations and places the defect at new locations. Before compositing, the reference patch is partially matched to the target region's luminance and contrast statistics, and the alpha boundary is feathered to reduce pasted-edge artifacts. You can control the number of copies, scale range, rotation range, automatic-mask sensitivity, and seed. The output contains one combined binary image-level mask and a metadata record containing every placement coordinate, scale, rotation, source index, and seed.
 
 For the most accurate results, upload masks in the same order as the defective reference images. A real defect image without a paired mask may include normal edges or background texture in the extracted region, so heuristic extraction should be reviewed before using the output for training.
 
-This workflow is especially useful when a factory has a small number of real defect examples but needs more variation in location, orientation, and scale. It preserves the appearance of the uploaded defect instead of inventing a completely new texture.
+This workflow is especially useful when a factory has a small number of real defect examples but needs more variation in location, orientation, and scale. It preserves the appearance of the uploaded defect while adapting its local intensity to the target surface. It is still an augmentation method, not a guarantee that synthetic samples are indistinguishable from factory captures; validate generated data against held-out real defects before deploying a model.

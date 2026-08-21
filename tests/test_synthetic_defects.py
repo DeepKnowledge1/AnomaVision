@@ -16,6 +16,11 @@ def _normal_image() -> Image.Image:
     return Image.fromarray(pixels, mode="RGB")
 
 
+def test_unknown_severity_is_rejected():
+    with pytest.raises(ValueError, match="severity"):
+        generate_synthetic_defect(_normal_image(), severity="extreme")
+
+
 def test_generation_is_deterministic_and_returns_exact_mask():
     first = generate_synthetic_defect(_normal_image(), "scratch", "medium", seed=7)
     second = generate_synthetic_defect(_normal_image(), "scratch", "medium", seed=7)
@@ -38,6 +43,7 @@ def test_all_defect_types_change_pixels_and_produce_mask(defect_type):
     )
 
     assert metadata["defect_type"] == defect_type
+    assert metadata["synthesis_profile"] == "surface_aware_v2"
     assert np.asarray(mask).sum() > 0
     assert not np.array_equal(source, np.asarray(defective))
 
