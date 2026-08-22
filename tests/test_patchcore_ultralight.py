@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-import anomavision.patchcore as patchcore_module
+import anomavision.algorithm.patchcore as patchcore_module
 
 
 class FakeExtractor(torch.nn.Module):

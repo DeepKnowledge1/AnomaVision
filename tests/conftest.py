@@ -270,10 +270,10 @@ def make_stats():
 
 @pytest.fixture
 def patch_extractor(monkeypatch):
-    """Monkeypatch DummyExtractor into anomavision.padim_lite."""
+    """Monkeypatch DummyExtractor into the canonical PaDiM-lite implementation."""
     from importlib import import_module
 
-    padim_lite = import_module("anomavision.padim_lite")
+    padim_lite = import_module("anomavision.algorithm.padim.padim_lite")
 
     def _apply(N, D, W, H):
         class _Extractor(DummyExtractor):

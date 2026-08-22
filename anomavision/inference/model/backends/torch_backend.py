@@ -9,10 +9,10 @@ from contextlib import nullcontext
 
 import torch
 
-from anomavision.padim_lite import (  # stats-only .pth → runtime module
+from anomavision.algorithm.padim.padim_lite import (  # stats-only .pth → runtime module
     build_padim_from_stats,
 )
-from anomavision.patchcore import build_patchcore_from_stats
+from anomavision.algorithm.patchcore import build_patchcore_from_stats
 from anomavision.utils import get_logger
 
 from .base import Batch, InferenceBackend, ScoresMaps

@@ -40,11 +40,11 @@ except Exception:
 
 # ----- Your package imports (existing project modules) -----
 import anomavision
+from anomavision.algorithm.padim import Padim
 from anomavision.config import load_config
 from anomavision.general import Profiler
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.inference.modelType import ModelType
-from anomavision.padim import Padim
 from anomavision.utils import get_logger
 
 # -----------------------------------------------------------------------------

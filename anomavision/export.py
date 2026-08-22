@@ -30,12 +30,12 @@ from onnxruntime.quantization import (
 )
 from PIL import Image
 
-from anomavision.config import load_config
-from anomavision.general import determine_device
-from anomavision.padim_lite import (  # stats-only .pth → runtime module
+from anomavision.algorithm.padim.padim_lite import (  # stats-only .pth → runtime module
     build_padim_from_stats,
 )
-from anomavision.patchcore import build_patchcore_from_stats
+from anomavision.algorithm.patchcore import build_patchcore_from_stats
+from anomavision.config import load_config
+from anomavision.general import determine_device
 from anomavision.utils import (
     create_image_transform,
     get_logger,
