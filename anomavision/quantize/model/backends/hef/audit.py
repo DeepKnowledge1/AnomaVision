@@ -3,8 +3,9 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-from anomavision import hailo_graphs
 from anomavision.quantize.model.backends.hef.exporter import export_onnx
+
+from . import graphs as hailo_graphs
 
 
 class FakeExtractor(torch.nn.Module):
