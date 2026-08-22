@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from .algorithm.padim import padim_lite as _implementation
+from ..algorithm.padim import padim_lite as _implementation
 
 PadimLite = _implementation.PadimLite
 MahalanobisDistance = _implementation.MahalanobisDistance
