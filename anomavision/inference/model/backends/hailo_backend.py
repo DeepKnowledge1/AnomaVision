@@ -27,6 +27,18 @@ class HailoAnomalyRuntime:
         input_size: Tuple[int, int] = (224, 224),
         input_dtype: np.dtype = np.float32,
     ) -> None:
+        """Load and configure a complete Hailo-8 HEF.
+
+        Args:
+            hef_path: Path to a HEF exposing ``image_scores`` and ``score_map``.
+            input_size: Fixed ``(height, width)`` expected by the HEF.
+            input_dtype: Host input dtype passed to HailoRT.
+
+        Raises:
+            RuntimeError: If HailoRT is unavailable or has no network group.
+            FileNotFoundError: If ``hef_path`` does not exist.
+            ValueError: If required anomaly outputs are missing.
+        """
         try:
             from hailo_platform import (
                 HEF,
@@ -78,6 +90,7 @@ class HailoAnomalyRuntime:
         self.output_names = output_names
 
     def _preprocess(self, image: Image.Image | np.ndarray | str | Path) -> np.ndarray:
+        """Convert an image path, PIL image, or RGB array to NCHW input."""
         if isinstance(image, (str, Path)):
             image = Image.open(image)
         if isinstance(image, Image.Image):
@@ -97,7 +110,14 @@ class HailoAnomalyRuntime:
     def predict(
         self, image: Image.Image | np.ndarray | str | Path
     ) -> Dict[str, np.ndarray]:
-        """Run one image and return complete image and localization outputs."""
+        """Run one image and return complete image and localization outputs.
+
+        Args:
+            image: An image path, PIL RGB image, or HxWx3 RGB array.
+
+        Returns:
+            A mapping containing ``image_scores`` and ``score_map`` arrays.
+        """
         api = self._api
         input_params = api["InputVStreamParams"].make(
             self.network_group, quantized=False, format_type=api["FormatType"].FLOAT32
@@ -142,7 +162,14 @@ class HailoBackend(InferenceBackend):
         self.runtime = HailoAnomalyRuntime(model_path, input_size=input_size)
 
     def predict(self, batch) -> Tuple[np.ndarray, np.ndarray]:
-        """Run one image and return ``(image_scores, score_maps)`` arrays."""
+        """Run one image through the common backend contract.
+
+        Args:
+            batch: An HxWx3 RGB image or a single-image 1x3xHxW/1xHxWx3 batch.
+
+        Returns:
+            A tuple ``(image_scores, score_maps)`` as NumPy arrays.
+        """
         array = np.asarray(batch)
         if array.ndim == 4:
             if array.shape[0] != 1:
@@ -163,5 +190,5 @@ class HailoBackend(InferenceBackend):
             self.predict(batch)
 
     def close(self) -> None:
-        """Release HailoRT resources."""
+        """Release HailoRT resources through the shared backend lifecycle."""
         self.runtime.close()

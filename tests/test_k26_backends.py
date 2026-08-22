@@ -34,3 +34,14 @@ def test_hailo_and_kv260_share_backend_protocol():
     assert InferenceBackend in KV260Backend.__mro__
     assert callable(HailoBackend.predict)
     assert callable(KV260Backend.predict)
+
+
+def test_accelerator_backends_have_public_documentation():
+    from anomavision.inference.model.backends.hailo_backend import HailoBackend
+    from anomavision.inference.model.backends.k260_backend import KV260Backend
+    from anomavision.inference.model.backends.tensorrt_backend import TensorRTBackend
+
+    for backend in (TensorRTBackend, HailoBackend, KV260Backend):
+        assert backend.__doc__
+        assert backend.predict.__doc__
+        assert backend.close.__doc__

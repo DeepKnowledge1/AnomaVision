@@ -20,6 +20,18 @@ class KV260Backend(InferenceBackend):
         device: str = "k260",
         input_size: tuple[int, int] = (224, 224),
     ) -> None:
+        """Load an AMD Vitis AI XModel through the VART runtime.
+
+        Args:
+            model_path: Path to an XModel exposing image score and map outputs.
+            device: Board identifier retained for backend-factory consistency.
+            input_size: Fixed ``(height, width)`` used for RGB preprocessing.
+
+        Raises:
+            FileNotFoundError: If ``model_path`` does not exist.
+            RuntimeError: If VART/XIR is unavailable or no runnable subgraph exists.
+            ValueError: If the XModel does not expose at least two outputs.
+        """
         del device
         self.model_path = Path(model_path)
         if not self.model_path.is_file():
@@ -49,6 +61,7 @@ class KV260Backend(InferenceBackend):
 
     @staticmethod
     def _image_array(image: Image.Image | np.ndarray | str | Path) -> np.ndarray:
+        """Convert an image path, PIL image, or array into RGB HxWx3 data."""
         if isinstance(image, (str, Path)):
             image = Image.open(image)
         if isinstance(image, Image.Image):
@@ -59,6 +72,7 @@ class KV260Backend(InferenceBackend):
         return array
 
     def _preprocess(self, image: Image.Image | np.ndarray | str | Path) -> np.ndarray:
+        """Resize and format an image for the XModel input tensor."""
         array = self._image_array(image)
         height, width = self.input_size
         resized = np.asarray(
@@ -74,7 +88,14 @@ class KV260Backend(InferenceBackend):
         return batch.astype(self.input_tensor.dtype)
 
     def predict(self, batch: Any) -> ScoresMaps:
-        """Run one image and return ``(image_scores, score_maps)``."""
+        """Run one image through VART and return anomaly scores and maps.
+
+        Args:
+            batch: An image path, PIL image, or RGB NumPy array.
+
+        Returns:
+            A tuple ``(image_scores, score_maps)`` as NumPy arrays.
+        """
         input_data = self._preprocess(batch)
         outputs = [
             np.empty(tuple(int(value) for value in tensor.dims), dtype=tensor.dtype)
@@ -104,7 +125,7 @@ class KV260Backend(InferenceBackend):
         )
 
     def close(self) -> None:
-        """Release the VART runner."""
+        """Release the VART runner and allow its resources to be reclaimed."""
         self.runner = None
 
 
