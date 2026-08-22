@@ -5,6 +5,8 @@ Inference backend implementations.
 """
 
 from .base import InferenceBackend, ScoresMaps
+from .hailo_backend import HailoAnomalyRuntime, HailoBackend
+from .k260_backend import K260Backend, KV260Backend
 from .onnx_backend import OnnxBackend
 from .openvino_backend import OpenVinoBackend
 from .tensorrt_backend import TensorRTBackend
@@ -19,4 +21,8 @@ __all__ = [
     "TensorRTBackend",
     "OpenVinoBackend",
     "TorchScriptBackend",
+    "HailoBackend",
+    "HailoAnomalyRuntime",
+    "K260Backend",
+    "KV260Backend",
 ]

@@ -1,7 +1,7 @@
 """Lightweight PatchCore anomaly detection.
 
 This module provides a bounded-memory PatchCore implementation that follows the
-public design of :mod:`anomavision.padim`: fit on a normal-image DataLoader, predict
+public design of :mod:`anomavision.algorithm.padim`: fit on a normal-image DataLoader, predict
 image scores and spatial maps, and save a compact deployment artifact.
 """
 
@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn.functional as F
 
-from .feature_extraction import ResnetEmbeddingsExtractor
+from ..common.feature_extraction import ResnetEmbeddingsExtractor
 
 
 class PatchCore(torch.nn.Module):
@@ -24,7 +24,7 @@ class PatchCore(torch.nn.Module):
     patch distance; the pixel map is the patch-distance grid upsampled to the input
     resolution.
 
-    The public methods intentionally mirror :class:`anomavision.padim.Padim`, so the
+    The public methods intentionally mirror :class:`anomavision.algorithm.padim.Padim`, so the
     model can be selected by the existing CLI training, inference, evaluation, and
     export workflows.
 

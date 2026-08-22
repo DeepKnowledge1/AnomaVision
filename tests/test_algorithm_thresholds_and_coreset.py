@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from anomavision.patchcore import PatchCore
+from anomavision.algorithm.patchcore import PatchCore
 from anomavision.utils import resolve_threshold
 
 

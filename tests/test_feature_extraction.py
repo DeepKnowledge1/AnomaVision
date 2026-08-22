@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from anomavision.feature_extraction import concatenate_layers
+from anomavision.algorithm.common.feature_extraction import concatenate_layers
 
 
 def test_concatenate_layers_basic_shapes():

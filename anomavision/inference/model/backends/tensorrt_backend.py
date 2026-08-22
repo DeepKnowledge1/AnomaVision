@@ -15,6 +15,18 @@ class TensorRTBackend(InferenceBackend):
     """Execute a serialized TensorRT engine with PyCUDA."""
 
     def __init__(self, model_path: str, device: str = "cuda"):
+        """Load a serialized TensorRT engine.
+
+        Args:
+            model_path: Path to the serialized TensorRT engine.
+            device: CUDA device identifier. TensorRT requires a CUDA device.
+
+        Raises:
+            ValueError: If ``device`` is not a CUDA device.
+            ImportError: If TensorRT or PyCUDA is unavailable.
+            FileNotFoundError: If ``model_path`` does not exist.
+            RuntimeError: If TensorRT cannot deserialize the engine.
+        """
         if not str(device).startswith("cuda"):
             raise ValueError("TensorRT inference requires a CUDA device.")
         try:
@@ -55,6 +67,15 @@ class TensorRTBackend(InferenceBackend):
         )
 
     def predict(self, batch: Batch) -> ScoresMaps:
+        """Run inference and return image scores and anomaly maps.
+
+        Args:
+            batch: A contiguous NCHW array or tensor accepted by the engine.
+
+        Returns:
+            A tuple ``(image_scores, score_maps)`` containing the first two
+            TensorRT output tensors.
+        """
         if hasattr(batch, "detach"):
             batch = batch.detach().cpu().numpy()
         input_array = np.ascontiguousarray(batch, dtype=np.float32)
@@ -88,12 +109,19 @@ class TensorRTBackend(InferenceBackend):
         return host_outputs[0], host_outputs[1]
 
     def close(self) -> None:
+        """Release TensorRT context, engine, runtime, and CUDA resources."""
         self.context = None
         self.engine = None
         self._runtime = None
         self.stream = None
 
     def warmup(self, batch=None, runs: int = 2) -> None:
+        """Execute repeated inference calls to stabilize engine performance.
+
+        Args:
+            batch: Representative input batch used for warm-up.
+            runs: Number of warm-up calls; at least one call is performed.
+        """
         if batch is None:
             raise ValueError("TensorRT warmup requires a sample batch.")
         for _ in range(max(1, runs)):

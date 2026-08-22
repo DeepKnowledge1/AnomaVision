@@ -493,7 +493,7 @@ def disable_logging(logger_name: Optional[str] = None) -> None:
         >>> disable_logging()
 
         >>> # Disable specific module logging
-        >>> disable_logging('anomavision.feature_extraction')
+        >>> disable_logging('anomavision.algorithm.common.feature_extraction')
     """
     if logger_name is None:
         logger_name = "anomavision"  # Your package name
