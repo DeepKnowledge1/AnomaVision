@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional
 import torch
 import torch.nn.functional as F
 
-from ...feature_extraction import ResnetEmbeddingsExtractor
-from ...mahalanobis import MahalanobisDistance
+from ..common.feature_extraction import ResnetEmbeddingsExtractor
+from ..common.mahalanobis import MahalanobisDistance
 
 
 class PadimLite(torch.nn.Module):

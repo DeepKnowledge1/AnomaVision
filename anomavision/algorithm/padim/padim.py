@@ -10,9 +10,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ...feature_extraction import ResnetEmbeddingsExtractor
-from ...mahalanobis import MahalanobisDistance
 from ...utils import pytorch_cov, split_tensor_and_run_function
+from ..common.feature_extraction import ResnetEmbeddingsExtractor
+from ..common.mahalanobis import MahalanobisDistance
 
 BACKBONE_FEATURE_SIZES = {
     "resnet18": OrderedDict([(0, [64]), (1, [128]), (2, [256]), (3, [512])]),

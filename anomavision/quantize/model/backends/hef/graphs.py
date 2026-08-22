@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from anomavision.feature_extraction import ResnetEmbeddingsExtractor
+from anomavision.algorithm.common.feature_extraction import ResnetEmbeddingsExtractor
 
 
 class _FixedFeatureExtractor(nn.Module):
