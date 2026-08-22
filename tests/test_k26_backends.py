@@ -23,3 +23,14 @@ def test_xmodel_compiler_requires_architecture_file(tmp_path):
     xir.write_bytes(b"xir")
     with pytest.raises(FileNotFoundError):
         compile_xmodel(xir, tmp_path / "missing.json", tmp_path / "out")
+
+
+def test_hailo_and_kv260_share_backend_protocol():
+    from anomavision.inference.model.backends.base import InferenceBackend
+    from anomavision.inference.model.backends.hailo_backend import HailoBackend
+    from anomavision.inference.model.backends.k260_backend import KV260Backend
+
+    assert InferenceBackend in HailoBackend.__mro__
+    assert InferenceBackend in KV260Backend.__mro__
+    assert callable(HailoBackend.predict)
+    assert callable(KV260Backend.predict)

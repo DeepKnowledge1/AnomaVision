@@ -91,15 +91,15 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
         return TensorRTBackend(model_path, device)
 
     if model_type == ModelType.HEF:
-        from .backends.k260_backend import K260Backend
+        from .backends.hailo_backend import HailoBackend
 
-        logger.debug("Selected Hailo/K260 backend for %s", model_path)
-        return K260Backend(model_path, device)
-
+        logger.debug("Selected Hailo-8 backend for %s", model_path)
+        return HailoBackend(model_path, device)
     if model_type == ModelType.XMODEL:
-        raise NotImplementedError(
-            "XModel inference requires the AMD Vitis AI runtime on the target."
-        )
+        from .backends.k260_backend import KV260Backend
+
+        logger.debug("Selected KV260/K26 Vitis AI backend for %s", model_path)
+        return KV260Backend(model_path, device)
 
     if model_type == ModelType.OPENVINO:
         logger.info("Loading OpenVINO backend...")

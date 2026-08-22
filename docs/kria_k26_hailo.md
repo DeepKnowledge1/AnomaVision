@@ -87,7 +87,7 @@ uv run python -m anomavision.quantize.model.backends.xmodel.compiler `
   --output-dir .\xmodel\k26
 ```
 
-The compiler requires `vai_c_xir` from the Vitis AI toolchain and fails if no `.xmodel` is produced. It does not convert a Hailo HEF into an XModel. XModel inference is intentionally not selected by `ModelWrapper` until the AMD Vitis AI runtime is installed on the board.
+The compiler requires `vai_c_xir` from the Vitis AI toolchain and fails if no `.xmodel` is produced. It does not convert a Hailo HEF into an XModel. When the AMD Vitis AI runtime is installed on the board, `ModelWrapper` selects `KV260Backend` for `.xmodel` files. If VART/XIR is unavailable, initialization fails explicitly rather than falling back to CPU inference.
 
 ## Verify supported layers and fallback status
 
@@ -111,7 +111,7 @@ Without the Hailo compiler artifacts, the only valid result is `onnx_only_not_ha
 
 ## Package locations
 
-The implementation is organized with the existing backend conventions:
+Both accelerators follow the same `InferenceBackend` protocol. The implementation is organized with the existing backend conventions:
 
 ```text
 anomavision/inference/model/backends/hailo_backend.py

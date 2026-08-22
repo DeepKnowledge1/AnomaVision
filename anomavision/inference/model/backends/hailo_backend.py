@@ -15,6 +15,8 @@ from typing import Dict, Tuple
 import numpy as np
 from PIL import Image
 
+from .base import InferenceBackend
+
 
 class HailoAnomalyRuntime:
     """Run a complete PaDiM or PatchCore HEF through HailoRT."""
@@ -127,7 +129,7 @@ class HailoAnomalyRuntime:
         self.close()
 
 
-class HailoBackend:
+class HailoBackend(InferenceBackend):
     """AnomaVision inference backend for a complete Hailo-8 HEF."""
 
     def __init__(
