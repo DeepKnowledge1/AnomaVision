@@ -75,7 +75,9 @@ class HailoAnomalyRuntime:
             )
         self.output_names = output_names
 
-    def _preprocess(self, image: Image.Image | np.ndarray) -> np.ndarray:
+    def _preprocess(self, image: Image.Image | np.ndarray | str | Path) -> np.ndarray:
+        if isinstance(image, (str, Path)):
+            image = Image.open(image)
         if isinstance(image, Image.Image):
             image = np.asarray(image.convert("RGB"))
         image = np.asarray(image)
@@ -90,7 +92,9 @@ class HailoAnomalyRuntime:
         # Match AnomaVision's tensor contract: NCHW float RGB in [0, 1].
         return np.transpose(image / 255.0, (2, 0, 1))[None].astype(self.input_dtype)
 
-    def predict(self, image: Image.Image | np.ndarray) -> Dict[str, np.ndarray]:
+    def predict(
+        self, image: Image.Image | np.ndarray | str | Path
+    ) -> Dict[str, np.ndarray]:
         """Run one image and return complete image and localization outputs."""
         api = self._api
         input_params = api["InputVStreamParams"].make(
