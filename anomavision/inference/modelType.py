@@ -8,6 +8,8 @@ class ModelType(Enum):
     ONNX = "onnx"
     TENSORRT = "tensorrt"
     OPENVINO = "openvino"
+    HEF = "hef"
+    XMODEL = "xmodel"
 
     @classmethod
     def from_extension(cls, model_path):
@@ -33,6 +35,8 @@ class ModelType(Enum):
             ".trt": cls.TENSORRT,
             ".xml": cls.OPENVINO,
             ".bin": cls.OPENVINO,
+            ".hef": cls.HEF,
+            ".xmodel": cls.XMODEL,
         }
 
         ext = os.path.splitext(model_path)[1].lower()

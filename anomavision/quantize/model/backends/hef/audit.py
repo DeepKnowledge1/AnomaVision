@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from anomavision import hailo_graphs
-from anomavision.hailo_export import export_onnx
+from anomavision.quantize.model.backends.hef.exporter import export_onnx
 
 
 class FakeExtractor(torch.nn.Module):

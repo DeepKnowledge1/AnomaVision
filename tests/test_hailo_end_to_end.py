@@ -5,8 +5,8 @@ import pytest
 import torch
 from PIL import Image
 
-from anomavision import hailo_graphs
-from anomavision.hailo_export import (
+from anomavision.quantize.model.backends.hef import graphs as hailo_graphs
+from anomavision.quantize.model.backends.hef.exporter import (
     _write_calibration_manifest,
     export_onnx,
 )

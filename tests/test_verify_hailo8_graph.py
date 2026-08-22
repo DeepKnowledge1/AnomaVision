@@ -4,7 +4,7 @@ import onnx
 import onnx.helper
 import pytest
 
-from scripts.verify_hailo8_graph import inspect_onnx, verify_graph
+from anomavision.quantize.model.backends.hef.verifier import inspect_onnx, verify_graph
 
 
 def _write_complete_model(path):

@@ -1,4 +1,4 @@
-"""Run a complete AnomaVision Hailo-8 HEF on a Kria K26/KV260 board."""
+"""AMD Kria K26/KV260 board backend for complete Hailo-8 anomaly HEFs."""
 
 from __future__ import annotations
 
@@ -8,7 +8,19 @@ from pathlib import Path
 
 import numpy as np
 
-from anomavision.hailo_runtime import HailoAnomalyRuntime
+from .hailo_backend import HailoAnomalyRuntime, HailoBackend
+
+
+class K260Backend(HailoBackend):
+    """Run a complete Hailo-8 AnomaVision HEF on a K26/KV260 Linux target."""
+
+    def __init__(
+        self,
+        model_path: str | Path,
+        device: str = "k260",
+        input_size: tuple[int, int] = (224, 224),
+    ) -> None:
+        super().__init__(model_path, device=device, input_size=input_size)
 
 
 def main() -> int:

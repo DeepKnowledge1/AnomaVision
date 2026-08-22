@@ -20,7 +20,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 import torch
 from PIL import Image
 
-from .hailo_graphs import (
+from .graphs import (
     PadimEndToEndGraph,
     PatchCoreEndToEndGraph,
     exportable_output_names,

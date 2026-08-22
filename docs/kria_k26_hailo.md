@@ -22,7 +22,7 @@ A PaDiM artifact must contain `backbone`, `layer_indices`, `channel_indices`, `m
 Export a complete graph on a host with the project environment:
 
 ```powershell
-uv run python -m anomavision.hailo_export `
+uv run python -m anomavision.quantize.model.backends.hef.exporter `
   --algorithm padim `
   --artifact .\model_stats.pt `
   --calibration-dir .\normal_calibration `
@@ -32,7 +32,7 @@ uv run python -m anomavision.hailo_export `
 or:
 
 ```powershell
-uv run python -m anomavision.hailo_export `
+uv run python -m anomavision.quantize.model.backends.hef.exporter `
   --algorithm patchcore `
   --artifact .\patchcore_artifact.pt `
   --calibration-dir .\normal_calibration `
@@ -42,7 +42,7 @@ uv run python -m anomavision.hailo_export `
 This creates the complete ONNX graph and a calibration manifest. It does not claim to create a HEF unless the Hailo SDK is installed and an explicit compiler command is supplied:
 
 ```powershell
-uv run python -m anomavision.hailo_export `
+uv run python -m anomavision.quantize.model.backends.hef.exporter `
   --algorithm patchcore `
   --artifact .\patchcore_artifact.pt `
   --calibration-dir .\normal_calibration `
@@ -76,6 +76,19 @@ hailo8_compile\compile_all_manifest.json
 
 The script uses the Hailo `ClientRunner` flow: ONNX translation, calibration/optimization, compilation, and HEF creation. It fails if the Hailo SDK is missing, calibration images are absent, the ONNX input is not fixed NCHW RGB, or the compiler returns no HEF bytes. It does not silently replace distance calculation with CPU or ONNX Runtime postprocessing.
 
+## XModel path for the K26 DPU
+
+The AMD DPU path is separate from Hailo-8. Hailo uses `.hef`; the K26 DPU uses `.xmodel`. Start from a Vitis AI XIR graph and compile it with:
+
+```powershell
+uv run python -m anomavision.quantize.model.backends.xmodel.compiler `
+  --xir .\xir\anomavision_k26.xir `
+  --arch .\arch\DPUCZDX8G_ISA1_B4096.json `
+  --output-dir .\xmodel\k26
+```
+
+The compiler requires `vai_c_xir` from the Vitis AI toolchain and fails if no `.xmodel` is produced. It does not convert a Hailo HEF into an XModel. XModel inference is intentionally not selected by `ModelWrapper` until the AMD Vitis AI runtime is installed on the board.
+
 ## Verify supported layers and fallback status
 
 Run the verification script after compilation:
@@ -96,12 +109,25 @@ The verifier checks that both ONNX graphs expose the complete `image_scores` and
 
 Without the Hailo compiler artifacts, the only valid result is `onnx_only_not_hardware_verified`. A successful ONNX export is not evidence that Hailo-8 supports every operation.
 
+## Package locations
+
+The implementation is organized with the existing backend conventions:
+
+```text
+anomavision/inference/model/backends/hailo_backend.py
+anomavision/inference/model/backends/k260_backend.py
+anomavision/quantize/model/backends/hef/exporter.py
+anomavision/quantize/model/backends/hef/verifier.py
+anomavision/quantize/model/backends/hef/audit.py
+anomavision/quantize/model/backends/xmodel/compiler.py
+```
+
 ## Kria runtime
 
 Copy the generated HEF and the runtime package to the Linux image running on the Kria K26. The runtime adapter is:
 
 ```python
-from anomavision.hailo_runtime import HailoAnomalyRuntime
+from anomavision.inference.model.backends.hailo_backend import HailoAnomalyRuntime
 
 with HailoAnomalyRuntime("/opt/models/padim_k26.hef") as detector:
     result = detector.predict("/opt/images/part.png")

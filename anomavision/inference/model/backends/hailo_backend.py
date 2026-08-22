@@ -125,3 +125,41 @@ class HailoAnomalyRuntime:
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
+
+
+class HailoBackend:
+    """AnomaVision inference backend for a complete Hailo-8 HEF."""
+
+    def __init__(
+        self,
+        model_path: str | Path,
+        device: str = "hailo",
+        input_size: Tuple[int, int] = (224, 224),
+    ) -> None:
+        del device
+        self.runtime = HailoAnomalyRuntime(model_path, input_size=input_size)
+
+    def predict(self, batch) -> Tuple[np.ndarray, np.ndarray]:
+        """Run one image and return ``(image_scores, score_maps)`` arrays."""
+        array = np.asarray(batch)
+        if array.ndim == 4:
+            if array.shape[0] != 1:
+                raise ValueError("HailoBackend currently supports batch size 1")
+            array = (
+                np.transpose(array[0], (1, 2, 0)) if array.shape[1] == 3 else array[0]
+            )
+        elif array.ndim != 3:
+            raise ValueError("batch must be an HxWx3 or 1x3xHxW image")
+        result = self.runtime.predict(array)
+        return result["image_scores"], result["score_map"]
+
+    def warmup(self, batch=None, runs: int = 2) -> None:
+        """Warm up the device with a supplied image batch."""
+        if batch is None:
+            raise ValueError("Hailo warmup requires a sample image batch")
+        for _ in range(max(1, int(runs))):
+            self.predict(batch)
+
+    def close(self) -> None:
+        """Release HailoRT resources."""
+        self.runtime.close()

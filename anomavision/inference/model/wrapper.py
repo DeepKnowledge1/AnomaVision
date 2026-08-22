@@ -34,6 +34,8 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
             - .pth → PyTorch backend
             - .engine → TensorRT backend (not implemented)
             - .xml/.bin → OpenVINO backend
+            - .hef → Hailo-8 backend (Kria K26/KV260)
+            - .xmodel → AMD Vitis AI XModel backend
 
         device (str): Target device for inference. Common values:
             - "cpu" → CPU execution
@@ -87,6 +89,17 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
 
         logger.debug("Selected TensorRT backend for %s", model_path)
         return TensorRTBackend(model_path, device)
+
+    if model_type == ModelType.HEF:
+        from .backends.k260_backend import K260Backend
+
+        logger.debug("Selected Hailo/K260 backend for %s", model_path)
+        return K260Backend(model_path, device)
+
+    if model_type == ModelType.XMODEL:
+        raise NotImplementedError(
+            "XModel inference requires the AMD Vitis AI runtime on the target."
+        )
 
     if model_type == ModelType.OPENVINO:
         logger.info("Loading OpenVINO backend...")
