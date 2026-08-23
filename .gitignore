@@ -3,8 +3,7 @@
 # =============================================================================
 
 # Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
+
 *$py.class
 
 # C extensions
@@ -361,3 +360,9 @@ images/
 poetry publish --build --username __toke.txt
 fix_flake.py
 apps/api/fastapi_app_np.py
+
+
+*__pycache__/*
+*.pyc
+production_package/*
+tests/__pycache__/*
