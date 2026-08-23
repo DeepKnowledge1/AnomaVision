@@ -14,7 +14,7 @@ norm_std:  [0.229, 0.224, 0.225]         # Standard deviation for normalization 
 # Model / training
 # =========================
 backbone: "resnet18"                     # Backbone CNN architecture (resnet18 | wide_resnet50)
-algorithm: "padim"                       # Algorithm to use: padim or patchcore
+algorithm: "patchcore"                       # Algorithm to use: padim or patchcore
 coreset_ratio: 0.02                      # Ultra-light PatchCore memory fraction
 max_memory_patches: 2048                 # Hard memory-bank cap for low latency
 patch_grid: 14                            # Pool feature maps to at most 14x14 patches
@@ -51,8 +51,8 @@ viz_color: "128,0,128"                   # RGB color for visualization overlays
 # =========================
 img_path: "D:/01-DATA/test"  # Path to test images for inference
 thresh: null                            # Legacy fallback; prefer algorithm-specific thresholds
-thresh_padim: null                       # PaDiM score threshold; null lets eval auto-select
-thresh_patchcore: null                   # PatchCore score threshold; null lets eval auto-select
+thresh_padim: 13.0                       # PaDiM score threshold; null lets eval auto-select
+thresh_patchcore: 0.25                   # PatchCore score threshold; null lets eval auto-select
 num_workers: 1                          # Number of workers for dataloader
 pin_memory: false                       # Use pinned memory for faster GPU transfers
 overwrite: false                        # Overwrite existing run directory without auto-incrementing
