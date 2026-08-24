@@ -1,4 +1,10 @@
-"""Single-DPU PatchCore graph for AMD/Xilinx KV260."""
+"""Single-DPU PatchCore graph for AMD/Xilinx KV260.
+
+The normal AnomaVision PatchCore implementation is unchanged. This backend
+keeps the PatchCore similarity tensor in NCHW and uses the KV260 DPU's native
+channel reduction instead of reshaping the 819 memory entries into extra
+spatial dimensions. This avoids compiler-inserted CPU transpose subgraphs.
+"""
 
 from __future__ import annotations
 
@@ -28,27 +34,14 @@ class PatchCoreKV260(nn.Module):
         )
 
     def forward(self, x: torch.Tensor):
-
-        # ResNet layer1
+        # ResNet layer1. Keep the feature map in native NCHW layout.
         x = self.backbone.conv1(x)
         x = self.backbone.bn1(x)
         x = self.backbone.relu(x)
         x = self.backbone.maxpool(x)
         features = self.backbone.layer1(x)
-        # features = features
 
-        # Normalize feature vectors.
-        # norm_sq = (features * features).sum(
-        #     dim=1,
-        #     keepdim=True,
-        # )
-
-        # # Avoid sqrt/division in the DPU graph.
-        # # For ResNet features, norm_sq is safely positive.
-        # inv_norm = torch.rsqrt(norm_sq + 1e-12)
-        # features = features * inv_norm
-
-        # Compute cosine similarity against memory bank.
+        # Compute similarity against all 819 normalized memory vectors.
         #
         # [B, 64, 56, 56] -> [B, 819, 56, 56]
         similarity = F.conv2d(
@@ -56,47 +49,25 @@ class PatchCoreKV260(nn.Module):
             self.memory_bank,
         )
 
-        # Hierarchical reduction over the 819 memory vectors.
-        similarity = similarity.reshape(
-            x.shape[0],
-            91,
-            9,
-            56,
-            56,
-        )
-
-        similarity = similarity.max(dim=2).values
-
-        similarity = similarity.reshape(
-            x.shape[0],
-            13,
-            7,
-            56,
-            56,
-        )
-
-        similarity = similarity.max(dim=2).values
-
-        max_similarity = similarity.max(
+        # DPUCZDX8G supports reduction-max over the channel axis. Since the
+        # similarity tensor is already NCHW, reducing channel 1 directly
+        # avoids reshape/transpose operations and keeps this stage on the DPU.
+        # 819 < 4096, which is within the KV260 DPU channel-reduction limit.
+        max_similarity = torch.amax(
+            similarity,
             dim=1,
             keepdim=True,
-        ).values
+        )
 
         # DPU-friendly squared cosine distance:
-        #
-        # Original:
-        #   sqrt(2 - 2*cosine_similarity)
-        #
-        # We keep:
-        #   2 - 2*cosine_similarity
-        #
-        # This removes sqrt/relu/clamp from the XIR graph.
+        #   2 - 2 * max(cosine_similarity)
+        # Avoid sqrt/relu/clamp because they introduce unsupported/CPU ops.
         distance = torch.add(
             max_similarity * -2.0,
             2.0,
         )
 
-        # 56x56 -> 224x224
+        # 56x56 -> 224x224 anomaly map.
         score_map = F.interpolate(
             distance,
             size=(224, 224),
