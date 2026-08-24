@@ -368,3 +368,4 @@ production_package/*
 tests/__pycache__/*
 compiled_patchcore_kv260/*
 quantize_result/*
+compiled_padim_kv260/*
