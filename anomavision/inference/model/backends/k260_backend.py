@@ -86,7 +86,9 @@ class KV260Backend(InferenceBackend):
             )
 
         self.input_tensor = self.input_tensors[0]
-        self.output_names = [getattr(tensor, "name", "") for tensor in self.output_tensors]
+        self.output_names = [
+            getattr(tensor, "name", "") for tensor in self.output_tensors
+        ]
         self.input_shape = tuple(int(value) for value in self.input_tensor.dims)
 
     @staticmethod
@@ -139,8 +141,7 @@ class KV260Backend(InferenceBackend):
             for buffer in input_buffers:
                 buffer.sync_for_write(
                     0,
-                    buffer.get_tensor().get_data_size()
-                    // buffer.get_tensor().dims[0],
+                    buffer.get_tensor().get_data_size() // buffer.get_tensor().dims[0],
                 )
             job_id, status = self.runner.execute_async(input_buffers, output_buffers)
             if status != 0:
@@ -151,8 +152,7 @@ class KV260Backend(InferenceBackend):
             for buffer in output_buffers:
                 buffer.sync_for_read(
                     0,
-                    buffer.get_tensor().get_data_size()
-                    // buffer.get_tensor().dims[0],
+                    buffer.get_tensor().get_data_size() // buffer.get_tensor().dims[0],
                 )
             outputs = [np.asarray(buffer).copy() for buffer in output_buffers]
         else:
