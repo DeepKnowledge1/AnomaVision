@@ -366,3 +366,5 @@ apps/api/fastapi_app_np.py
 *.pyc
 production_package/*
 tests/__pycache__/*
+compiled_patchcore_kv260/*
+quantize_result/*
