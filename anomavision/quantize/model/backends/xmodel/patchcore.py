@@ -1,11 +1,8 @@
 """Single-DPU PatchCore graph for AMD/Xilinx KV260.
 
 The normal AnomaVision PatchCore implementation is unchanged. This backend
-uses a DPU-friendly deployment approximation: normalized memory-bank vectors
-are implemented as a 1x1 convolution, and the memory-bank reduction is a
-spatial MaxPool2d. Runtime feature L2 normalization is intentionally omitted
-because it requires input-dependent rsqrt/div operations that force CPU
-subgraphs on the KV260.
+keeps the ResNet layer-1 feature map in native NCHW layout so the KV260 DPU
+compiler does not have to insert CPU transpose subgraphs.
 """
 
 from __future__ import annotations
@@ -21,10 +18,11 @@ class PatchCoreKV260(nn.Module):
     def __init__(self, model: nn.Module) -> None:
         super().__init__()
         self.extractor = model.embeddings_extractor
+        self.backbone = self.extractor.backbone
 
         memory_bank = F.normalize(model.memory_bank.float(), dim=-1)
 
-        # Dot product with each memory vector is exactly a 1x1 convolution.
+        # Dot product with each normalized memory vector is a 1x1 convolution.
         self.memory_projection = nn.Conv2d(
             in_channels=memory_bank.shape[1],
             out_channels=memory_bank.shape[0],
@@ -38,24 +36,26 @@ class PatchCoreKV260(nn.Module):
         self.memory_projection.weight.requires_grad_(False)
 
     def forward(self, x: torch.Tensor):
-        features, _, _ = self.extractor(x, layer_indices=[0])
+        # Reproduce ResnetEmbeddingsExtractor(layer_indices=[0]) but keep the
+        # native NCHW feature map. The public extractor still returns NLC and
+        # remains unchanged for normal AnomaVision inference.
+        x = self.backbone.conv1(x)
+        x = self.backbone.bn1(x)
+        x = self.backbone.relu(x)
+        x = self.backbone.maxpool(x)
+        features = self.backbone.layer1(x)
 
-        # (B, 3136, 64) -> (B, 64, 56, 56)
-        features = features.reshape(x.shape[0], 56, 56, -1).permute(0, 3, 1, 2)
-
-        # (B, 64, 56, 56) -> (B, 819, 56, 56)
+        # features: (B, 64, 56, 56)
         similarity = self.memory_projection(features)
 
-        # Make memory-bank entries a spatial dimension so the DPU can use
-        # MaxPool2d instead of an unsupported channel-wise amax.
+        # Reduce 819 memory entries without an 819-wide pool kernel. The
+        # reduction is hierarchical and uses reshape + max operations only.
         batch = similarity.shape[0]
-        similarity = similarity.reshape(batch, 1, 819, 56 * 56)
-        max_similarity = F.max_pool2d(
-            similarity,
-            kernel_size=(819, 1),
-            stride=(819, 1),
-        )
-        max_similarity = max_similarity.reshape(batch, 1, 56, 56)
+        similarity = similarity.reshape(batch, 91, 9, 56, 56)
+        similarity = similarity.max(dim=2).values
+        similarity = similarity.reshape(batch, 13, 7, 56, 56)
+        max_similarity = similarity.max(dim=2).values
+        max_similarity = max_similarity.max(dim=1, keepdim=True).values
 
         # Monotonic cosine-distance transform without SUB/DIV.
         distance = torch.add(max_similarity * -1.0, 1.0)
