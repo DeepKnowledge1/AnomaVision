@@ -60,44 +60,30 @@ class PadimKV260(nn.Module):
                 f"got {tuple(cov_inv.shape)}"
             )
 
-        # Fixed 1x1 projection: [B, 64, 56, 56] -> [B, 50, 56, 56].
         projection = torch.zeros(50, 64, 1, 1, dtype=torch.float32)
         projection[torch.arange(50), channel_indices, 0, 0] = 1.0
         self.register_buffer("channel_projection", projection)
 
-        # PaDiM statistics are stored as [N, D]. Keep this exact ordering and
-        # use [B, N, D] tensors in the forward graph. This is important for
-        # Vitis AI: NNDCT's deploy optimizer was converting the 4-D feature
-        # tensor to NHWC while leaving a 4-D constant in NCHW, causing:
-        #   (1,56,56,50) vs (1,50,56,56)
-        # broadcast failures during export.
-        mean = mean.unsqueeze(0).contiguous()  # [1, 3136, 50]
+        mean = mean.unsqueeze(0).contiguous()
         inv_var = torch.diagonal(cov_inv, dim1=1, dim2=2).contiguous()
-        inv_var = inv_var.unsqueeze(0).contiguous()  # [1, 3136, 50]
+        inv_var = inv_var.unsqueeze(0).contiguous()
 
         self.register_buffer("mean_flat", mean)
         self.register_buffer("inv_var_flat", inv_var)
 
     def forward(self, x: torch.Tensor):
-        # ResNet18 layer1 -> [B, 64, 56, 56].
         x = self.backbone.conv1(x)
         x = self.backbone.bn1(x)
         x = self.backbone.relu(x)
         x = self.backbone.maxpool(x)
         features = self.backbone.layer1(x)
 
-        # Select PaDiM's 50 channels.
         features = F.conv2d(features, self.channel_projection)
-
-        # Convert to [B, N, D] without a 4-D NHWC constant/broadcast.
         features = features.flatten(2).transpose(1, 2).contiguous()
 
         distance_sq = features * features
         distance_sq = distance_sq.sum(dim=2)
-
-        distance_sq = distance_sq.reshape(
-            x.shape[0], 1, 56, 56
-        )
+        distance_sq = distance_sq.reshape(x.shape[0], 1, 56, 56)
 
         score_map = F.interpolate(
             distance_sq,
@@ -106,10 +92,10 @@ class PadimKV260(nn.Module):
             align_corners=False,
         )
 
-        # Temporary compiler-isolation path: avoid aten::amax, which NNDCT
-        # exports as a custom XIR op that the KV260 compiler cannot currently
-        # compile reliably. The final PaDiM image score will be restored after
-        # the minimal graph successfully compiles on DPUCZDX8G_ISA1_B4096.
-        image_score = distance_sq[:, :, 0, 0]
+        # Compiler isolation: use a native reduction instead of aten::amax
+        # or tensor indexing/select, both of which become custom XIR ops.
+        image_score = distance_sq.sum(dim=(2, 3), keepdim=True).reshape(
+            x.shape[0], 1
+        )
 
         return image_score, score_map.squeeze(1)
