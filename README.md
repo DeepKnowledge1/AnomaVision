@@ -34,6 +34,7 @@ AnomaVision supports **PaDiM** and lightweight **PatchCore**, image-level scores
 - Use **PaDiM** for the default fast baseline or **PatchCore** for a compact nearest-neighbor memory bank.
 - Run inference through PyTorch, ONNX Runtime, OpenVINO, or native TensorRT.
 - Export FP16 or calibrated INT8 TensorRT engines for NVIDIA production deployments.
+- **Export and compile PaDiM and PatchCore to Vitis AI XModel for the AMD/Xilinx Kria KV260.**
 
 Benchmark results and reproduction details are documented in [`docs/benchmark.md`](docs/benchmark.md). Treat benchmark numbers as workload-specific, and reproduce them on your own hardware before making production claims.
 
@@ -112,6 +113,71 @@ anomavision train --help
 anomavision export --help
 ```
 
+## KV260 XModel deployment
+
+AnomaVision also provides a Vitis AI workflow for deploying **PaDiM** and **PatchCore** on the **AMD/Xilinx Kria KV260** DPU.
+
+The KV260 workflow is:
+
+**PyTorch model → Vitis AI INT8 quantization → XModel → KV260 DPU compilation**
+
+The detailed, copy-ready guide is available in [`docs/kv260_xmodel.md`](docs/kv260_xmodel.md).
+
+The guide covers:
+
+- Vitis AI 3.5 environment setup
+- PaDiM INT8 calibration and test mode
+- PatchCore INT8 calibration and test mode
+- XModel validation
+- KV260 DPU compilation with `vai_c_xir`
+- Expected output files and troubleshooting notes
+
+### PaDiM quick example
+
+```bash
+python quantize_padim_kv260.py \
+  --model distributions/padim/bottle/anomav_exp/model.pt \
+  --calibration-dir /workspace/dataset/bottle/train/good \
+  --output-dir compiled_padim_kv260 \
+  --quant_mode calib
+
+python quantize_padim_kv260.py \
+  --model distributions/padim/bottle/anomav_exp/model.pt \
+  --calibration-dir /workspace/dataset/bottle/train/good \
+  --output-dir compiled_padim_kv260 \
+  --quant_mode test
+
+vai_c_xir \
+  -x compiled_padim_kv260/PadimKV260_int.xmodel \
+  -a /opt/vitis_ai/compiler/arch/DPUCZDX8G/KV260/arch.json \
+  -o compiled_padim_kv260/compiled \
+  -n PadimKV260
+```
+
+### PatchCore quick example
+
+```bash
+python quantize_patchcore_kv260.py \
+  --model distributions/patchcore/bottle/anomav_exp/model.pt \
+  --calibration-dir /workspace/dataset/bottle/train/good \
+  --output-dir compiled_patchcore_kv260 \
+  --quant_mode calib
+
+python quantize_patchcore_kv260.py \
+  --model distributions/patchcore/bottle/anomav_exp/model.pt \
+  --calibration-dir /workspace/dataset/bottle/train/good \
+  --output-dir compiled_patchcore_kv260 \
+  --quant_mode test
+
+vai_c_xir \
+  -x compiled_patchcore_kv260/PatchCoreKV260_int.xmodel \
+  -a /opt/vitis_ai/compiler/arch/DPUCZDX8G/KV260/arch.json \
+  -o compiled_patchcore_kv260/compiled \
+  -n PatchCoreKV260
+```
+
+> **Note:** KV260 XModel generation and compilation are intended for a Linux/Vitis AI environment. The final on-device KV260 validation is a separate step from XModel generation and compiler validation.
+
 ## Production Autopilot
 
 **Production Autopilot is the easiest way to move from two trained models to one deployable choice.** It compares PaDiM and ultra-light PatchCore on the same labeled test split, calibrates a separate threshold for each, profiles median and P95 latency on your hardware, checks localization health, and packages the selected artifact with a self-contained HTML dashboard.
@@ -163,6 +229,7 @@ PatchCore compares image patches with a compact normal-feature memory bank. Its 
 | CLI and configuration | [`docs/cli.md`](docs/cli.md), [`docs/config.md`](docs/config.md) |
 | Python API | [`docs/api.md`](docs/api.md) |
 | PatchCore and TensorRT deployment | [`docs/production_deployment.md`](docs/production_deployment.md) |
+| **KV260 PaDiM/PatchCore XModel** | [`docs/kv260_xmodel.md`](docs/kv260_xmodel.md) |
 | Runnable CPU, PatchCore, and TensorRT examples | [`examples/README.md`](examples/README.md) |
 | Benchmark methodology | [`docs/benchmark.md`](docs/benchmark.md) |
 | Troubleshooting | [`docs/troubleshooting.md`](docs/troubleshooting.md) |
