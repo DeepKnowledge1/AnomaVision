@@ -10,7 +10,6 @@ from pytorch_nndct.apis import torch_quantizer
 
 from anomavision.quantize.model.backends.xmodel.padim import PadimKV260
 
-
 for _name, _obj in vars(_deploy_optimizer).items():
     if isinstance(_obj, type) and hasattr(_obj, "fuse_transpose_matmul"):
         _obj.fuse_transpose_matmul = lambda self: None
