@@ -106,6 +106,10 @@ class PadimKV260(nn.Module):
             align_corners=False,
         )
 
-        image_score = distance_sq.flatten(1).amax(dim=1, keepdim=True)
+        # Temporary compiler-isolation path: avoid aten::amax, which NNDCT
+        # exports as a custom XIR op that the KV260 compiler cannot currently
+        # compile reliably. The final PaDiM image score will be restored after
+        # the minimal graph successfully compiles on DPUCZDX8G_ISA1_B4096.
+        image_score = distance_sq[:, :, 0, 0]
 
         return image_score, score_map.squeeze(1)
