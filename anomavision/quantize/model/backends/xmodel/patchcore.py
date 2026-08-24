@@ -1,17 +1,11 @@
-"""DPU-friendly PatchCore graph for AMD/Xilinx KV260.
+"""Single-DPU PatchCore graph for AMD/Xilinx KV260.
 
-The regular PatchCore implementation is intentionally unchanged. This wrapper
-keeps the same cosine-distance PatchCore computation while expressing the hot
-path with primitives that the KV260 DPU compiler can keep together:
-
-* L2 normalization is written as multiply-by-rsqrt instead of division.
-* cosine distance uses add + multiply instead of subtraction.
-* memory-bank reduction is performed over the channel dimension, which maps to
-  the KV260 reduction-max path.
-* image-level max uses global MaxPool2d instead of a spatial reduction.
-
-The mathematical distance remains sqrt(2 - 2*cosine_similarity), matching the
-existing PatchCore implementation up to normal floating-point epsilon behavior.
+The normal AnomaVision PatchCore implementation is unchanged. This backend
+uses a DPU-friendly deployment approximation: normalized memory-bank vectors
+are implemented as a 1x1 convolution, and the memory-bank reduction is a
+spatial MaxPool2d. Runtime feature L2 normalization is intentionally omitted
+because it requires input-dependent rsqrt/div operations that force CPU
+subgraphs on the KV260.
 """
 
 from __future__ import annotations
@@ -22,61 +16,61 @@ import torch.nn.functional as F
 
 
 class PatchCoreKV260(nn.Module):
-    """Whole PatchCore inference graph expressed for the KV260 DPU."""
+    """DPU-friendly whole PatchCore graph for KV260."""
 
-    def __init__(self, model: nn.Module, eps: float = 1e-12) -> None:
+    def __init__(self, model: nn.Module) -> None:
         super().__init__()
         self.extractor = model.embeddings_extractor
-        self.eps = float(eps)
 
-        memory_bank = model.memory_bank.float()
-        self.register_buffer("memory_bank", self._l2_normalize(memory_bank))
+        memory_bank = F.normalize(model.memory_bank.float(), dim=-1)
 
-    @staticmethod
-    def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-        """L2-normalize without a division operator in the traced graph."""
-        squared = x * x
-        norm_sq = squared.sum(dim=-1, keepdim=True)
-        inv_norm = torch.rsqrt(norm_sq.clamp_min(eps * eps))
-        return x * inv_norm
+        # Dot product with each memory vector is exactly a 1x1 convolution.
+        self.memory_projection = nn.Conv2d(
+            in_channels=memory_bank.shape[1],
+            out_channels=memory_bank.shape[0],
+            kernel_size=1,
+            bias=False,
+        )
+        with torch.no_grad():
+            self.memory_projection.weight.copy_(
+                memory_bank.reshape(memory_bank.shape[0], memory_bank.shape[1], 1, 1)
+            )
+        self.memory_projection.weight.requires_grad_(False)
 
     def forward(self, x: torch.Tensor):
         features, _, _ = self.extractor(x, layer_indices=[0])
 
-        # Existing PatchCore uses normalized patch embeddings.
-        features = self._l2_normalize(features, self.eps)
+        # (B, 3136, 64) -> (B, 64, 56, 56)
+        features = features.reshape(x.shape[0], 56, 56, -1).permute(0, 3, 1, 2)
 
-        # (B, 3136, 64) @ (64, 819) -> (B, 3136, 819)
-        similarity = torch.matmul(features, self.memory_bank.transpose(0, 1))
+        # (B, 64, 56, 56) -> (B, 819, 56, 56)
+        similarity = self.memory_projection(features)
 
-        # Put the memory-bank dimension into the DPU channel dimension:
-        # (B, 3136, 819) -> (B, 819, 56, 56)
-        similarity = similarity.reshape(x.shape[0], 56, 56, -1)
-        similarity = similarity.permute(0, 3, 1, 2)
-
-        # Reduction over channel maps to the KV260 DPU reduction-max path.
-        max_similarity = torch.amax(similarity, dim=1, keepdim=True)
-
-        # Algebraically identical to 2 - 2*max_similarity, but uses add/mul
-        # instead of an unsupported DPU eltwise subtraction.
-        distance_sq = torch.add(
-            max_similarity * -2.0,
-            2.0,
+        # Make memory-bank entries a spatial dimension so the DPU can use
+        # MaxPool2d instead of an unsupported channel-wise amax.
+        batch = similarity.shape[0]
+        similarity = similarity.reshape(batch, 1, 819, 56 * 56)
+        max_similarity = F.max_pool2d(
+            similarity,
+            kernel_size=(819, 1),
+            stride=(819, 1),
         )
-        distance_sq = distance_sq.clamp_min(0.0)
-        distances = torch.sqrt(distance_sq)
+        max_similarity = max_similarity.reshape(batch, 1, 56, 56)
 
-        # PatchCore spatial anomaly map: 56x56 -> 224x224.
+        # Monotonic cosine-distance transform without SUB/DIV.
+        distance = torch.add(max_similarity * -1.0, 1.0)
+
+        # 56x56 -> 224x224 anomaly map.
         score_map = F.interpolate(
-            distances,
+            distance,
             size=(224, 224),
             mode="bilinear",
             align_corners=False,
         ).squeeze(1)
 
-        # Global max pooling keeps image-level scoring inside the DPU graph.
+        # Image-level score stays in the DPU graph.
         image_score = F.max_pool2d(
-            distances,
+            distance,
             kernel_size=(56, 56),
             stride=1,
         ).flatten(1)
