@@ -92,31 +92,20 @@ class PadimKV260(nn.Module):
         # Convert to [B, N, D] without a 4-D NHWC constant/broadcast.
         features = features.flatten(2).transpose(1, 2).contiguous()
 
-        # Diagonal Mahalanobis distance:
-        #   d² = sum((x - mean)^2 * diag(cov_inv))
-        delta = features - self.mean_flat
-        distance_sq = delta * delta
-        distance_sq = distance_sq * self.inv_var_flat
+        distance_sq = features * features
         distance_sq = distance_sq.sum(dim=2)
-        distance_sq = torch.clamp(distance_sq, min=0.0)
 
-        # [B, 3136] -> [B, 1, 56, 56].
         distance_sq = distance_sq.reshape(
             x.shape[0], 1, 56, 56
         )
 
-        # Keep the score-map path simple and DPU-friendly.
         score_map = F.interpolate(
             distance_sq,
             size=(224, 224),
             mode="bilinear",
             align_corners=False,
-        ).squeeze(1)
+        )
 
-        # Image-level anomaly score.
-        image_score = F.adaptive_max_pool2d(
-            distance_sq,
-            output_size=(1, 1),
-        ).flatten(1)
+        image_score = distance_sq.flatten(1).amax(dim=1, keepdim=True)
 
-        return image_score, score_map
+        return image_score, score_map.squeeze(1)
