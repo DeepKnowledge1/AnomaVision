@@ -1,9 +1,9 @@
 """Single-DPU PatchCore graph for AMD/Xilinx KV260.
 
 The normal AnomaVision PatchCore implementation is unchanged. This backend
-keeps the PatchCore similarity tensor in NCHW and uses the KV260 DPU's native
-channel reduction instead of reshaping the 819 memory entries into extra
-spatial dimensions. This avoids compiler-inserted CPU transpose subgraphs.
+keeps the PatchCore similarity tensor in NCHW and uses a DPU-friendly channel
+maximum instead of aten::amax, which caused Vitis AI to insert a CPU transpose
+before the reduction.
 """
 
 from __future__ import annotations
@@ -42,22 +42,20 @@ class PatchCoreKV260(nn.Module):
         features = self.backbone.layer1(x)
 
         # Compute similarity against all 819 normalized memory vectors.
-        #
         # [B, 64, 56, 56] -> [B, 819, 56, 56]
         similarity = F.conv2d(
             features,
             self.memory_bank,
         )
 
-        # DPUCZDX8G supports reduction-max over the channel axis. Since the
-        # similarity tensor is already NCHW, reducing channel 1 directly
-        # avoids reshape/transpose operations and keeps this stage on the DPU.
-        # 819 < 4096, which is within the KV260 DPU channel-reduction limit.
-        max_similarity = torch.amax(
+        # Reduce the memory-bank/channel dimension with torch.max rather than
+        # torch.amax. Vitis AI maps the explicit max reduction more reliably
+        # for the KV260 DPU and avoids the aten::amax CPU transpose path.
+        max_similarity = torch.max(
             similarity,
             dim=1,
             keepdim=True,
-        )
+        ).values
 
         # DPU-friendly squared cosine distance:
         #   2 - 2 * max(cosine_similarity)
