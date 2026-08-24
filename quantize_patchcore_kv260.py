@@ -11,7 +11,8 @@ from anomavision.quantize.model.backends.xmodel.patchcore import PatchCoreKV260
 
 for _name, _obj in vars(_deploy_optimizer).items():
     if isinstance(_obj, type) and hasattr(_obj, "fuse_transpose_matmul"):
-        setattr(_obj, "fuse_transpose_matmul", lambda self: None)
+        _obj.fuse_transpose_matmul = lambda self: None
+
         print(f"[KV260] Disabled {_name}.fuse_transpose_matmul")
 
 
