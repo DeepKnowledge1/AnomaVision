@@ -1,14 +1,13 @@
 import argparse
 from pathlib import Path
 
-import torch
-from PIL import Image
-
-from pytorch_nndct.apis import torch_quantizer
-from anomavision.quantize.model.backends.xmodel.patchcore import PatchCoreKV260
-
 # Vitis AI 3.5.0 deploy-optimizer workaround.
 import nndct_shared.compile.deploy_optimizer as _deploy_optimizer
+import torch
+from PIL import Image
+from pytorch_nndct.apis import torch_quantizer
+
+from anomavision.quantize.model.backends.xmodel.patchcore import PatchCoreKV260
 
 for _name, _obj in vars(_deploy_optimizer).items():
     if isinstance(_obj, type) and hasattr(_obj, "fuse_transpose_matmul"):
