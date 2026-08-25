@@ -916,6 +916,7 @@ def _apply_export_defaults(config):
         "quantize_static": False,
         "static_batch": False,
         "optimize": False,
+        "log_level": "INFO",
     }
     for key, value in defaults.items():
         if not hasattr(config, key):
