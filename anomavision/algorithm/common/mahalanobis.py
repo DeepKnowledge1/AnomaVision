@@ -144,8 +144,11 @@ class MahalanobisDistance(nn.Module):
             # (B,N,1,D) @ (1,N,D,D) -> (B,N,1,D)
             left = torch.matmul(delta.unsqueeze(2), self._cov_inv_flat.unsqueeze(0))
             # (B,N,1,D) @ (B,N,D,1) -> (B,N,1,1) -> (B,N)
+
             dist2 = torch.matmul(left, delta.unsqueeze(-1)).squeeze(-1).squeeze(-1)
-            distances = dist2.clamp_min_(0).sqrt_().view(B, width, height)
+
+            dist2 = torch.clamp(dist2, min=0.0)
+            distances = torch.sqrt(dist2).reshape(B, width, height)
             return distances
 
         # === Chunked path (low peak RAM; fixes broadcasting by expanding over B) ===

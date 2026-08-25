@@ -1,7 +1,7 @@
 # =========================
 # Dataset / preprocessing (shared by train, detect, eval, stream)
 # =========================
-dataset_path: "/workspace/dataset"               # Root dataset folder (MVTec-style: contains train/test subfolders)
+dataset_path: "D:/01-DATA"               # Root dataset folder (MVTec-style: contains train/test subfolders)
 class_name: "bottle"                     # Class name for MVTec dataset
 resize: [224, 224]                       # Resize dimensions before processing [width, height]
 crop_size:                               # Final crop size [width, height]
