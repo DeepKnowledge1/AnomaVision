@@ -26,6 +26,12 @@ Both PaDiM and PatchCore use the same basic workflow.
 
 ## 2. Activate Vitis AI
 
+Run Docker with v to dataset and Anomavison
+
+```bash
+docker run --rm -it   -v ~/Vitis-AI/AnomaVision:/workspace/AnomaVision   -v /root/dataset:/workspace/dataset   xilinx/vitis-ai-pytorch-cpu:latest   bash
+```
+
 Activate the Vitis AI PyTorch environment:
 
 ```bash
