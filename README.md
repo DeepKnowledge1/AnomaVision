@@ -9,7 +9,13 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/anomavision/"><img src="https://img.shields.io/pypi/v/anomavision?label=PyPI" alt="PyPI version"/></a>
+  <a href="https://pypi.org/project/anomavision/"><img src="https://img.shields.io/pypi/v/anomavision?label=PyPI&color=blue" alt="PyPI version"/></a>
+  <a href="https://pypi.org/project/anomavision/"><img src="https://img.shields.io/pypi/dm/anomavision?color=blue" alt="PyPI downloads"/></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10--3.12-blue" alt="Python 3.10 to 3.12"/></a>
+  <a href="https://pytorch.org/"><img src="https://img.shields.io/badge/PyTorch-2.0%2B-red" alt="PyTorch 2.0 or newer"/></a>
+  <a href="https://onnx.ai/"><img src="https://img.shields.io/badge/ONNX-Export%20Ready-orange" alt="ONNX export ready"/></a>
+  <a href="https://developer.nvidia.com/tensorrt"><img src="https://img.shields.io/badge/TensorRT-Supported-76b900" alt="TensorRT supported"/></a>
+  <a href="https://docs.openvino.ai/"><img src="https://img.shields.io/badge/OpenVINO-Supported-0071C5" alt="OpenVINO supported"/></a>
   <a href="https://github.com/DeepKnowledge1/AnomaVision/actions/workflows/ci.yml"><img src="https://github.com/DeepKnowledge1/AnomaVision/actions/workflows/ci.yml/badge.svg" alt="CI status"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT license"/></a>
   <a href="docs/kv260_xmodel.md"><img src="https://img.shields.io/badge/KV260-DPU-blue" alt="KV260 DPU support"/></a>
@@ -42,10 +48,35 @@ You only need **normal (`good`) images** to train the anomaly detector.
 
 ### 1. Install
 
+#### Option A — From Source (development)
+
 ```bash
-pip install uv
-uv pip install "anomavision[cpu]"
+git clone https://github.com/DeepKnowledge1/AnomaVision.git
+cd AnomaVision
+
+# Create and activate a virtual environment
+uv venv --python 3.11 .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
+
+# Install with your hardware extra
+uv sync --extra cpu              # CPU
+uv sync --extra cu121            # CUDA 12.1
 ```
+
+---
+
+#### Option B — From PyPI (production / quick start)
+
+```bash
+# CPU  ·  Mac, CI runners, edge devices
+uv pip install "anomavision[cpu]"
+
+# NVIDIA GPU  ·  pick your CUDA version
+uv pip install "anomavision[cu118]"   # CUDA 11.8
+uv pip install "anomavision[cu121]"   # CUDA 12.1
+uv pip install "anomavision[cu124]"   # CUDA 12.4
+```
+
 
 For other environments, see [Installation](docs/installation.md).
 
@@ -56,11 +87,17 @@ Use a simple MVTec-style folder structure:
 ```text
 dataset/
 └── bottle/
-    ├── train/
+    ├── ground_truth/
+    │   ├── broken_large/
+    │   ├── broken_small/
+    │   └── contamination/
+    ├── test/
+    │   ├── broken_large/
+    │   ├── broken_small/
+    │   ├── contamination/
     │   └── good/
-    └── test/
-        ├── good/
-        └── scratch/
+    └── train/
+        └── good/
 ```
 
 Training uses the **good** images. Test images can contain defects.
@@ -111,14 +148,26 @@ The complete setup and commands are in:
 
 > XModel compilation has been validated in the Vitis AI environment. Final on-device KV260 validation requires the physical hardware.
 
-## Which model should I try?
 
-| Model | Good starting point |
-|---|---|
-| **PaDiM** | Simple and fast baseline |
-| **PatchCore** | Lightweight memory-based anomaly detection |
+## Production Autopilot
 
-If you are new to anomaly detection, **start with PaDiM**.
+**Production Autopilot is the easiest way to move from two trained models to one deployable choice.** It compares PaDiM and ultra-light PatchCore on the same labeled test split, calibrates a separate threshold for each, profiles median and P95 latency on your hardware, checks localization health, and packages the selected artifact with a self-contained HTML dashboard.
+
+Train both candidate models first, then run the complete labeled split on CPU:
+
+```bash
+anomavision autopilot \
+  --config config.yml \
+  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt \
+  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt \
+  --device cpu \
+  --validation_split 1.0 \
+  --target_latency_ms 50 \
+  --output_dir ./production_package
+```
+
+Open `production_package/production_autopilot_report.html` to see the selected model, AUROC, calibrated threshold, localization diagnostics, memory, median latency, P95 latency, and deployment recommendation. The package also contains `deployment_manifest.json`, `localization_report.md`, and the selected model artifact. See [`docs/production_deployment.md`](docs/production_deployment.md) for GPU, TensorRT, INT8, and packaging details.
+
 
 ## Documentation
 
