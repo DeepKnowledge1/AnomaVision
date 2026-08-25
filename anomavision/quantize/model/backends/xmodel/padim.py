@@ -28,10 +28,14 @@ class DpuMahalanobisDistance(nn.Module):
             delta.unsqueeze(2),
             self.cov_inv.unsqueeze(0),
         )
-        dist2 = torch.matmul(
-            left,
-            delta.unsqueeze(-1),
-        ).squeeze(-1).squeeze(-1)
+        dist2 = (
+            torch.matmul(
+                left,
+                delta.unsqueeze(-1),
+            )
+            .squeeze(-1)
+            .squeeze(-1)
+        )
 
         return dist2.clamp_min(0).sqrt().view(batch_size, width, height)
 
