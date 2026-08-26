@@ -33,12 +33,13 @@ class PatchCoreHailoGraph(nn.Module):
 
         self.input_size = tuple(int(v) for v in input_size)
         self.patch_grid = int(patch_grid)
+        self.layer_indices = list(layer_indices)
         self.extractor = ResnetEmbeddingsExtractor(backbone, torch.device("cpu"))
         self.register_buffer("memory_bank", F.normalize(memory_bank.float(), dim=-1))
 
     def forward(self, image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         embeddings, width, height = self.extractor(
-            image, layer_indices=list(self.extractor_layer_indices)
+            image, layer_indices=self.layer_indices
         )
 
         # Match PatchCore._extract: adaptive pooling is applied before L2
@@ -69,16 +70,3 @@ class PatchCoreHailoGraph(nn.Module):
         ).squeeze(1)
         image_scores = distances.amax(dim=1)
         return image_scores, score_map
-
-    @property
-    def extractor_layer_indices(self) -> List[int]:
-        """Return the configured ResNet feature stages."""
-        return list(self._layer_indices)
-
-    @extractor_layer_indices.setter
-    def extractor_layer_indices(self, value: List[int]) -> None:
-        self._layer_indices = list(value)
-
-    def set_layer_indices(self, layer_indices: List[int]) -> None:
-        """Set feature stages used by the graph."""
-        self.extractor_layer_indices = layer_indices
