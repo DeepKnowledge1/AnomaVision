@@ -12,7 +12,13 @@ from anomavision.algorithm.common.feature_extraction import ResnetEmbeddingsExtr
 
 
 class PatchCoreHailoGraph(nn.Module):
-    """Export-friendly PatchCore graph with the complete scoring pipeline."""
+    """Export-friendly PatchCore graph with the complete scoring pipeline.
+
+    The scoring path deliberately keeps the 14x14 spatial layout instead of
+    flattening patch scores and reshaping them back. Hailo DFC can represent the
+    resulting convolution/reduction operations directly, while the previous
+    flatten -> reshape sequence could be classified as an unsupported shuffle.
+    """
 
     def __init__(
         self,
@@ -26,45 +32,49 @@ class PatchCoreHailoGraph(nn.Module):
         if patch_grid < 1:
             raise ValueError("patch_grid must be positive")
         if tuple(input_size) != (224, 224) or patch_grid != 14:
-            raise ValueError("Hailo PatchCore export currently requires input_size=(224, 224) and patch_grid=14")
+            raise ValueError(
+                "Hailo PatchCore export currently requires "
+                "input_size=(224, 224) and patch_grid=14"
+            )
 
         self.input_size = (224, 224)
         self.patch_grid = 14
         self.layer_indices = list(layer_indices)
         self.extractor = ResnetEmbeddingsExtractor(backbone, torch.device("cpu"))
+
+        # Each normalized memory-bank vector becomes a 1x1 convolution filter.
+        # This computes feature-to-memory-bank cosine similarity while preserving
+        # the native 14x14 spatial layout and avoiding a patch-score reshape.
         self.register_buffer("memory_bank", F.normalize(memory_bank.float(), dim=-1))
 
     def forward(self, image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         embeddings, _, _ = self.extractor(image, layer_indices=self.layer_indices)
 
-        # Everything below is deliberately static for the fixed 224x224 Hailo graph.
-        # ResNet layer output is 56x56 with 64 channels for this PatchCore artifact.
-        # Avoid image.shape / tensor.shape values in reshape because they become
-        # dynamic ONNX shape tensors (Concat) and Hailo may classify them as
-        # unsupported shuffle layers.
+        # Fixed ResNet feature layout for the K26 PatchCore artifact.
+        # Keep this spatial instead of flattening to 196 patches.
         features = embeddings.reshape(1, 56, 56, 64).permute(0, 3, 1, 2)
-
-        # 56x56 -> 14x14 without AdaptiveAvgPool2d, which fails TorchScript ONNX
-        # export when the spatial shape is hidden behind the preceding reshape.
         features = F.avg_pool2d(features, kernel_size=4, stride=4)
-        features = features.permute(0, 2, 3, 1).reshape(1, 196, 64)
-        features = F.normalize(features, dim=-1)
+        features = F.normalize(features, dim=1)
 
-        similarity = torch.matmul(features, self.memory_bank.transpose(0, 1))
-        distances = torch.sqrt(
-            torch.clamp(
-                2.0 - 2.0 * similarity.amax(dim=-1, keepdim=True),
-                min=0.0,
-            )
+        # [1, 64, 14, 14] x [memory_bank, 64, 1, 1]
+        # -> [1, memory_bank_size, 14, 14].
+        similarity = F.conv2d(
+            features,
+            self.memory_bank.unsqueeze(-1).unsqueeze(-1),
         )
 
-        # Fixed 14x14 -> 224x224 score map.
+        # Best memory-bank match for every spatial patch.
+        best_similarity = similarity.amax(dim=1, keepdim=True)
+        distances = torch.sqrt(torch.clamp(2.0 - 2.0 * best_similarity, min=0.0))
+
+        # Native spatial score map: [1, 1, 14, 14] -> [1, 224, 224].
         score_map = F.interpolate(
-            distances.reshape(1, 1, 14, 14),
+            distances,
             size=(224, 224),
             mode="bilinear",
             align_corners=False,
         ).squeeze(1)
 
-        image_scores = distances.transpose(1, 2).amax(dim=-1, keepdim=True)
+        # No flatten/reshape is required for the image-level score either.
+        image_scores = distances.amax(dim=(1, 2, 3))
         return image_scores, score_map
