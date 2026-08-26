@@ -6,6 +6,7 @@ import torch
 from PIL import Image
 
 from anomavision.quantize.model.backends.hef import graphs as hailo_graphs
+from anomavision.quantize.model.backends.hef import patchcore as hailo_patchcore
 from anomavision.quantize.model.backends.hef.exporter import (
     _write_calibration_manifest,
     export_onnx,
@@ -18,7 +19,6 @@ class _FakeExtractor(torch.nn.Module):
 
     def forward(self, image, layer_indices=None):
         batch = image.shape[0]
-        # Four-by-four patch grid with four channels for compact graph tests.
         features = torch.nn.functional.adaptive_avg_pool2d(image, (4, 4))
         features = features.mean(dim=1, keepdim=True).repeat(1, 4, 1, 1)
         return features.permute(0, 2, 3, 1).reshape(batch, 16, 4), 4, 4
@@ -26,6 +26,7 @@ class _FakeExtractor(torch.nn.Module):
 
 def _patch_fake_extractor(monkeypatch):
     monkeypatch.setattr(hailo_graphs, "ResnetEmbeddingsExtractor", _FakeExtractor)
+    monkeypatch.setattr(hailo_patchcore, "ResnetEmbeddingsExtractor", _FakeExtractor)
 
 
 def test_padim_graph_contains_distance_and_reduction(monkeypatch):
@@ -59,6 +60,30 @@ def test_patchcore_graph_contains_memory_distance_and_reduction(monkeypatch):
     assert score_map.shape == (1, 32, 32)
     assert torch.isfinite(image_scores).all()
     assert torch.isfinite(score_map).all()
+
+
+def test_hailo_patchcore_graph_matches_existing_graph_math(monkeypatch):
+    _patch_fake_extractor(monkeypatch)
+    memory_bank = torch.randn(8, 4)
+    original = hailo_graphs.PatchCoreEndToEndGraph(
+        backbone="resnet18",
+        layer_indices=[0, 1],
+        memory_bank=memory_bank,
+        patch_grid=4,
+        input_size=(32, 32),
+    ).eval()
+    hailo = hailo_patchcore.PatchCoreHailoGraph(
+        backbone="resnet18",
+        layer_indices=[0, 1],
+        memory_bank=memory_bank,
+        patch_grid=4,
+        input_size=(32, 32),
+    ).eval()
+    image = torch.randn(1, 3, 32, 32)
+    original_outputs = original(image)
+    hailo_outputs = hailo(image)
+    assert torch.allclose(hailo_outputs[0], original_outputs[0], atol=1e-6)
+    assert torch.allclose(hailo_outputs[1], original_outputs[1], atol=1e-6)
 
 
 def test_export_writes_end_to_end_metadata_and_calibration_manifest(
