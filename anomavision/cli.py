@@ -8,12 +8,7 @@ Usage:
     anomavision export [args...]     # Export model to different formats
     anomavision detect [args...]     # Run inference on images
     anomavision eval [args...]       # Evaluate model performance
-
-Examples:
-    anomavision train --config config.yml
-    anomavision export --config config.yml --model model.pt --format onnx
-    anomavision detect --config config.yml --model model.onnx --img_path ./test_images
-    anomavision eval --config config.yml --model model.pt --class_name bottle
+    anomavision validate [args...]   # Validate one image and save a heatmap
 """
 
 import argparse
@@ -21,9 +16,6 @@ import sys
 
 # Submodules are imported lazily inside _add_*_parser() and _dispatch_*().
 # CLI startup (including --help on the top-level parser) never touches torch/cv2.
-# Note: --help on a subcommand (e.g. `anomavision train --help`) WILL import
-# the submodule to build the parser — that is intentional and unavoidable if we
-# want the submodule to own its argument definitions.
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -38,12 +30,14 @@ Examples:
   %(prog)s export --model model.pt --format onnx --quantize-dynamic
   %(prog)s detect --model model.onnx --img_path ./test --enable_visualization
   %(prog)s eval --model model.pt --class_name bottle --dataset_path /data
+  %(prog)s validate --image test.png --model model.pt
 
 For detailed help on each command:
   %(prog)s train --help
   %(prog)s export --help
   %(prog)s detect --help
   %(prog)s eval --help
+  %(prog)s validate --help
         """,
     )
 
@@ -69,25 +63,9 @@ For detailed help on each command:
     _add_detect_parser(subparsers)
     _add_eval_parser(subparsers)
     _add_autopilot_parser(subparsers)
+    _add_validate_parser(subparsers)
 
     return parser
-
-
-# ============================================================
-# Subparser registration
-#
-# Each submodule owns its argument definitions in create_parser().
-# cli.py uses `parents=` to inherit all args — zero duplication.
-#
-# The key: call create_parser(add_help=False) so argparse doesn't
-# register -h on the parent. The child subparser adds its own -h
-# automatically. Setting add_help at *construction time* is the
-# only reliable way — mutating .add_help after construction does
-# not remove the already-registered -h action.
-#
-# Result: add --new-flag to detect.py and `anomavision detect --new-flag`
-# works immediately with no changes needed here.
-# ============================================================
 
 
 def _add_train_parser(subparsers) -> None:
@@ -145,10 +123,15 @@ def _add_autopilot_parser(subparsers) -> None:
     ).set_defaults(func=_dispatch_autopilot)
 
 
-# ============================================================
-# Dispatch functions — one line each, Namespace passed directly.
-# No sys.argv manipulation. No double-parsing.
-# ============================================================
+def _add_validate_parser(subparsers) -> None:
+    from anomavision.validate import create_parser as _cp
+
+    subparsers.add_parser(
+        "validate",
+        help="Validate one image and save score/heatmap results",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_validate)
 
 
 def _dispatch_train(args: argparse.Namespace) -> None:
@@ -170,7 +153,7 @@ def _dispatch_detect(args: argparse.Namespace) -> None:
 
 
 def _dispatch_eval(args: argparse.Namespace) -> None:
-    from anomavision import eval as eval_module  # 'eval' shadows the Python builtin
+    from anomavision import eval as eval_module
 
     eval_module.main(args)
 
@@ -181,9 +164,10 @@ def _dispatch_autopilot(args: argparse.Namespace) -> None:
     autopilot.main(args)
 
 
-# ============================================================
-# Entry point
-# ============================================================
+def _dispatch_validate(args: argparse.Namespace) -> None:
+    from anomavision import validate
+
+    validate.main(args)
 
 
 def main() -> None:
