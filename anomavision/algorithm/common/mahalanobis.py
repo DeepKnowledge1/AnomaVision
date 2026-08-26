@@ -48,18 +48,22 @@ class MahalanobisDistance(nn.Module):
             )
 
         if export:
-            # Hailo-friendly per-patch batched matrix multiplication.
-            # Flatten B*N so bmm sees each spatial covariance matrix as one batch item.
-            delta = features - self._mean_flat.unsqueeze(0)
-            delta_flat = delta.reshape(B * N, 1, D)
-            cov_flat = self._cov_inv_flat.unsqueeze(0).expand(B, -1, -1, -1)
-            cov_flat = cov_flat.reshape(B * N, D, D)
-            left = torch.bmm(delta_flat, cov_flat)
-            dist2 = torch.bmm(left, delta_flat.transpose(1, 2)).reshape(B, N)
+            # Hailo-friendly formulation with no Unsqueeze nodes.
+            # features/mean: (B,N,D)
+            # transpose -> (N,B,D), allowing one covariance matrix per patch.
+            delta = features - self._mean_flat
+            delta_nbd = delta.transpose(0, 1)
+
+            # (N,B,D) @ (N,D,D) -> (N,B,D)
+            left_nbd = torch.matmul(delta_nbd, self._cov_inv_flat)
+            left = left_nbd.transpose(0, 1)
+
+            # d^T Sigma^-1 d, computed elementwise to avoid a second MatMul.
+            dist2 = (left * delta).sum(dim=-1)
             dist2 = torch.clamp(dist2, min=0.0)
             return torch.sqrt(dist2).reshape(B, width, height)
 
-        # Original KV260/PyTorch path.
+        # Original KV260/PyTorch path is intentionally unchanged.
         delta = features - self._mean_flat.unsqueeze(0)
         left = torch.matmul(delta.unsqueeze(2), self._cov_inv_flat.unsqueeze(0))
         dist2 = torch.matmul(left, delta.unsqueeze(-1)).squeeze(-1).squeeze(-1)
