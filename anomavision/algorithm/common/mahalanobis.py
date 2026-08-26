@@ -2,6 +2,7 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class MahalanobisDistance(nn.Module):
@@ -48,22 +49,51 @@ class MahalanobisDistance(nn.Module):
             )
 
         if export:
-            # Hailo-friendly formulation with no Unsqueeze nodes.
-            # features/mean: (B,N,D)
-            # transpose -> (N,B,D), allowing one covariance matrix per patch.
+            # Hailo DFC does not reliably parse the arbitrary MatMul used by
+            # Mahalanobis distance when covariance is an ONNX initializer. It
+            # expects MatMul in supported patterns (not this per-patch case).
+            # Express the same operation as grouped 1x1 convolutions instead.
+            #
+            # For each patch i:
+            #   y[i,k] = sum_j delta[i,j] * cov_inv[i,j,k]
+            # A group corresponds to one spatial patch and has D input/output
+            # channels. Chunking keeps every Conv weight tensor below Hailo's
+            # per-layer weight-size limit.
             delta = features - self._mean_flat
-            delta_nbd = delta.transpose(0, 1)
+            conv_chunk = 256
+            outputs = []
 
-            # (N,B,D) @ (N,D,D) -> (N,B,D)
-            left_nbd = torch.matmul(delta_nbd, self._cov_inv_flat)
-            left = left_nbd.transpose(0, 1)
+            for start in range(0, N, conv_chunk):
+                end = min(start + conv_chunk, N)
+                count = end - start
 
-            # d^T Sigma^-1 d, computed elementwise to avoid a second MatMul.
+                delta_chunk = delta[:, start:end, :].reshape(
+                    B, count * D, 1, 1
+                )
+
+                # cov_inv: (count, D, D)
+                # Conv2d weights: (count*D, D, 1, 1)
+                # Each group handles one patch independently.
+                weight = self._cov_inv_flat[start:end].permute(0, 2, 1).reshape(
+                    count * D, D, 1, 1
+                )
+
+                y = F.conv2d(
+                    delta_chunk,
+                    weight,
+                    bias=None,
+                    stride=1,
+                    padding=0,
+                    groups=count,
+                )
+                outputs.append(y.reshape(B, count, D))
+
+            left = torch.cat(outputs, dim=1)
             dist2 = (left * delta).sum(dim=-1)
             dist2 = torch.clamp(dist2, min=0.0)
             return torch.sqrt(dist2).reshape(B, width, height)
 
-        # Original KV260/PyTorch path is intentionally unchanged.
+        # Original PyTorch/KV260 path intentionally unchanged.
         delta = features - self._mean_flat.unsqueeze(0)
         left = torch.matmul(delta.unsqueeze(2), self._cov_inv_flat.unsqueeze(0))
         dist2 = torch.matmul(left, delta.unsqueeze(-1)).squeeze(-1).squeeze(-1)
