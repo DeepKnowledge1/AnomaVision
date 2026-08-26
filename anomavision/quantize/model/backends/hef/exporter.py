@@ -15,16 +15,13 @@ import json
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 from PIL import Image
 
-from .graphs import (
-    PadimEndToEndGraph,
-    PatchCoreEndToEndGraph,
-    exportable_output_names,
-)
+from .graphs import PadimEndToEndGraph, exportable_output_names
+from .patchcore import PatchCoreHailoGraph
 
 
 def _load_artifact(path: Path) -> Dict[str, Any]:
@@ -56,11 +53,11 @@ def _build_graph(algorithm: str, artifact: Dict[str, Any], input_size: Tuple[int
             raise ValueError(
                 f"PatchCore artifact is missing keys: {', '.join(missing)}"
             )
-        return PatchCoreEndToEndGraph(
+        return PatchCoreHailoGraph(
             backbone=str(artifact["backbone"]),
             layer_indices=list(artifact["layer_indices"]),
             memory_bank=artifact["memory_bank"],
-            patch_grid=artifact.get("patch_grid", 14),
+            patch_grid=int(artifact.get("patch_grid", 14)),
             input_size=input_size,
         )
     raise ValueError("algorithm must be 'padim' or 'patchcore'")
