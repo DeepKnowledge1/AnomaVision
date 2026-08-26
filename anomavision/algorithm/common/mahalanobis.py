@@ -14,7 +14,39 @@ class MahalanobisDistance(nn.Module):
         super().__init__()
         self.register_buffer("_mean_flat", mean)
         self.register_buffer("_cov_inv_flat", cov_inv)
+
+        self._hailo_conv_chunks = nn.ModuleList()
+        self._hailo_chunk = 256
+        self._build_hailo_convs(cov_inv)
         self._validate_initialization()
+
+    def _build_hailo_convs(self, cov_inv: torch.Tensor) -> None:
+        """Build static grouped 1x1 convolutions for the Hailo export path.
+
+        The covariance is copied into Conv weights at construction time. This is
+        important: Hailo must see real ONNX initializers, not a Conv whose weight
+        is produced by Transpose/Reshape nodes at runtime.
+        """
+        self._hailo_conv_chunks = nn.ModuleList()
+        n, d, d2 = cov_inv.shape
+        if d != d2:
+            raise ValueError(f"Expected covariance shape (N,D,D), got {cov_inv.shape}")
+
+        for start in range(0, n, self._hailo_chunk):
+            end = min(start + self._hailo_chunk, n)
+            count = end - start
+            conv = nn.Conv2d(
+                in_channels=count * d,
+                out_channels=count * d,
+                kernel_size=1,
+                groups=count,
+                bias=False,
+            )
+            weight = cov_inv[start:end].permute(0, 2, 1).reshape(count * d, d, 1, 1)
+            with torch.no_grad():
+                conv.weight.copy_(weight)
+            conv.weight.requires_grad_(False)
+            self._hailo_conv_chunks.append(conv)
 
     def _validate_initialization(self):
         if self._mean_flat is None:
@@ -37,56 +69,31 @@ class MahalanobisDistance(nn.Module):
                 f"Expected 3D tensor (B,N,D), got tensor with shape {features.shape}"
             )
 
-        device = features.device
-        dtype = features.dtype
-        self._mean_flat = self._mean_flat.to(device=device, dtype=dtype)
-        self._cov_inv_flat = self._cov_inv_flat.to(device=device, dtype=dtype)
-
         B, N, D = features.shape
         if N != width * height:
             raise ValueError(
                 f"Number of patches N ({N}) does not match width*height ({width*height})"
             )
 
+        device = features.device
+        dtype = features.dtype
+        self._mean_flat = self._mean_flat.to(device=device, dtype=dtype)
+        self._cov_inv_flat = self._cov_inv_flat.to(device=device, dtype=dtype)
+
         if export:
-            # Hailo DFC does not reliably parse the arbitrary MatMul used by
-            # Mahalanobis distance when covariance is an ONNX initializer. It
-            # expects MatMul in supported patterns (not this per-patch case).
-            # Express the same operation as grouped 1x1 convolutions instead.
-            #
-            # For each patch i:
-            #   y[i,k] = sum_j delta[i,j] * cov_inv[i,j,k]
-            # A group corresponds to one spatial patch and has D input/output
-            # channels. Chunking keeps every Conv weight tensor below Hailo's
-            # per-layer weight-size limit.
+            # Hailo path: covariance is already embedded as static Conv weights.
+            # The original PyTorch/KV260 computation below is untouched.
             delta = features - self._mean_flat
-            conv_chunk = 256
             outputs = []
 
-            for start in range(0, N, conv_chunk):
-                end = min(start + conv_chunk, N)
+            for i, conv in enumerate(self._hailo_conv_chunks):
+                start = i * self._hailo_chunk
+                end = min(start + self._hailo_chunk, N)
                 count = end - start
 
-                delta_chunk = delta[:, start:end, :].reshape(
-                    B, count * D, 1, 1
-                )
-
-                # cov_inv: (count, D, D)
-                # Conv2d weights: (count*D, D, 1, 1)
-                # Each group handles one patch independently.
-                weight = self._cov_inv_flat[start:end].permute(0, 2, 1).reshape(
-                    count * D, D, 1, 1
-                )
-
-                y = F.conv2d(
-                    delta_chunk,
-                    weight,
-                    bias=None,
-                    stride=1,
-                    padding=0,
-                    groups=count,
-                )
-                outputs.append(y.reshape(B, count, D))
+                x = delta[:, start:end, :].reshape(B, count * D, 1, 1)
+                y = conv(x).reshape(B, count, D)
+                outputs.append(y)
 
             left = torch.cat(outputs, dim=1)
             dist2 = (left * delta).sum(dim=-1)
@@ -98,5 +105,4 @@ class MahalanobisDistance(nn.Module):
         left = torch.matmul(delta.unsqueeze(2), self._cov_inv_flat.unsqueeze(0))
         dist2 = torch.matmul(left, delta.unsqueeze(-1)).squeeze(-1).squeeze(-1)
         dist2 = torch.clamp(dist2, min=0.0)
-        distances = torch.sqrt(dist2).reshape(B, width, height)
-        return distances
+        return torch.sqrt(dist2).reshape(B, width, height)
