@@ -25,29 +25,29 @@ class PatchCoreHailoGraph(nn.Module):
         super().__init__()
         if patch_grid < 1:
             raise ValueError("patch_grid must be positive")
+        if tuple(input_size) != (224, 224) or patch_grid != 14:
+            raise ValueError("Hailo PatchCore export currently requires input_size=(224, 224) and patch_grid=14")
 
-        self.input_size = tuple(int(v) for v in input_size)
-        self.patch_grid = int(patch_grid)
+        self.input_size = (224, 224)
+        self.patch_grid = 14
         self.layer_indices = list(layer_indices)
         self.extractor = ResnetEmbeddingsExtractor(backbone, torch.device("cpu"))
         self.register_buffer("memory_bank", F.normalize(memory_bank.float(), dim=-1))
 
     def forward(self, image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        embeddings, width, height = self.extractor(image, layer_indices=self.layer_indices)
+        embeddings, _, _ = self.extractor(image, layer_indices=self.layer_indices)
 
-        features = embeddings.reshape(
-            image.shape[0], width, height, embeddings.shape[-1]
-        ).permute(0, 3, 1, 2)
+        # Everything below is deliberately static for the fixed 224x224 Hailo graph.
+        # ResNet layer output is 56x56 with 64 channels for this PatchCore artifact.
+        # Avoid image.shape / tensor.shape values in reshape because they become
+        # dynamic ONNX shape tensors (Concat) and Hailo may classify them as
+        # unsupported shuffle layers.
+        features = embeddings.reshape(1, 56, 56, 64).permute(0, 3, 1, 2)
 
-        # The Hailo graph uses a fixed 224x224 input. ResNet produces a
-        # 56x56 feature map, so a fixed 4x4 average pool gives the required
-        # 14x14 PatchCore grid. AdaptiveAvgPool2d cannot be exported here
-        # because the TorchScript exporter loses the static spatial shape
-        # after the preceding reshape/permute.
+        # 56x56 -> 14x14 without AdaptiveAvgPool2d, which fails TorchScript ONNX
+        # export when the spatial shape is hidden behind the preceding reshape.
         features = F.avg_pool2d(features, kernel_size=4, stride=4)
-        features = features.permute(0, 2, 3, 1).reshape(
-            image.shape[0], self.patch_grid * self.patch_grid, features.shape[1]
-        )
+        features = features.permute(0, 2, 3, 1).reshape(1, 196, 64)
         features = F.normalize(features, dim=-1)
 
         similarity = torch.matmul(features, self.memory_bank.transpose(0, 1))
@@ -58,11 +58,10 @@ class PatchCoreHailoGraph(nn.Module):
             )
         )
 
-        # Fixed PatchCore grid: avoid a dynamic shape tensor (Concat) that
-        # Hailo cannot classify as a supported shuffle/reshape operation.
+        # Fixed 14x14 -> 224x224 score map.
         score_map = F.interpolate(
-            distances.reshape(image.shape[0], 1, self.patch_grid, self.patch_grid),
-            size=self.input_size,
+            distances.reshape(1, 1, 14, 14),
+            size=(224, 224),
             mode="bilinear",
             align_corners=False,
         ).squeeze(1)
