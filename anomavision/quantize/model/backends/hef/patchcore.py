@@ -58,8 +58,14 @@ class PatchCoreHailoGraph(nn.Module):
         features = F.normalize(features, dim=-1)
 
         similarity = torch.matmul(features, self.memory_bank.transpose(0, 1))
+        # Keep the reduced feature dimension. Hailo supports ReduceMax on the
+        # features axis only when keepdim=True. The trailing singleton also
+        # keeps the tensor directly reshapeable into the spatial score map.
         distances = torch.sqrt(
-            torch.clamp(2.0 - 2.0 * similarity.amax(dim=-1), min=0.0)
+            torch.clamp(
+                2.0 - 2.0 * similarity.amax(dim=-1, keepdim=True),
+                min=0.0,
+            )
         )
 
         score_map = F.interpolate(
@@ -68,5 +74,9 @@ class PatchCoreHailoGraph(nn.Module):
             mode="bilinear",
             align_corners=False,
         ).squeeze(1)
-        image_scores = distances.amax(dim=1)
+
+        # Put patches on the spatial axis and reduce over the final/features
+        # axis so Hailo can lower this ReduceMax as well. The singleton
+        # dimension is retained intentionally for the supported reduction.
+        image_scores = distances.transpose(1, 2).amax(dim=-1, keepdim=True)
         return image_scores, score_map
