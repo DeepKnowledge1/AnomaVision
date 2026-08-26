@@ -77,7 +77,6 @@ uv pip install "anomavision[cu121]"   # CUDA 12.1
 uv pip install "anomavision[cu124]"   # CUDA 12.4
 ```
 
-
 For other environments, see [Installation](docs/installation.md).
 
 ### 2. Prepare your images
@@ -148,6 +147,19 @@ The complete setup and commands are in:
 
 > XModel compilation has been validated in the Vitis AI environment. Final on-device KV260 validation requires the physical hardware.
 
+## Hailo support
+
+AnomaVision also supports an **end-to-end Hailo quantization workflow** for PatchCore and PaDiM:
+
+```text
+PyTorch → ONNX → HAR → optimized HAR → HEF
+```
+
+The complete step-by-step guide, including calibration data, parser end nodes, optimization, compilation, and troubleshooting, is here:
+
+**[Hailo Quantization Guide](docs/hailo_quantization.md)**
+
+> Hailo compilation requires the Hailo Dataflow Compiler and a compatible Hailo target. The generated HEF should be validated on the target hardware before deployment.
 
 ## Production Autopilot
 
@@ -168,7 +180,6 @@ anomavision autopilot \
 
 Open `production_package/production_autopilot_report.html` to see the selected model, AUROC, calibrated threshold, localization diagnostics, memory, median latency, P95 latency, and deployment recommendation. The package also contains `deployment_manifest.json`, `localization_report.md`, and the selected model artifact. See [`docs/production_deployment.md`](docs/production_deployment.md) for GPU, TensorRT, INT8, and packaging details.
 
-
 ## Documentation
 
 | Topic | Guide |
@@ -178,6 +189,7 @@ Open `production_package/production_autopilot_report.html` to see the selected m
 | CLI and configuration | [`docs/cli.md`](docs/cli.md), [`docs/config.md`](docs/config.md) |
 | Python API | [`docs/api.md`](docs/api.md) |
 | KV260 / XModel | [`docs/kv260_xmodel.md`](docs/kv260_xmodel.md) |
+| Hailo quantization | [`docs/hailo_quantization.md`](docs/hailo_quantization.md) |
 | Production deployment | [`docs/production_deployment.md`](docs/production_deployment.md) |
 | Benchmarks | [`docs/benchmark.md`](docs/benchmark.md) |
 | Troubleshooting | [`docs/troubleshooting.md`](docs/troubleshooting.md) |
