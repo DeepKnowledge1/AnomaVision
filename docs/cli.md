@@ -1,16 +1,17 @@
 # 🛠️ CLI Reference
 
-AnomaVision provides a unified `anomavision` command with five subcommands:
+AnomaVision provides a unified `anomavision` command with six subcommands:
 
 ```bash
-anomavision train    # Train a PaDiM anomaly detection model
-anomavision detect   # Run inference on test images
-anomavision eval     # Evaluate performance on MVTec-style datasets
-anomavision export   # Export models to ONNX, TorchScript, OpenVINO, or TensorRT
+anomavision train     # Train a PaDiM anomaly detection model
+anomavision detect    # Run inference on test images
+anomavision eval      # Evaluate performance on MVTec-style datasets
+anomavision export    # Export models to ONNX, TorchScript, OpenVINO, or TensorRT
 anomavision autopilot # Calibrate, profile, and package a production model
+anomavision validate  # Validate one image and save its score + heatmap
 ```
 
-Each subcommand accepts both **CLI arguments** and **config files** (`--config config.yml`).
+Each subcommand accepts both **CLI arguments** and config files (`--config config.yml`).
 **CLI arguments always override config file values.**
 
 Get help at any level:
@@ -22,6 +23,7 @@ anomavision detect --help
 anomavision eval --help
 anomavision export --help
 anomavision autopilot --help
+anomavision validate --help
 ```
 
 ---
@@ -46,10 +48,10 @@ anomavision train [options]
 | `--batch_size`      | int      | 2               | Batch size                                           |
 | `--feat_dim`        | int      | 50              | Number of random features                            |
 | `--layer_indices`   | int list | [0]             | Backbone layer indices                               |
-| `--output_model`    | str      | model.pt  | Model filename (`.pt`)                               |
-| `--run_name`        | str      | anomav_exp       | Experiment name                                      |
+| `--output_model`    | str      | model.pt        | Model filename (`.pt`)                               |
+| `--run_name`        | str      | anomav_exp      | Experiment name                                      |
 | `--model_data_path` | str      | ./distributions | Output directory                                     |
-| `--log_level`       | str      | INFO            | Logging level                                        |
+| `--log_level`       | str      | INFO             | Logging level                                        |
 
 **Example:**
 
@@ -73,8 +75,8 @@ anomavision detect [options]
 | ------------------------ | ----- | ------------------------- | -------------------------------------- |
 | `--config`               | str   | None                      | Path to config file                    |
 | `--img_path`             | str   | None                      | Path to test images                    |
-| `--model_data_path`      | str   | ./distributions/anomav_exp | Directory with model files             |
-| `--model`                | str   | model.pt            | Model file (`.pt`, `.onnx`, `.engine`) |
+| `--model_data_path`      | str   | ./distributions            | Directory with model files             |
+| `--model`                | str   | model.pt                  | Model file (`.pt`, `.onnx`, `.engine`) |
 | `--device`               | str   | auto                      | Device (`cpu`, `cuda`, `auto`)         |
 | `--batch_size`           | int   | 1                         | Batch size                             |
 | `--thresh`               | float | None                      | Anomaly threshold                      |
@@ -101,7 +103,61 @@ anomavision detect \
 
 ---
 
-## 3. Evaluation — `anomavision eval`
+## 3. Single-image validation — `anomavision validate`
+
+Use this when you have one image and want a quick **anomaly score + heatmap** without running a complete test dataset.
+
+```bash
+anomavision validate \
+  --image ./dataset/bottle/test/broken/000.png \
+  --model ./distributions/patchcore/bottle/anomav_exp/model.pt \
+  --config examples/patchcore_cpu.yml
+```
+
+The command writes a result image and a JSON file to `./validation_results/`.
+
+### Compare PyTorch and ONNX
+
+Run both models on exactly the same input image:
+
+```bash
+anomavision validate \
+  --image ./dataset/bottle/test/broken/000.png \
+  --model ./distributions/patchcore/bottle/anomav_exp/model.pt \
+  --compare-model ./distributions/patchcore/bottle/anomav_exp/model.onnx \
+  --config examples/patchcore_cpu.yml
+```
+
+The terminal reports the score and inference time for each model, followed by the absolute and relative score difference. Each model also gets its own visualization, and the JSON file contains the comparison values.
+
+### Threshold
+
+A threshold can be supplied directly or taken from the config:
+
+```bash
+anomavision validate \
+  --image ./test.png \
+  --model ./model.pt \
+  --threshold 0.35
+```
+
+For PatchCore, use the threshold calibrated for your model. Do not assume a PaDiM threshold is valid for PatchCore.
+
+### Hailo HEF
+
+The same command accepts a complete AnomaVision `.hef`:
+
+```bash
+anomavision validate \
+  --image ./test.png \
+  --model ./anomavision_patchcore_k26_end_to_end.hef
+```
+
+The Hailo backend is already wired into the common inference interface, but **HEF execution requires HailoRT and a connected Hailo device**. A CPU-only machine can validate PT and ONNX, but it cannot execute the HEF.
+
+---
+
+## 4. Evaluation — `anomavision eval`
 
 ```bash
 anomavision eval [options]
@@ -112,8 +168,8 @@ anomavision eval [options]
 | `--config`               | str  | None                      | Path to config file        |
 | `--dataset_path`         | str  | None                      | Root dataset path          |
 | `--class_name`           | str  | bottle                    | Class name (MVTec style)   |
-| `--model_data_path`      | str  | ./distributions/anomav_exp | Directory with model files |
-| `--model`                | str  | model.onnx          | Model file                 |
+| `--model_data_path`      | str  | ./distributions            | Directory with model files |
+| `--model`                | str  | model.onnx                | Model file                 |
 | `--device`               | str  | auto                      | Device (`cpu`, `cuda`)     |
 | `--batch_size`           | int  | 32                        | Batch size                 |
 | `--num_workers`          | int  | 1                         | Data loader workers        |
@@ -136,7 +192,7 @@ anomavision eval \
 
 ---
 
-## 4. Export — `anomavision export`
+## 5. Export — `anomavision export`
 
 ```bash
 anomavision export [options]
@@ -145,7 +201,7 @@ anomavision export [options]
 | Argument             | Type | Default                   | Description                                              |
 | -------------------- | ---- | ------------------------- | -------------------------------------------------------- |
 | `--config`           | str  | None                      | Path to config file                                      |
-| `--model_data_path`  | str  | ./distributions/anomav_exp | Directory with model & outputs                           |
+| `--model_data_path`  | str  | ./distributions            | Directory with model & outputs                           |
 | `--model`            | str  | *(required)*              | Model file (`.pt`)                                       |
 | `--format`           | str  | *(required)*              | Export format (`onnx`, `torchscript`, `openvino`, `all`) |
 | `--device`           | str  | auto                      | Export device                                            |
@@ -171,7 +227,7 @@ anomavision export \
 
 ---
 
-## 5. Production Autopilot — `anomavision autopilot`
+## 6. Production Autopilot — `anomavision autopilot`
 
 Production Autopilot compares PaDiM and ultra-light PatchCore artifacts on the same complete labeled test split, calibrates algorithm-specific thresholds, measures latency, checks localization health, and creates a deployment package.
 
