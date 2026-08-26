@@ -48,11 +48,14 @@ class MahalanobisDistance(nn.Module):
             )
 
         if export:
-            # Hailo-friendly path. Keep the covariance matrix aligned per patch
-            # without creating the unsupported Unsqueeze/MatMul pattern.
+            # Hailo-friendly per-patch batched matrix multiplication.
+            # Flatten B*N so bmm sees each spatial covariance matrix as one batch item.
             delta = features - self._mean_flat.unsqueeze(0)
-            left = torch.bmm(delta, self._cov_inv_flat)
-            dist2 = (left * delta).sum(dim=-1)
+            delta_flat = delta.reshape(B * N, 1, D)
+            cov_flat = self._cov_inv_flat.unsqueeze(0).expand(B, -1, -1, -1)
+            cov_flat = cov_flat.reshape(B * N, D, D)
+            left = torch.bmm(delta_flat, cov_flat)
+            dist2 = torch.bmm(left, delta_flat.transpose(1, 2)).reshape(B, N)
             dist2 = torch.clamp(dist2, min=0.0)
             return torch.sqrt(dist2).reshape(B, width, height)
 
