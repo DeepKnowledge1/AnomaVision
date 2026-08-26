@@ -38,11 +38,15 @@ class PatchCoreHailoGraph(nn.Module):
         features = embeddings.reshape(
             image.shape[0], width, height, embeddings.shape[-1]
         ).permute(0, 3, 1, 2)
-        if width > self.patch_grid or height > self.patch_grid:
-            features = F.adaptive_avg_pool2d(features, (self.patch_grid, self.patch_grid))
-        height, width = features.shape[-2:]
+
+        # The Hailo graph uses a fixed 224x224 input. ResNet produces a
+        # 56x56 feature map, so a fixed 4x4 average pool gives the required
+        # 14x14 PatchCore grid. AdaptiveAvgPool2d cannot be exported here
+        # because the TorchScript exporter loses the static spatial shape
+        # after the preceding reshape/permute.
+        features = F.avg_pool2d(features, kernel_size=4, stride=4)
         features = features.permute(0, 2, 3, 1).reshape(
-            image.shape[0], height * width, features.shape[1]
+            image.shape[0], self.patch_grid * self.patch_grid, features.shape[1]
         )
         features = F.normalize(features, dim=-1)
 
