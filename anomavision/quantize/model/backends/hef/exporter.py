@@ -1,12 +1,4 @@
-"""Export complete AnomaVision anomaly graphs for Hailo Dataflow Compiler.
-
-This module produces an ONNX graph containing the entire selected algorithm. The
-actual INT8 quantization and HEF generation are delegated to the Hailo SDK when
-it is installed on the development host. On a machine without the Hailo SDK, the
-command still creates the graph and a calibration manifest, then exits with a
-clear hardware-toolchain instruction instead of silently producing a partial
-CPU artifact.
-"""
+"""Export complete AnomaVision anomaly graphs for Hailo Dataflow Compiler."""
 
 from __future__ import annotations
 
@@ -24,16 +16,15 @@ from .graphs import PadimEndToEndGraph, exportable_output_names
 from .patchcore import PatchCoreHailoGraph
 
 
-def _load_artifact(path: Path) -> Dict[str, Any]:
-    artifact = torch.load(path, map_location="cpu", weights_only=False)
-    if not isinstance(artifact, dict):
-        raise ValueError(f"Expected a dictionary artifact, got {type(artifact)!r}")
-    return artifact
+def _load_artifact(path: Path) -> Any:
+    return torch.load(path, map_location="cpu", weights_only=False)
 
 
-def _build_graph(algorithm: str, artifact: Dict[str, Any], input_size: Tuple[int, int]):
+def _build_graph(algorithm: str, artifact: Any, input_size: Tuple[int, int]):
     algorithm = algorithm.lower()
     if algorithm == "padim":
+        if not isinstance(artifact, dict):
+            raise ValueError("PaDiM Hailo export requires a statistics artifact dictionary")
         required = {"backbone", "layer_indices", "channel_indices", "mean", "cov_inv"}
         missing = sorted(required.difference(artifact))
         if missing:
@@ -47,25 +38,34 @@ def _build_graph(algorithm: str, artifact: Dict[str, Any], input_size: Tuple[int
             input_size=input_size,
         )
     if algorithm == "patchcore":
-        required = {"backbone", "layer_indices", "memory_bank"}
-        missing = sorted(required.difference(artifact))
-        if missing:
-            raise ValueError(
-                f"PatchCore artifact is missing keys: {', '.join(missing)}"
-            )
+        if isinstance(artifact, dict):
+            required = {"backbone", "layer_indices", "memory_bank"}
+            missing = sorted(required.difference(artifact))
+            if missing:
+                raise ValueError(f"PatchCore artifact is missing keys: {', '.join(missing)}")
+            backbone = str(artifact["backbone"])
+            layer_indices = list(artifact["layer_indices"])
+            memory_bank = artifact["memory_bank"]
+            patch_grid = int(artifact.get("patch_grid", 14))
+        else:
+            try:
+                backbone = str(artifact.backbone)
+                layer_indices = list(artifact.layer_indices)
+                memory_bank = artifact.memory_bank
+                patch_grid = int(getattr(artifact, "patch_grid", 14))
+            except AttributeError as exc:
+                raise ValueError("PatchCore artifact must be a PatchCore model or artifact dictionary") from exc
         return PatchCoreHailoGraph(
-            backbone=str(artifact["backbone"]),
-            layer_indices=list(artifact["layer_indices"]),
-            memory_bank=artifact["memory_bank"],
-            patch_grid=int(artifact.get("patch_grid", 14)),
+            backbone=backbone,
+            layer_indices=layer_indices,
+            memory_bank=memory_bank,
+            patch_grid=patch_grid,
             input_size=input_size,
         )
     raise ValueError("algorithm must be 'padim' or 'patchcore'")
 
 
-def _write_calibration_manifest(
-    image_dir: Path, output_dir: Path, input_size: Tuple[int, int]
-) -> Path:
+def _write_calibration_manifest(image_dir: Path, output_dir: Path, input_size: Tuple[int, int]) -> Path:
     suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
     paths = sorted(p for p in image_dir.rglob("*") if p.suffix.lower() in suffixes)
     if not paths:
@@ -75,24 +75,12 @@ def _write_calibration_manifest(
     for path in paths:
         with Image.open(path) as image:
             image.convert("RGB").resize((input_size[1], input_size[0]))
-        records.append(
-            {
-                "path": str(path.resolve()),
-                "width": input_size[1],
-                "height": input_size[0],
-            }
-        )
+        records.append({"path": str(path.resolve()), "width": input_size[1], "height": input_size[0]})
     manifest.write_text(json.dumps(records, indent=2), encoding="utf-8")
     return manifest
 
 
-def export_onnx(
-    algorithm: str,
-    artifact_path: Path,
-    output_dir: Path,
-    input_size: Tuple[int, int],
-    opset: int = 17,
-) -> Path:
+def export_onnx(algorithm: str, artifact_path: Path, output_dir: Path, input_size: Tuple[int, int], opset: int = 17) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     artifact = _load_artifact(artifact_path)
     graph = _build_graph(algorithm, artifact, input_size).eval()
@@ -100,23 +88,15 @@ def export_onnx(
     output_path = output_dir / f"anomavision_{algorithm.lower()}_k26_end_to_end.onnx"
     with torch.no_grad():
         torch.onnx.export(
-            graph,
-            sample,
-            output_path,
-            input_names=["images"],
-            output_names=exportable_output_names(),
-            dynamic_axes=None,
-            opset_version=opset,
-            do_constant_folding=True,
-            dynamo=False,
+            graph, sample, output_path,
+            input_names=["images"], output_names=exportable_output_names(),
+            dynamic_axes=None, opset_version=opset, do_constant_folding=True, dynamo=False,
         )
     return output_path
 
 
 def _run_hailo_command(command: str, onnx_path: Path, output_dir: Path) -> None:
-    rendered = command.format(
-        onnx=shlex.quote(str(onnx_path)), output=shlex.quote(str(output_dir))
-    )
+    rendered = command.format(onnx=shlex.quote(str(onnx_path)), output=shlex.quote(str(output_dir)))
     subprocess.run(rendered, shell=True, check=True, cwd=output_dir)
 
 
@@ -129,21 +109,11 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=224)
     parser.add_argument("--width", type=int, default=224)
     parser.add_argument("--opset", type=int, default=13)
-    parser.add_argument(
-        "--hailo-command",
-        help=(
-            "Optional installed Hailo SDK command template. Use {onnx} and {output}; "
-            "the command must perform parse, calibration/optimization, and compile."
-        ),
-    )
+    parser.add_argument("--hailo-command")
     args = parser.parse_args()
     input_size = (args.height, args.width)
-    onnx_path = export_onnx(
-        args.algorithm, args.artifact, args.output_dir, input_size, args.opset
-    )
-    manifest = _write_calibration_manifest(
-        args.calibration_dir, args.output_dir, input_size
-    )
+    onnx_path = export_onnx(args.algorithm, args.artifact, args.output_dir, input_size, args.opset)
+    manifest = _write_calibration_manifest(args.calibration_dir, args.output_dir, input_size)
     metadata = {
         "algorithm": args.algorithm,
         "quantization_scope": "end_to_end",
@@ -153,16 +123,12 @@ def main() -> None:
         "calibration_manifest": str(manifest),
         "hailo_compile_invoked": bool(args.hailo_command),
     }
-    (args.output_dir / "hailo_export.json").write_text(
-        json.dumps(metadata, indent=2), encoding="utf-8"
-    )
+    (args.output_dir / "hailo_export.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     if args.hailo_command:
         _run_hailo_command(args.hailo_command, onnx_path, args.output_dir)
     else:
         print("ONNX graph and calibration manifest created.")
-        print(
-            "No Hailo compiler was invoked; install the Hailo SDK and provide --hailo-command to create a quantized HEF."
-        )
+        print("No Hailo compiler was invoked; install the Hailo SDK and provide --hailo-command to create a quantized HEF.")
 
 
 if __name__ == "__main__":
