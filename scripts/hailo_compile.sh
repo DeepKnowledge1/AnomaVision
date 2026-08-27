@@ -2,9 +2,10 @@
 set -euo pipefail
 
 # Compile a complete AnomaVision Hailo ONNX graph into HAR and HEF.
-# All generated artifacts are intentionally written next to the ONNX model:
+# IMPORTANT: every generated model artifact stays beside the ONNX model:
 #   <model-dir>/<model>.onnx
 #   <model-dir>/<model>.har
+#   <model-dir>/<model>_optimized.har
 #   <model-dir>/<model>.hef
 #
 # Usage:
@@ -47,8 +48,8 @@ CALIB_DIR="$MODEL_DIR/calibration_npy"
 
 mkdir -p "$CALIB_DIR"
 
-# Convert representative RGB images to the format expected by Hailo
-# optimization for the parsed fixed input shape: one sample, HxWx3.
+# Hailo DFC optimization expects representative samples in HxWxC for this
+# fixed 224x224x3 network. Do not add a batch dimension here.
 python - "$CALIBRATION_DIR" "$CALIB_DIR" <<'PY'
 import sys
 from pathlib import Path
@@ -64,24 +65,22 @@ images = sorted(p for p in src.rglob("*") if p.suffix.lower() in suffixes)
 if not images:
     raise SystemExit(f"ERROR: no calibration images found in {src}")
 
-# Keep calibration bounded and deterministic.
 images = images[:1024]
-
 for index, path in enumerate(images):
-    out = dst / f"sample_{index:04d}.npy"
     with Image.open(path) as image:
         image = image.convert("RGB").resize((224, 224))
         array = np.asarray(image, dtype=np.float32)
-    np.save(out, array)
+    np.save(dst / f"sample_{index:04d}.npy", array)
 
 print(f"Created {len(images)} calibration samples in {dst}")
 PY
 
 echo "[1/3] Parsing ONNX -> HAR"
-hailo parser onnx "$MODEL" --hw-arch "$HW_ARCH" --output-dir "$MODEL_DIR"
+(
+  cd "$MODEL_DIR"
+  hailo parser onnx "$MODEL" --hw-arch "$HW_ARCH"
+)
 
-# The parser normally creates <model>.har in the output directory. Some SDK
-# releases derive the HAR name from the network name, so locate it explicitly.
 PARSED_HAR="$MODEL_DIR/$MODEL_NAME.har"
 if [[ ! -f "$PARSED_HAR" ]]; then
   PARSED_HAR="$(find "$MODEL_DIR" -maxdepth 1 -type f -name '*.har' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
@@ -90,13 +89,15 @@ if [[ -z "${PARSED_HAR:-}" || ! -f "$PARSED_HAR" ]]; then
   echo "ERROR: parser completed but no HAR was produced in $MODEL_DIR"
   exit 1
 fi
-
 if [[ "$PARSED_HAR" != "$HAR" ]]; then
   mv -f "$PARSED_HAR" "$HAR"
 fi
 
 echo "[2/3] Optimizing / quantizing HAR"
-hailo optimize "$HAR" --hw-arch "$HW_ARCH" --use-random-calib-set --calib-set-path "$CALIB_DIR" --output-dir "$MODEL_DIR"
+(
+  cd "$MODEL_DIR"
+  hailo optimize "$HAR" --hw-arch "$HW_ARCH" --calib-set-path "$CALIB_DIR"
+)
 
 OPT_FOUND="$(find "$MODEL_DIR" -maxdepth 1 -type f -name '*_optimized.har' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
 if [[ -z "${OPT_FOUND:-}" || ! -f "$OPT_FOUND" ]]; then
@@ -108,7 +109,10 @@ if [[ "$OPT_FOUND" != "$OPT_HAR" ]]; then
 fi
 
 echo "[3/3] Compiling optimized HAR -> HEF"
-hailo compiler "$OPT_HAR" --hw-arch "$HW_ARCH" --output-dir "$MODEL_DIR"
+(
+  cd "$MODEL_DIR"
+  hailo compiler "$OPT_HAR" --hw-arch "$HW_ARCH"
+)
 
 HEF_FOUND="$(find "$MODEL_DIR" -maxdepth 1 -type f -name '*.hef' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
 if [[ -z "${HEF_FOUND:-}" || ! -f "$HEF_FOUND" ]]; then
@@ -121,9 +125,9 @@ fi
 
 echo
 echo "Hailo compilation completed successfully."
-echo "ONNX:       $MODEL"
-echo "HAR:        $HAR"
-echo "Optimized:  $OPT_HAR"
-echo "HEF:        $HEF"
-echo "Calibration:$CALIB_DIR"
-echo "HW arch:    $HW_ARCH"
+echo "ONNX:        $MODEL"
+echo "HAR:         $HAR"
+echo "Optimized:   $OPT_HAR"
+echo "HEF:         $HEF"
+echo "Calibration: $CALIB_DIR"
+echo "HW arch:     $HW_ARCH"
