@@ -1,8 +1,7 @@
 """EfficientAD teacher/student anomaly detector using the AnomaVision API.
 
-The deployment path intentionally contains only the teacher/student discrepancy.
-The reconstruction branch used by the previous implementation was both expensive
-and poorly calibrated for the shared AnomaVision score/map contract.
+The deployment path contains only the teacher/student discrepancy. Normal training
+images calibrate a per-pixel discrepancy distribution and the image threshold.
 """
 
 from __future__ import annotations
@@ -47,21 +46,17 @@ class _Student(nn.Module):
 class EfficientAD(nn.Module):
     """EfficientAD-compatible teacher/student detector.
 
-    Normal training data is used to learn the student and to calibrate a
-    per-pixel discrepancy distribution. Inference produces one normalized
-    anomaly map and its maximum as the image score.
+    It follows the same ``fit -> predict -> (scores, maps)`` contract as PaDiM
+    and PatchCore. The old autoencoder branch was removed from deployment because
+    it added a second full image network without improving the AnomaVision score
+    calibration and made inference unnecessarily slow.
     """
 
     def __init__(
-        self,
-        device: torch.device = torch.device("cpu"),
-        model_size: str = "s",
-        lr: float = 1e-4,
-        weight_decay: float = 1e-5,
-        pretrained_teacher: bool = True,
-        teacher_weights: Optional[str] = None,
-        feature_weight: float = 1.0,
-        reconstruction_weight: float = 0.1,
+        self, device: torch.device = torch.device("cpu"), model_size: str = "s",
+        lr: float = 1e-4, weight_decay: float = 1e-5,
+        pretrained_teacher: bool = True, teacher_weights: Optional[str] = None,
+        feature_weight: float = 1.0, reconstruction_weight: float = 0.1,
         threshold_quantile: float = 0.995,
     ) -> None:
         super().__init__()
@@ -78,8 +73,6 @@ class EfficientAD(nn.Module):
         self.lr = float(lr)
         self.weight_decay = float(weight_decay)
         self.feature_weight = float(feature_weight)
-        # Kept for config compatibility. Reconstruction is deliberately not run
-        # in the deployment graph because it previously dominated inference time.
         self.reconstruction_weight = float(reconstruction_weight)
         self.threshold_quantile = float(threshold_quantile)
 
@@ -111,37 +104,31 @@ class EfficientAD(nn.Module):
         ).squeeze(1)
 
     def _score_map(self, raw_map: torch.Tensor) -> torch.Tensor:
-        return (raw_map - self.map_mean) / self.map_std.clamp_min(1e-6)
+        return (raw_map - self.map_mean.to(raw_map.device)) / self.map_std.to(raw_map.device).clamp_min(1e-6)
 
-    def forward(
-        self, x: torch.Tensor, return_map: bool = True, export: bool = False
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def forward(self, x: torch.Tensor, return_map: bool = True, export: bool = False):
         del export
-        raw_map = self._raw_map(x)
-        score_map = self._score_map(raw_map)
+        score_map = self._score_map(self._raw_map(x))
         scores = score_map.flatten(1).amax(1)
         return scores, score_map if return_map else None
 
     @staticmethod
-    def _batch_from_item(item):
-        if isinstance(item, (tuple, list)):
-            return item[0]
-        return item
+    def _batch(item):
+        return item[0] if isinstance(item, (tuple, list)) else item
 
-    def fit(self, dataloader: torch.utils.data.DataLoader, epochs: int = 5) -> None:
+    def fit(self, dataloader: torch.utils.data.DataLoader, epochs: int = 3) -> None:
         epochs = int(epochs)
         if epochs < 1:
             raise ValueError("epochs must be >= 1")
 
-        # Cache only teacher features. Images remain in the normal DataLoader so
-        # we do not duplicate the entire dataset in RAM or move it repeatedly.
         cached = []
         self.teacher.eval()
+        # Teacher is frozen: compute it exactly once per training batch.
         with torch.no_grad():
             for item in dataloader:
-                images = self._batch_from_item(item).to(self.device, non_blocking=True).float()
+                images = self._batch(item).to(self.device, non_blocking=True).float()
                 teacher = self.teacher(self._normalise(images)).detach()
-                cached.append((images.detach().cpu(), teacher.detach().cpu()))
+                cached.append((images.detach().cpu(), teacher.cpu()))
         if not cached:
             raise RuntimeError("EfficientAD training requires normal training images")
 
@@ -150,7 +137,6 @@ class EfficientAD(nn.Module):
         )
         use_amp = self.device.type == "cuda"
         scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
-
         self.student.train()
         for _ in range(epochs):
             for images_cpu, teacher_cpu in cached:
@@ -164,30 +150,29 @@ class EfficientAD(nn.Module):
                 scaler.step(optimizer)
                 scaler.update()
 
-        # Calibrate the exact map used by inference, using normal images only.
+        # Calibrate the exact map used in production from NORMAL images only.
         self.student.eval()
-        all_maps = []
+        maps = []
         with torch.no_grad():
             for images_cpu, teacher_cpu in cached:
                 images = images_cpu.to(self.device, non_blocking=True)
                 teacher = teacher_cpu.to(self.device, non_blocking=True)
-                all_maps.append(self._raw_map(images, teacher).detach().float())
-        maps = torch.cat(all_maps, dim=0)
-        self.map_mean.copy_(maps.mean(dim=0, keepdim=True).cpu())
-        self.map_std.copy_(maps.std(dim=0, unbiased=False, keepdim=True).clamp_min(1e-6).cpu())
+                maps.append(self._raw_map(images, teacher).float())
+        normal_maps = torch.cat(maps, 0)
+        mean = normal_maps.mean(dim=0, keepdim=True)
+        std = normal_maps.std(dim=0, unbiased=False, keepdim=True).clamp_min(1e-6)
+        self.map_mean.copy_(mean.cpu())
+        self.map_std.copy_(std.cpu())
 
-        normalized = (maps - self.map_mean.to(self.device)) / self.map_std.to(self.device).clamp_min(1e-6)
+        normalized = (normal_maps - mean) / std
         scores = normalized.flatten(1).amax(1)
-        mean = scores.mean()
-        std = scores.std(unbiased=False).clamp_min(1e-6)
-        threshold = torch.quantile(scores, self.threshold_quantile)
-        self.score_mean.copy_(mean.cpu())
-        self.score_std.copy_(std.cpu())
-        self.threshold.copy_(threshold.cpu())
+        self.score_mean.copy_(scores.mean().cpu())
+        self.score_std.copy_(scores.std(unbiased=False).clamp_min(1e-6).cpu())
+        self.threshold.copy_(torch.quantile(scores, self.threshold_quantile).cpu())
         self.trained.fill_(True)
         self.to(self.device)
 
-    def predict(self, batch: torch.Tensor, export: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+    def predict(self, batch: torch.Tensor, export: bool = False):
         if not export and not bool(self.trained.item()):
             raise RuntimeError("EfficientAD model is not trained. Call fit() first.")
         self.eval()
@@ -199,30 +184,55 @@ class EfficientAD(nn.Module):
         self.to(self.device)
 
     def save_statistics(self, path: str, half: Optional[bool] = None) -> None:
+        """Save a directly loadable deployment artifact.
+
+        The previous implementation saved a raw dictionary which the generic
+        exporter could not reconstruct. Saving the runtime module here makes the
+        existing AnomaVision exporter work unchanged for EfficientAD .pth files.
+        """
         if not bool(self.trained.item()):
             raise RuntimeError("Model is not trained. Call fit() first.")
-        torch.save(
-            {
-                "algorithm": "efficientad",
-                "model_state": self.state_dict(),
-                "model_size": self.model_size,
-                "lr": self.lr,
-                "weight_decay": self.weight_decay,
-                "threshold_quantile": self.threshold_quantile,
-            },
-            path,
-        )
+        torch.save(self.cpu(), path)
+        self.to(self.device)
 
     @staticmethod
     def load_statistics(path: str, device: str = "cpu") -> "EfficientAD":
-        data = torch.load(path, map_location="cpu", weights_only=False)
-        if data.get("algorithm") != "efficientad":
-            raise ValueError("Not an EfficientAD statistics artifact")
-        model = EfficientAD(
-            device=torch.device(device),
-            model_size=data.get("model_size", "s"),
-            pretrained_teacher=False,
-            threshold_quantile=data.get("threshold_quantile", 0.995),
-        )
-        model.load_state_dict(data["model_state"])
-        return model
+        obj = torch.load(path, map_location="cpu", weights_only=False)
+        if isinstance(obj, EfficientAD):
+            obj.to_device(torch.device(device))
+            return obj
+        if isinstance(obj, dict) and obj.get("algorithm") == "efficientad":
+            model = EfficientAD(
+                device=torch.device(device),
+                model_size=obj.get("model_size", "s"),
+                pretrained_teacher=False,
+                threshold_quantile=obj.get("threshold_quantile", 0.995),
+            )
+            model.load_state_dict(obj["model_state"])
+            return model
+        raise ValueError("Not an EfficientAD artifact")
+
+
+def build_efficientad_from_stats(stats, device: str = "cpu") -> EfficientAD:
+    """Build EfficientAD from either a runtime artifact or legacy stats dict."""
+    if isinstance(stats, EfficientAD):
+        stats.to_device(torch.device(device))
+        return stats
+    if isinstance(stats, dict):
+        return EfficientAD.load_statistics_from_dict(stats, device)
+    raise ValueError("Unsupported EfficientAD statistics artifact")
+
+
+def _load_statistics_from_dict(stats, device: str = "cpu") -> EfficientAD:
+    model = EfficientAD(
+        device=torch.device(device),
+        model_size=stats.get("model_size", "s"),
+        pretrained_teacher=False,
+        threshold_quantile=stats.get("threshold_quantile", 0.995),
+    )
+    model.load_state_dict(stats["model_state"])
+    return model
+
+
+# Keep the builder self-contained without changing the public API above.
+EfficientAD.load_statistics_from_dict = staticmethod(_load_statistics_from_dict)
