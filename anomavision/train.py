@@ -19,19 +19,15 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Train PaDiM (args OR config).", add_help=add_help
     )
-    # meta
     parser.add_argument(
         "--config", type=str, default="config.yml", help="Path to config.yml/.json"
     )
-    # dataset
     parser.add_argument(
         "--dataset_path",
         type=str,
         default=None,
         help='Path to the dataset folder containing "train/good" images.',
     )
-
-    # preprocessing
     parser.add_argument(
         "--resize",
         type=int,
@@ -76,8 +72,6 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         metavar=("R", "G", "B"),
         help="Per-channel RGB standard deviation used when normalization is enabled. Example: 0.229 0.224 0.225.",
     )
-
-    # train
     parser.add_argument(
         "--backbone",
         type=str,
@@ -173,6 +167,12 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="Use ImageNet-pretrained EfficientNet teacher.",
     )
     parser.add_argument(
+        "--efficientad_threshold_quantile",
+        type=float,
+        default=None,
+        help="Normal-training score quantile used to calibrate the EfficientAD anomaly threshold.",
+    )
+    parser.add_argument(
         "--output_model",
         type=str,
         default=None,
@@ -208,21 +208,8 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
 
 
 def run_training(args):
-    """
-    Executes the training pipeline.
-
-    Args:
-        args: Namespace object containing configuration.
-
-    Returns:
-        model (AnomaVision anomaly model): The trained model object.
-        config (edict): The final merged configuration.
-        run_dir (Path): The directory where artifacts were saved.
-        dataloaders (dict): Dictionary containing the 'train' DataLoader.
-    """
+    """Execute the training pipeline."""
     cfg = load_config(args.config)
-
-    # Merge config with CLI args
     config = edict(merge_config(args, cfg))
 
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
@@ -244,7 +231,6 @@ def run_training(args):
         )
 
     t0 = time.perf_counter()
-
     logger.info(
         "Image processing: resize=%s, crop_size=%s, normalize=%s",
         config.resize,
@@ -254,7 +240,6 @@ def run_training(args):
     if config.normalize:
         logger.info("Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std)
 
-    # Resolve output run dir once
     run_dir = increment_path(
         Path(config.model_data_path)
         / config.algorithm
@@ -264,11 +249,9 @@ def run_training(args):
         mkdir=True,
     )
 
-    # === Dataset ===
     root = os.path.join(
         os.path.realpath(config.dataset_path), config.class_name, "train", "good"
     )
-
     if not os.path.isdir(root):
         potential_root = os.path.join(
             os.path.realpath(config.dataset_path), "train", "good"
@@ -287,7 +270,6 @@ def run_training(args):
         mean=config.norm_mean,
         std=config.norm_std,
     )
-
     if len(ds) == 0:
         error_msg = f"No training images found in {root}"
         logger.error(error_msg)
@@ -296,13 +278,11 @@ def run_training(args):
     dl = DataLoader(ds, batch_size=int(config.batch_size), shuffle=False)
     logger.info("dataset: %d images | batch_size=%d", len(ds), config.batch_size)
 
-    # === Device ===
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(
         "device: %s (cuda_available=%s)", device.type, torch.cuda.is_available()
     )
 
-    # === Model & Train ===
     logger.info(
         "cfg: algorithm=%s | backbone=%s | layers=%s",
         config.algorithm,
@@ -329,6 +309,7 @@ def run_training(args):
             lr=float(config.get("efficientad_lr", 1e-4)),
             weight_decay=float(config.get("efficientad_weight_decay", 1e-5)),
             pretrained_teacher=bool(config.get("efficientad_pretrained_teacher", True)),
+            threshold_quantile=float(config.get("efficientad_threshold_quantile", 0.995)),
         )
     else:
         model = anomavision.Padim(
@@ -341,15 +322,20 @@ def run_training(args):
     t_fit = time.perf_counter()
     if algorithm == "efficientad":
         model.fit(dl, epochs=int(config.get("efficientad_epochs", 1)))
+        calibrated_threshold = float(model.threshold.detach().cpu().item())
+        config["thresh_efficientad"] = calibrated_threshold
+        logger.info(
+            "EfficientAD threshold calibrated from normal training scores: %.6f (quantile=%.6f)",
+            calibrated_threshold,
+            model.threshold_quantile,
+        )
     else:
         model.fit(dl)
     logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
 
-    # === Save ===
     model_path = Path(run_dir) / config.output_model
     torch.save(model, str(model_path))
 
-    # Save a compact statistics/memory-bank artifact for deployment.
     stats_path = model_path.with_suffix(".pth")
     try:
         model.save_statistics(str(stats_path), half=True)
@@ -357,9 +343,7 @@ def run_training(args):
     except Exception as e:
         logger.warning("saving slim statistics failed: %s", e)
 
-    # snapshot the effective configuration
     save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
-
     logger.info("saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml")
     logger.info("=== Training done in %.2fs ===", time.perf_counter() - t0)
 
@@ -371,7 +355,6 @@ def main(args=None):
         if args is None:
             args = create_parser().parse_args()
 
-        # Optional git check — silently skipped if not in a repo or no network
         try:
             checker = GitStatusChecker()
             if checker.is_repo():
