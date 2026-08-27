@@ -74,6 +74,7 @@ class EfficientAD(nn.Module):
         teacher_weights: Optional[str] = None,
         feature_weight: float = 1.0,
         reconstruction_weight: float = 0.1,
+        threshold_quantile: float = 0.995,
     ) -> None:
         super().__init__()
         model_size = str(model_size).lower()
@@ -81,6 +82,8 @@ class EfficientAD(nn.Module):
             raise ValueError("EfficientAD model_size must be one of: s, m")
         if lr <= 0 or weight_decay < 0:
             raise ValueError("lr must be > 0 and weight_decay must be >= 0")
+        if not 0.0 < float(threshold_quantile) < 1.0:
+            raise ValueError("threshold_quantile must be between 0 and 1")
 
         self.device = torch.device(device)
         self.model_size = "m" if model_size in {"m", "medium"} else "s"
@@ -88,6 +91,7 @@ class EfficientAD(nn.Module):
         self.weight_decay = float(weight_decay)
         self.feature_weight = float(feature_weight)
         self.reconstruction_weight = float(reconstruction_weight)
+        self.threshold_quantile = float(threshold_quantile)
 
         self.teacher = _FeatureTeacher(pretrained=pretrained_teacher)
         if teacher_weights:
@@ -97,6 +101,7 @@ class EfficientAD(nn.Module):
         self.autoencoder = _AutoEncoder()
         self.register_buffer("score_mean", torch.tensor(0.0))
         self.register_buffer("score_std", torch.tensor(1.0))
+        self.register_buffer("threshold", torch.tensor(0.0))
         self.register_buffer("trained", torch.tensor(False, dtype=torch.bool))
         self.to(self.device)
 
@@ -122,6 +127,7 @@ class EfficientAD(nn.Module):
         return scores, score_map if return_map else None
 
     def fit(self, dataloader: torch.utils.data.DataLoader, epochs: int = 1) -> None:
+        """Train on normal images and calibrate the image threshold from them."""
         self.train()
         self.teacher.eval()
         optimizer = torch.optim.Adam(
@@ -153,10 +159,17 @@ class EfficientAD(nn.Module):
                 batch = batch.to(self.device).float()
                 fmap, recon = self._signals(batch)
                 values.append((fmap + self.reconstruction_weight * recon).flatten(1).amax(1))
-        if values:
-            scores = torch.cat(values)
-            self.score_mean.copy_(scores.mean())
-            self.score_std.copy_(scores.std(unbiased=False).clamp_min(1e-6))
+        if not values:
+            raise RuntimeError("EfficientAD calibration requires at least one normal training image.")
+
+        scores = torch.cat(values)
+        mean = scores.mean()
+        std = scores.std(unbiased=False).clamp_min(1e-6)
+        calibrated_raw_threshold = torch.quantile(scores, self.threshold_quantile)
+
+        self.score_mean.copy_(mean)
+        self.score_std.copy_(std)
+        self.threshold.copy_((calibrated_raw_threshold - mean) / std)
         self.trained.fill_(True)
 
     def predict(self, batch: torch.Tensor, export: bool = False):
@@ -180,6 +193,7 @@ class EfficientAD(nn.Module):
             "algorithm": "efficientad", "model_state": self.state_dict(),
             "model_size": self.model_size, "lr": self.lr,
             "weight_decay": self.weight_decay,
+            "threshold_quantile": self.threshold_quantile,
         }, path)
 
     @staticmethod
@@ -190,6 +204,7 @@ class EfficientAD(nn.Module):
         model = EfficientAD(
             device=torch.device(device), model_size=data.get("model_size", "s"),
             pretrained_teacher=False,
+            threshold_quantile=data.get("threshold_quantile", 0.995),
         )
         model.load_state_dict(data["model_state"])
         return model
