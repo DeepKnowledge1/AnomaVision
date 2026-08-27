@@ -37,6 +37,8 @@ efficientad_lr: 0.0001
 efficientad_weight_decay: 0.00001
 efficientad_epochs: 1
 efficientad_pretrained_teacher: true
+# Calibrated from normal training scores; this is not an anomaly-score threshold.
+efficientad_threshold_quantile: 0.995
 
 model_data_path: "./distributions"
 model: "model.pt"
@@ -68,9 +70,8 @@ img_path: "D:/01-DATA/test"
 thresh: null
 thresh_padim: 13.0
 thresh_patchcore: 0.25
-# EfficientAD uses its own score scale. Keep this independent from PaDiM.
-# The score is normalized against the normal-training score distribution.
-thresh_efficientad: 1.0
+# EfficientAD threshold is calibrated during training and saved with the model.
+# Do not hard-code thresh_efficientad here.
 num_workers: 1
 pin_memory: false
 overwrite: false
