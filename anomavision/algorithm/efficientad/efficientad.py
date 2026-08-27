@@ -1,10 +1,4 @@
-"""Native AnomaVision implementation of EfficientAD.
-
-The implementation follows the EfficientAD student/teacher idea while exposing
-AnomaVision's common ``fit``/``predict``/``save_statistics`` interface. The
-teacher is frozen, the student learns normal teacher features, and a compact
-autoencoder provides a global reconstruction signal.
-"""
+"""Native AnomaVision implementation of EfficientAD."""
 
 from __future__ import annotations
 
@@ -37,14 +31,11 @@ class _Student(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(64), nn.ReLU(inplace=True),
             nn.Conv2d(64, 96, 3, stride=2, padding=1),
-            nn.BatchNorm2d(96),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(96), nn.ReLU(inplace=True),
             nn.Conv2d(96, 112, 3, stride=2, padding=1),
-            nn.BatchNorm2d(112),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(112), nn.ReLU(inplace=True),
             nn.Conv2d(112, out_channels, 3, stride=2, padding=1),
         )
 
@@ -110,8 +101,6 @@ class EfficientAD(nn.Module):
         self.to(self.device)
 
     def _normalise(self, x: torch.Tensor) -> torch.Tensor:
-        # Dataset tensors may already be ImageNet-normalized. This method is
-        # intentionally a no-op in that case; see ``normalize_input`` below.
         return x
 
     def _signals(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -133,13 +122,11 @@ class EfficientAD(nn.Module):
         return scores, score_map if return_map else None
 
     def fit(self, dataloader: torch.utils.data.DataLoader, epochs: int = 1) -> None:
-        """Train student and autoencoder using only normal images."""
         self.train()
         self.teacher.eval()
         optimizer = torch.optim.Adam(
             list(self.student.parameters()) + list(self.autoencoder.parameters()),
-            lr=self.lr,
-            weight_decay=self.weight_decay,
+            lr=self.lr, weight_decay=self.weight_decay,
         )
         for _ in range(int(epochs)):
             for batch in dataloader:
@@ -173,7 +160,12 @@ class EfficientAD(nn.Module):
         self.trained.fill_(True)
 
     def predict(self, batch: torch.Tensor, export: bool = False):
-        if not bool(self.trained.item()):
+        # Do not inspect the tensor-backed ``trained`` flag while exporting.
+        # torch.export treats ``trained.item()`` as data-dependent control flow
+        # and cannot specialize that condition. Training validation belongs to
+        # the Python lifecycle, while the exported graph must contain only the
+        # tensor computation.
+        if not export and not bool(self.trained.item()):
             raise RuntimeError("EfficientAD model is not trained. Call fit() first.")
         self.eval()
         with torch.no_grad():
@@ -184,14 +176,11 @@ class EfficientAD(nn.Module):
         self.to(self.device)
 
     def save_statistics(self, path: str, half: Optional[bool] = None) -> None:
-        """Save a self-contained EfficientAD checkpoint artifact."""
         if not bool(self.trained.item()):
             raise RuntimeError("Model is not trained. Call fit() first.")
         torch.save({
-            "algorithm": "efficientad",
-            "model_state": self.state_dict(),
-            "model_size": self.model_size,
-            "lr": self.lr,
+            "algorithm": "efficientad", "model_state": self.state_dict(),
+            "model_size": self.model_size, "lr": self.lr,
             "weight_decay": self.weight_decay,
         }, path)
 
@@ -201,8 +190,7 @@ class EfficientAD(nn.Module):
         if data.get("algorithm") != "efficientad":
             raise ValueError("Not an EfficientAD statistics artifact")
         model = EfficientAD(
-            device=torch.device(device),
-            model_size=data.get("model_size", "s"),
+            device=torch.device(device), model_size=data.get("model_size", "s"),
             pretrained_teacher=False,
         )
         model.load_state_dict(data["model_state"])
