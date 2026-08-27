@@ -27,18 +27,6 @@ class HailoAnomalyRuntime:
         input_size: Tuple[int, int] = (224, 224),
         input_dtype: np.dtype = np.float32,
     ) -> None:
-        """Load and configure a complete Hailo-8 HEF.
-
-        Args:
-            hef_path: Path to a HEF exposing ``image_scores`` and ``score_map``.
-            input_size: Fixed ``(height, width)`` expected by the HEF.
-            input_dtype: Host input dtype passed to HailoRT.
-
-        Raises:
-            RuntimeError: If HailoRT is unavailable or has no network group.
-            FileNotFoundError: If ``hef_path`` does not exist.
-            ValueError: If required anomaly outputs are missing.
-        """
         try:
             from hailo_platform import (
                 HEF,
@@ -50,10 +38,10 @@ class HailoAnomalyRuntime:
                 OutputVStreamParams,
                 VDevice,
             )
-        except ImportError as exc:  # pragma: no cover - depends on Kria image
+        except ImportError as exc:
             raise RuntimeError(
                 "HailoRT is not installed. Install the HailoRT Python package on "
-                "the Kria K26 image before loading a HEF."
+                "the target device before loading a HEF."
             ) from exc
 
         self._api = {
@@ -78,46 +66,78 @@ class HailoAnomalyRuntime:
             raise RuntimeError(f"No network group found in {self.hef_path}")
         self.network_group = self.network_groups[0]
         self.network_group_params = self.network_group.create_params()
-        self.input_name = self.hef.get_input_vstream_infos()[0].name
-        output_names = [info.name for info in self.hef.get_output_vstream_infos()]
+        input_infos = self.hef.get_input_vstream_infos()
+        output_infos = self.hef.get_output_vstream_infos()
+        if not input_infos:
+            raise ValueError(f"The HEF has no input streams: {self.hef_path}")
+        self.input_name = input_infos[0].name
+        self.input_shape = tuple(int(v) for v in input_infos[0].shape)
+        output_names = [info.name for info in output_infos]
         required = {"image_scores", "score_map"}
         missing = sorted(required.difference(output_names))
         if missing:
             raise ValueError(
                 "The HEF is not a complete AnomaVision anomaly graph; missing "
-                f"outputs: {', '.join(missing)}"
+                f"outputs: {', '.join(missing)}. Re-export/recompile the end-to-end "
+                "graph with image_scores and score_map as the two output nodes."
             )
         self.output_names = output_names
 
     def _preprocess(self, image: Image.Image | np.ndarray | str | Path) -> np.ndarray:
-        """Convert an image path, PIL image, or RGB array to NCHW input."""
+        """Convert an image to the HEF input layout without changing normalization.
+
+        ``detect`` already applies AnomaVision's resize/crop/normalization through
+        ``AnodetDataset``. Therefore a float input in this path is considered
+        preprocessed and must NOT be divided by 255 again. Raw uint8 images are
+        still accepted for direct backend use and are converted to [0, 1].
+        """
         if isinstance(image, (str, Path)):
-            image = Image.open(image)
+            image = Image.open(image).convert("RGB")
         if isinstance(image, Image.Image):
-            image = np.asarray(image.convert("RGB"))
-        image = np.asarray(image)
-        if image.ndim != 3 or image.shape[2] != 3:
-            raise ValueError("image must be an HxWx3 RGB image")
-        image = np.asarray(
-            Image.fromarray(image.astype(np.uint8), mode="RGB").resize(
-                (self.input_size[1], self.input_size[0]), Image.Resampling.BILINEAR
-            ),
-            dtype=np.float32,
-        )
-        # Match AnomaVision's tensor contract: NCHW float RGB in [0, 1].
-        return np.transpose(image / 255.0, (2, 0, 1))[None].astype(self.input_dtype)
+            image = np.asarray(image)
+
+        array = np.asarray(image)
+        if array.ndim == 4:
+            if array.shape[0] != 1:
+                raise ValueError("HailoAnomalyRuntime currently supports batch size 1")
+            array = array[0]
+
+        # Common AnomaVision backend contract is NCHW. Convert to HWC for Hailo.
+        if array.ndim == 3 and array.shape[0] == 3 and array.shape[-1] != 3:
+            array = np.transpose(array, (1, 2, 0))
+        if array.ndim != 3 or array.shape[-1] != 3:
+            raise ValueError("image must be an HxWx3 RGB image or 1x3xHxW tensor")
+
+        if array.dtype == np.uint8:
+            array = array.astype(np.float32) / 255.0
+        else:
+            array = array.astype(np.float32, copy=False)
+
+        target_h, target_w = self.input_size
+        if array.shape[:2] != (target_h, target_w):
+            # This is only for direct raw backend calls. detect normally arrives
+            # here already resized/cropped to the model input size.
+            if np.nanmin(array) < 0.0 or np.nanmax(array) > 1.0:
+                raise ValueError(
+                    "Preprocessed float input has values outside [0, 1] and cannot "
+                    "be safely resized as a raw image. Use the detect preprocessing pipeline."
+                )
+            image_u8 = np.clip(array * 255.0, 0, 255).astype(np.uint8)
+            array = np.asarray(
+                Image.fromarray(image_u8, mode="RGB").resize(
+                    (target_w, target_h), Image.Resampling.BILINEAR
+                ),
+                dtype=np.float32,
+            ) / 255.0
+
+        # Hailo parser exports the input as NHWC. Keep the same numeric values
+        # used by ONNX/PT and only adapt the memory layout here.
+        return array[None].astype(self.input_dtype, copy=False)
 
     def predict(
         self, image: Image.Image | np.ndarray | str | Path
     ) -> Dict[str, np.ndarray]:
-        """Run one image and return complete image and localization outputs.
-
-        Args:
-            image: An image path, PIL RGB image, or HxWx3 RGB array.
-
-        Returns:
-            A mapping containing ``image_scores`` and ``score_map`` arrays.
-        """
+        """Run one image and return complete image and localization outputs."""
         api = self._api
         input_params = api["InputVStreamParams"].make(
             self.network_group, quantized=False, format_type=api["FormatType"].FLOAT32
@@ -137,7 +157,6 @@ class HailoAnomalyRuntime:
         }
 
     def close(self) -> None:
-        """Release the Hailo virtual device."""
         release = getattr(self.device, "release", None)
         if callable(release):
             release()
@@ -162,22 +181,13 @@ class HailoBackend(InferenceBackend):
         self.runtime = HailoAnomalyRuntime(model_path, input_size=input_size)
 
     def predict(self, batch) -> Tuple[np.ndarray, np.ndarray]:
-        """Run one image through the common backend contract.
-
-        Args:
-            batch: An HxWx3 RGB image or a single-image 1x3xHxW/1xHxWx3 batch.
-
-        Returns:
-            A tuple ``(image_scores, score_maps)`` as NumPy arrays.
-        """
+        """Run one image through the common backend contract."""
         array = np.asarray(batch)
         if array.ndim == 4:
             if array.shape[0] != 1:
                 raise ValueError("HailoBackend currently supports batch size 1")
-            array = (
-                np.transpose(array[0], (1, 2, 0)) if array.shape[1] == 3 else array[0]
-            )
-        elif array.ndim != 3:
+            array = array[0]
+        if array.ndim != 3:
             raise ValueError("batch must be an HxWx3 or 1x3xHxW image")
         result = self.runtime.predict(array)
         return result["image_scores"], result["score_map"]
