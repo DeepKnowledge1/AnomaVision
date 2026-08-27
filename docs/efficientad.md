@@ -2,7 +2,7 @@
 
 EfficientAD is available as a native AnomaVision algorithm and uses the same training, model loading, detection, evaluation, and export workflow as PaDiM and PatchCore.
 
-The implementation follows the EfficientAD student/teacher design: a frozen EfficientNet teacher provides normal feature targets, a lightweight student learns those features, and a compact autoencoder adds a global reconstruction signal. The original EfficientAD paper is designed for millisecond-level anomaly detection and combines local teacher/student discrepancy with global reconstruction discrepancy. citeturn0academia12
+The implementation follows the EfficientAD student/teacher design: a frozen EfficientNet teacher provides normal feature targets, a lightweight student learns those features, and a compact autoencoder adds a global reconstruction signal. The original EfficientAD paper combines local teacher/student discrepancy with global reconstruction discrepancy for fast anomaly detection.
 
 ## Select the algorithm
 
