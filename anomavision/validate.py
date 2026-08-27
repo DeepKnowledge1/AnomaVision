@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib
+
+matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 import numpy as np
 from easydict import EasyDict as edict
@@ -25,8 +28,6 @@ import anomavision
 from anomavision.config import _shape, load_config
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.utils import get_logger, merge_config, setup_logging
-
-matplotlib.use("Agg")
 
 logger = get_logger("anomavision.validate")
 
@@ -103,8 +104,7 @@ def _as_batch_map(maps: Any) -> np.ndarray:
 
 def _as_scores(scores: Any) -> np.ndarray:
     """Convert backend score output to a one-dimensional float32 array."""
-    arr = np.asarray(scores, dtype=np.float32).reshape(-1)
-    return arr
+    return np.asarray(scores, dtype=np.float32).reshape(-1)
 
 
 def _relative_error(value: float, reference: float) -> float:
@@ -139,9 +139,7 @@ def _compare_pair(
     map_scale = float(max(np.max(np.abs(left_maps)), 1e-12))
     map_rel = map_mae / map_scale
 
-    score_pass = bool(
-        np.all((score_abs <= score_abs_tol) | (score_rel <= score_rel_tol))
-    )
+    score_pass = bool(np.all((score_abs <= score_abs_tol) | (score_rel <= score_rel_tol)))
     map_pass = bool(map_mae <= map_mae_tol or map_rel <= map_rel_tol)
 
     return {
@@ -183,13 +181,11 @@ def _save_pair_visualization(
     axes[0].imshow(image_arr)
     axes[0].set_title("Original")
     axes[0].axis("off")
-
     for ax, name, heatmap, score in zip(axes[1:], names, maps, scores):
         ax.imshow(image_arr)
         ax.imshow(heatmap, alpha=0.5, cmap="jet")
         ax.set_title(f"{name}\nscore={score:.6f}")
         ax.axis("off")
-
     fig.tight_layout()
     fig.savefig(output_dir / f"image_{index:05d}_{names[0]}_vs_{names[1]}.png", dpi=120)
     plt.close(fig)
@@ -271,28 +267,19 @@ def run_validation(args: argparse.Namespace) -> dict[str, Any]:
         scores = [np.concatenate(items, axis=0) for items in all_scores]
         maps = [np.concatenate(items, axis=0) for items in all_maps]
         pair_results = []
-
         for left_index, right_index in combinations(range(len(wrappers)), 2):
             result = _compare_pair(
-                names[left_index],
-                names[right_index],
-                scores[left_index],
-                scores[right_index],
-                maps[left_index],
-                maps[right_index],
-                args.score_abs_tol,
-                args.score_rel_tol,
-                args.map_mae_tol,
-                args.map_rel_tol,
+                names[left_index], names[right_index],
+                scores[left_index], scores[right_index],
+                maps[left_index], maps[right_index],
+                args.score_abs_tol, args.score_rel_tol,
+                args.map_mae_tol, args.map_rel_tol,
             )
             pair_results.append(result)
-
             if args.save_visualizations:
                 for image_index in range(len(scores[left_index])):
                     _save_pair_visualization(
-                        viz_dir,
-                        image_index,
-                        visualization_images[image_index],
+                        viz_dir, image_index, visualization_images[image_index],
                         (names[left_index], names[right_index]),
                         (maps[left_index][image_index], maps[right_index][image_index]),
                         (float(scores[left_index][image_index]), float(scores[right_index][image_index])),
@@ -311,17 +298,14 @@ def run_validation(args: argparse.Namespace) -> dict[str, Any]:
             "comparisons": pair_results,
             "pass": bool(pair_results) and all(item["pass"] for item in pair_results),
         }
-
         report_path = output_dir / "validation_report.json"
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         logger.info("Validation report saved to %s", report_path)
         for item in pair_results:
             logger.info(
                 "%s vs %s: %s (score max abs=%.6g, heatmap MAE=%.6g)",
-                item["left"], item["right"],
-                "PASS" if item["pass"] else "FAIL",
-                item["score"]["max_absolute_error"],
-                item["heatmap"]["mae"],
+                item["left"], item["right"], "PASS" if item["pass"] else "FAIL",
+                item["score"]["max_absolute_error"], item["heatmap"]["mae"],
             )
         return report
     finally:
