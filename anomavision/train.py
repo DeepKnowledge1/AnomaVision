@@ -16,27 +16,25 @@ from anomavision.utils import get_logger, merge_config, save_args_to_yaml, setup
 
 
 def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Train AnomaVision anomaly detection models (args OR config).", add_help=add_help
-    )
+    parser = argparse.ArgumentParser(description="Train AnomaVision anomaly detection models (args OR config).", add_help=add_help)
     parser.add_argument("--config", type=str, default="config.yml", help="Path to config.yml/.json")
     parser.add_argument("--dataset_path", type=str, default=None, help='Path to the dataset folder containing "train/good" images.')
-    parser.add_argument("--resize", type=int, nargs="*", default=None, metavar=("W", "H"), help="Resize before processing.")
-    parser.add_argument("--crop_size", type=int, nargs="*", default=None, metavar=("W", "H"), help="Apply a center crop.")
+    parser.add_argument("--resize", type=int, nargs="*", default=None, metavar=("W", "H"), help="Resize before processing. Provide one value for a square resize or two values for width and height.")
+    parser.add_argument("--crop_size", type=int, nargs="*", default=None, metavar=("W", "H"), help="Apply a center (or configured) crop.")
     parser.add_argument("--normalize", action="store_true", default=None, help="Enable input normalization.")
     parser.add_argument("--no_normalize", action="store_true", default=None, help="Disable input normalization explicitly.")
-    parser.add_argument("--norm_mean", type=float, nargs=3, default=None, metavar=("R", "G", "B"), help="RGB normalization mean.")
-    parser.add_argument("--norm_std", type=float, nargs=3, default=None, metavar=("R", "G", "B"), help="RGB normalization std.")
-    parser.add_argument("--backbone", type=str, choices=["resnet18", "wide_resnet50"], default=None, help="PaDiM/PatchCore backbone.")
+    parser.add_argument("--norm_mean", type=float, nargs=3, default=None, metavar=("R", "G", "B"), help="Per-channel RGB mean.")
+    parser.add_argument("--norm_std", type=float, nargs=3, default=None, metavar=("R", "G", "B"), help="Per-channel RGB standard deviation.")
+    parser.add_argument("--backbone", type=str, choices=["resnet18", "wide_resnet50"], default=None, help="Backbone network for PaDiM/PatchCore.")
     parser.add_argument("--batch_size", type=int, default=None, help="Batch size used during training and inference.")
-    parser.add_argument("--feat_dim", type=int, default=None, help="PaDiM feature dimension.")
-    parser.add_argument("--layer_indices", type=int, nargs="+", default=None, help="PaDiM/PatchCore feature layers.")
-    parser.add_argument("--coreset_ratio", type=float, default=None, help="PatchCore memory-bank fraction.")
-    parser.add_argument("--max_memory_patches", type=int, default=None, help="PatchCore memory-bank cap.")
+    parser.add_argument("--feat_dim", type=int, default=None, help="Number of random feature dimensions to keep.")
+    parser.add_argument("--layer_indices", type=int, nargs="+", default=None, help="List of feature layers to extract.")
+    parser.add_argument("--coreset_ratio", type=float, default=None, help="PatchCore memory-bank fraction to retain.")
+    parser.add_argument("--max_memory_patches", type=int, default=None, help="Maximum PatchCore memory-bank size.")
     parser.add_argument("--patch_grid", type=int, default=None, help="PatchCore pooled grid size.")
     parser.add_argument("--search_chunk_size", type=int, default=None, help="PatchCore query chunk size.")
-    parser.add_argument("--coreset_method", type=str, choices=["kcenter", "random"], default=None, help="PatchCore coreset strategy.")
-    parser.add_argument("--coreset_seed", type=int, default=None, help="PatchCore coreset seed.")
+    parser.add_argument("--coreset_method", type=str, choices=["kcenter", "random"], default=None, help="PatchCore coreset selection strategy.")
+    parser.add_argument("--coreset_seed", type=int, default=None, help="Seed used for deterministic PatchCore coreset selection.")
     parser.add_argument("--efficientad_model_size", type=str, choices=["s", "m"], default=None, help="EfficientAD model size.")
     parser.add_argument("--efficientad_lr", type=float, default=None, help="EfficientAD learning rate.")
     parser.add_argument("--efficientad_weight_decay", type=float, default=None, help="EfficientAD weight decay.")
@@ -45,7 +43,7 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument("--output_model", type=str, default=None, help="Filename to save the PT model.")
     parser.add_argument("--run_name", type=str, default=None, help="Experiment name for this training run.")
     parser.add_argument("--model_data_path", type=str, default=None, help="Directory to save model distributions and PT file.")
-    parser.add_argument("--algorithm", type=str, default=None, help="Algorithm name: padim, patchcore, or efficientad.")
+    parser.add_argument("--algorithm", type=str, default=None, help="Algorithm name (padim, patchcore, efficientad).")
     parser.add_argument("--log_level", type=str, choices=["DEBUG", "INFO", "WARNING", "ERROR"], default=None, help="Logging level.")
     return parser
 
@@ -58,13 +56,17 @@ def run_training(args):
 
     algorithm = str(config.algorithm).lower()
     if algorithm not in {"padim", "patchcore", "efficientad"}:
-        raise ValueError("Unsupported algorithm: %s. Available: padim, patchcore, efficientad" % algorithm)
+        raise ValueError(f"Unsupported algorithm: {algorithm}. Available: padim, patchcore, efficientad")
     if not config.dataset_path:
-        raise ValueError("dataset_path is required")
+        raise ValueError("dataset_path is required (via --dataset_path or config)")
     if algorithm == "efficientad" and not bool(config.get("normalize", True)):
-        raise ValueError("EfficientAD requires normalize: true because its teacher uses ImageNet preprocessing")
+        raise ValueError("EfficientAD requires normalize: true because the teacher uses ImageNet preprocessing")
 
     t0 = time.perf_counter()
+    logger.info("Image processing: resize=%s, crop_size=%s, normalize=%s", config.resize, config.crop_size, config.normalize)
+    if config.normalize:
+        logger.info("Normalization: mean=%s, std=%s", config.norm_mean, config.norm_std)
+
     run_dir = increment_path(
         Path(config.model_data_path) / algorithm / config.class_name / config.run_name,
         exist_ok=True,
@@ -77,6 +79,7 @@ def run_training(args):
         if os.path.isdir(potential_root):
             root = potential_root
         else:
+            logger.error('Expected folder "%s" does not exist.', root)
             raise FileNotFoundError(f"Dataset root not found: {root}")
 
     ds = anomavision.AnodetDataset(
@@ -92,14 +95,20 @@ def run_training(args):
 
     dl = DataLoader(ds, batch_size=int(config.batch_size), shuffle=False)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info("algorithm=%s | device=%s | images=%d | batch_size=%d", algorithm, device, len(ds), config.batch_size)
+    logger.info("device: %s (cuda_available=%s)", device.type, torch.cuda.is_available())
+    logger.info("cfg: algorithm=%s | backbone=%s | layers=%s", algorithm, config.backbone, config.layer_indices)
 
     if algorithm == "patchcore":
         model = anomavision.PatchCore(
-            backbone=config.backbone, device=device, layer_indices=config.layer_indices,
-            coreset_ratio=float(config.coreset_ratio), max_memory_patches=config.max_memory_patches,
-            patch_grid=config.patch_grid, search_chunk_size=config.search_chunk_size,
-            coreset_method=config.get("coreset_method", "kcenter"), coreset_seed=int(config.get("coreset_seed", 42)),
+            backbone=config.backbone,
+            device=device,
+            layer_indices=config.layer_indices,
+            coreset_ratio=float(config.coreset_ratio),
+            max_memory_patches=config.max_memory_patches,
+            patch_grid=config.patch_grid,
+            search_chunk_size=config.search_chunk_size,
+            coreset_method=config.get("coreset_method", "kcenter"),
+            coreset_seed=int(config.get("coreset_seed", 42)),
         )
         model.fit(dl)
     elif algorithm == "efficientad":
@@ -110,12 +119,19 @@ def run_training(args):
             weight_decay=float(config.get("efficientad_weight_decay", 1e-5)),
             pretrained_teacher=bool(config.get("efficientad_pretrained_teacher", True)),
         )
+        t_fit = time.perf_counter()
         model.fit(dl, epochs=int(config.get("efficientad_epochs", 1)))
+        logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
     else:
         model = anomavision.Padim(
-            backbone=config.backbone, device=device, layer_indices=config.layer_indices, feat_dim=int(config.feat_dim)
+            backbone=config.backbone,
+            device=device,
+            layer_indices=config.layer_indices,
+            feat_dim=int(config.feat_dim),
         )
+        t_fit = time.perf_counter()
         model.fit(dl)
+        logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
 
     model_path = Path(run_dir) / config.output_model
     torch.save(model, str(model_path))
