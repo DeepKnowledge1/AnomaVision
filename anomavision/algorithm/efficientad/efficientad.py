@@ -160,11 +160,9 @@ class EfficientAD(nn.Module):
         self.trained.fill_(True)
 
     def predict(self, batch: torch.Tensor, export: bool = False):
-        # Do not inspect the tensor-backed ``trained`` flag while exporting.
-        # torch.export treats ``trained.item()`` as data-dependent control flow
-        # and cannot specialize that condition. Training validation belongs to
-        # the Python lifecycle, while the exported graph must contain only the
-        # tensor computation.
+        # Training-state validation is intentionally skipped during export.
+        # ``trained.item()`` creates data-dependent control flow that torch.export
+        # cannot specialize. The exported graph must contain tensor computation only.
         if not export and not bool(self.trained.item()):
             raise RuntimeError("EfficientAD model is not trained. Call fit() first.")
         self.eval()
