@@ -78,6 +78,8 @@ def _load_efficientad_threshold(model_path: Path):
 
 
 def run_inference(args):
+    total_start_time = time.time()
+
     if args.config is not None:
         cfg = load_config(str(args.config))
     else:
@@ -108,9 +110,6 @@ def run_inference(args):
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
 
-    # The training-time threshold is authoritative for EfficientAD.  This is
-    # deliberately resolved after the actual model path is known so ONNX/PT
-    # inference uses the same normal-data calibration.
     if algorithm_name == "efficientad" and config.thresh is None:
         threshold, sidecar = _load_efficientad_threshold(model_path)
         if threshold is not None:
@@ -123,8 +122,19 @@ def run_inference(args):
             )
 
     logger.info("algorithm=%s model=%s device=%s threshold=%s", algorithm_name, model_path, device_str, config.thresh)
-    model = ModelWrapper(str(model_path), device_str)
-    model_type = ModelType.from_extension(str(model_path))
+
+    profilers = {
+        "setup": __import__("anomavision.general", fromlist=["Profiler"]).Profiler(),
+        "model_loading": __import__("anomavision.general", fromlist=["Profiler"]).Profiler(),
+        "data_loading": __import__("anomavision.general", fromlist=["Profiler"]).Profiler(),
+        "inference": __import__("anomavision.general", fromlist=["Profiler"]).Profiler(),
+        "postprocessing": __import__("anomavision.general", fromlist=["Profiler"]).Profiler(),
+        "visualization": __import__("anomavision.general", fromlist=["Profiler"]).Profiler(),
+    }
+
+    with profilers["model_loading"]:
+        model = ModelWrapper(str(model_path), device_str)
+        model_type = ModelType.from_extension(str(model_path))
 
     viz_color = (128, 0, 128)
     try:
@@ -143,32 +153,41 @@ def run_inference(args):
             exist_ok=config.get("overwrite", False), mkdir=True,
         )
 
-    if stream_mode:
-        source = StreamSourceFactory.create(config.stream_source)
-        source.connect()
-        dataset = StreamDataset(source=source, resize=resize, crop_size=crop_size,
-                                normalize=normalize, mean=config.norm_mean, std=config.norm_std,
-                                max_frames=config.get("stream_max_frames"))
-        workers, pin_memory = 0, False
-    else:
-        dataset_path = os.path.realpath(config.img_path)
-        dataset = anomavision.AnodetDataset(dataset_path, resize=resize, crop_size=crop_size,
-                                             normalize=normalize, mean=config.norm_mean, std=config.norm_std)
-        workers = int(config.get("num_workers", 0))
-        pin_memory = bool(config.get("pin_memory", False))
+    with profilers["data_loading"]:
+        if stream_mode:
+            source = StreamSourceFactory.create(config.stream_source)
+            source.connect()
+            dataset = StreamDataset(source=source, resize=resize, crop_size=crop_size,
+                                    normalize=normalize, mean=config.norm_mean, std=config.norm_std,
+                                    max_frames=config.get("stream_max_frames"))
+            workers, pin_memory = 0, False
+        else:
+            dataset_path = os.path.realpath(config.img_path)
+            dataset = anomavision.AnodetDataset(dataset_path, resize=resize, crop_size=crop_size,
+                                                 normalize=normalize, mean=config.norm_mean, std=config.norm_std)
+            workers = int(config.get("num_workers", 0))
+            pin_memory = bool(config.get("pin_memory", False))
+        dataloader = DataLoader(dataset, batch_size=int(config.batch_size), num_workers=workers, pin_memory=pin_memory)
+        try:
+            total_images = len(dataset)
+        except TypeError:
+            total_images = None
 
-    dataloader = DataLoader(dataset, batch_size=int(config.batch_size), num_workers=workers, pin_memory=pin_memory)
-    profilers = {name: Profiler() for name in ("model_loading", "data_loading", "inference", "postprocessing", "visualization")}
     results = {"scores": [], "classifications": [], "images": [] if not stream_mode else None}
+    batch_count = 0
+    image_counter = 0
 
     try:
         try:
-            first = next(iter(dataloader))[0]
-            model.warmup(first.to(device_str), runs=2)
+            with profilers["inference"]:
+                first = next(iter(dataloader))[0]
+                model.warmup(first.to(device_str), runs=2)
         except Exception as exc:
             logger.warning("Warm-up skipped: %s", exc)
 
         for batch_idx, (batch, images, _, _) in enumerate(dataloader):
+            batch_count += 1
+            image_counter += batch.shape[0]
             with profilers["inference"]:
                 image_scores, score_maps = model.predict(batch.to(device_str))
 
@@ -177,10 +196,6 @@ def run_inference(args):
                 is_anomaly = anomavision.classification(image_scores, config.thresh)
                 if algorithm_name == "patchcore":
                     masks = make_localization_mask(score_maps, is_anomaly, quantile=0.90)
-                elif algorithm_name == "efficientad":
-                    # EfficientAD maps are normalized in the same score space as
-                    # image scores. Use the shared threshold for consistent masks.
-                    masks = anomavision.classification(score_maps, config.thresh)
                 else:
                     masks = anomavision.classification(score_maps, config.thresh)
 
@@ -214,7 +229,42 @@ def run_inference(args):
             except Exception:
                 pass
 
-    return {"total_images": len(results["scores"]), "fps": 0.0}, results
+    total_pipeline_time = time.time() - total_start_time
+    final_count = total_images if (not stream_mode and total_images is not None) else image_counter
+    inference_seconds = profilers["inference"].accumulated_time
+    fps = final_count / inference_seconds if inference_seconds > 0 else 0.0
+    avg_ms = (inference_seconds / batch_count * 1000.0) if batch_count > 0 else 0.0
+    throughput = final_count / inference_seconds if inference_seconds > 0 else 0.0
+
+    logger.info("=" * 60)
+    logger.info("ANOMAVISION PERFORMANCE SUMMARY")
+    logger.info("=" * 60)
+    logger.info(f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Total pipeline time:       {total_pipeline_time * 1000:.2f} ms")
+    logger.info("=" * 60)
+
+    logger.info("=" * 60)
+    logger.info("ANOMAVISION INFERENCE PERFORMANCE")
+    logger.info("=" * 60)
+    if fps > 0:
+        logger.info(f"Pure inference FPS:        {fps:.2f} images/sec")
+    if avg_ms > 0:
+        logger.info(f"Average inference time:    {avg_ms:.2f} ms/batch")
+    if batch_count > 0:
+        logger.info(f"Throughput:                {throughput:.1f} images/sec (batch size: {config.get('batch_size', 1) or 1})")
+    logger.info("=" * 60)
+
+    return {
+        "fps": fps,
+        "avg_inference_ms": avg_ms,
+        "total_time_s": total_pipeline_time,
+        "total_images": final_count,
+    }, results
 
 
 def main(args=None):
