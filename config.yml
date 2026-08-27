@@ -69,7 +69,10 @@ img_path: "D:/01-DATA/test"
 thresh: null
 thresh_padim: 13.0
 thresh_patchcore: 0.25
-thresh_efficientad: null
+# EfficientAD scores are z-normalized using the normal-training score
+# distribution. A 3-sigma threshold is the initial deployment default.
+# Tune this independently from PaDiM; PaDiM's 13.0 threshold is not valid here.
+thresh_efficientad: 3.0
 num_workers: 1
 pin_memory: false
 overwrite: false
