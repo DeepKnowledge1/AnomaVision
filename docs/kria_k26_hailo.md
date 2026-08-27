@@ -19,95 +19,134 @@ The Hailo Dataflow Compiler must parse, optimize with representative calibration
 
 A PaDiM artifact must contain `backbone`, `layer_indices`, `channel_indices`, `mean`, and `cov_inv`. A PatchCore artifact must contain `backbone`, `layer_indices`, `memory_bank`, and, when applicable, `patch_grid`.
 
-Export a complete graph on a host with the project environment:
+Export a complete graph:
 
-```powershell
-uv run python -m anomavision.quantize.model.backends.hef.exporter `
-  --algorithm padim `
-  --artifact .\model_stats.pt `
-  --calibration-dir .\normal_calibration `
-  --output-dir .\hailo\padim_k26
+```bash
+python -m anomavision.quantize.model.backends.hef.exporter \
+  --algorithm patchcore \
+  --artifact distributions/patchcore/bottle/anomav_exp/model.pt \
+  --calibration-dir /root/dataset/bottle/train/good \
+  --output-dir distributions/patchcore/bottle/hailo
 ```
 
-or:
+For PaDiM:
 
-```powershell
-uv run python -m anomavision.quantize.model.backends.hef.exporter `
-  --algorithm patchcore `
-  --artifact .\patchcore_artifact.pt `
-  --calibration-dir .\normal_calibration `
-  --output-dir .\hailo\patchcore_k26
+```bash
+python -m anomavision.quantize.model.backends.hef.exporter \
+  --algorithm padim \
+  --artifact distributions/padim/bottle/model_stats.pt \
+  --calibration-dir /root/dataset/bottle/train/good \
+  --output-dir distributions/padim/bottle/hailo
 ```
 
-This creates the complete ONNX graph and a calibration manifest. It does not claim to create a HEF unless the Hailo SDK is installed and an explicit compiler command is supplied:
+This creates the complete ONNX graph and calibration manifest. It does not claim that a HEF exists until the Hailo compiler has actually produced one.
 
-```powershell
-uv run python -m anomavision.quantize.model.backends.hef.exporter `
-  --algorithm patchcore `
-  --artifact .\patchcore_artifact.pt `
-  --calibration-dir .\normal_calibration `
-  --output-dir .\hailo\patchcore_k26 `
-  --hailo-command "<Hailo SDK parse/optimize/compile command using {onnx} and {output}>"
+## Compile ONNX -> HAR -> optimized HAR -> HEF
+
+Use the repository script from the Hailo DFC environment:
+
+```bash
+bash scripts/hailo_compile.sh \
+  distributions/patchcore/bottle/hailo/anomavision_patchcore_k26_end_to_end.onnx \
+  /root/dataset/bottle/train/good \
+  hailo8
 ```
 
-The exact compiler command depends on the installed Hailo Dataflow Compiler release and target accelerator. It should include representative-image calibration and must produce a HEF whose outputs are exactly `image_scores` and `score_map`.
-
-## Compile both models with the Hailo Dataflow Compiler
-
-Run `scripts/compile_hailo8.py` inside the Hailo Dataflow Compiler environment. It compiles both exported complete graphs independently and writes one HEF per algorithm:
-
-```powershell
-uv run python scripts/compile_hailo8.py `
-  --padim-onnx .\hailo\padim_k26\anomavision_padim_k26_end_to_end.onnx `
-  --patchcore-onnx .\hailo\patchcore_k26\anomavision_patchcore_k26_end_to_end.onnx `
-  --calibration-dir .\normal_calibration `
-  --output-dir .\hailo8_compile `
-  --hw-arch hailo8 `
-  --calibration-limit 1024
-```
-
-Expected outputs are:
+The script performs all required steps:
 
 ```text
-hailo8_compile\padim\anomavision_padim_k26_hailo8.hef
-hailo8_compile\patchcore\anomavision_patchcore_k26_hailo8.hef
-hailo8_compile\compile_all_manifest.json
+1. Convert representative calibration images to HxWx3 .npy samples
+2. hailo parser       ONNX -> HAR
+3. hailo optimize     HAR -> INT8 optimized HAR
+4. hailo compiler     optimized HAR -> HEF
 ```
 
-The script uses the Hailo `ClientRunner` flow: ONNX translation, calibration/optimization, compilation, and HEF creation. It fails if the Hailo SDK is missing, calibration images are absent, the ONNX input is not fixed NCHW RGB, or the compiler returns no HEF bytes. It does not silently replace distance calculation with CPU or ONNX Runtime postprocessing.
+**Important:** the ONNX model, HAR files, and HEF are kept in the **same directory as the ONNX model**. The script never puts the HEF/HAR in the parent directory.
+
+For the PatchCore example the directory becomes:
+
+```text
+distributions/patchcore/bottle/hailo/
+├── anomavision_patchcore_k26_end_to_end.onnx
+├── anomavision_patchcore_k26_end_to_end.har
+├── anomavision_patchcore_k26_end_to_end_optimized.har
+├── anomavision_patchcore_k26_end_to_end.hef
+└── calibration_npy/
+```
+
+The same layout is used for PaDiM. This makes the model path the single source of truth for all deployment artifacts.
+
+The script defaults to `hailo8`. For another supported target, pass the architecture as the third argument:
+
+```bash
+bash scripts/hailo_compile.sh \
+  distributions/patchcore/bottle/hailo/anomavision_patchcore_k26_end_to_end.onnx \
+  /root/dataset/bottle/train/good \
+  hailo8l
+```
+
+## Manual commands
+
+If you do not want to use the script, run the same operations from the model directory so every generated artifact stays beside the model:
+
+```bash
+cd distributions/patchcore/bottle/hailo
+
+hailo parser onnx anomavision_patchcore_k26_end_to_end.onnx --hw-arch hailo8
+
+hailo optimize \
+  anomavision_patchcore_k26_end_to_end.har \
+  --hw-arch hailo8 \
+  --calib-set-path ./calibration_npy
+
+hailo compiler \
+  anomavision_patchcore_k26_end_to_end_optimized.har \
+  --hw-arch hailo8
+```
+
+After the final command, the `.hef` must also be in this same directory.
+
+## Validate the generated artifacts
+
+Before deploying, verify that the expected files exist:
+
+```bash
+MODEL_DIR=distributions/patchcore/bottle/hailo
+MODEL_NAME=anomavision_patchcore_k26_end_to_end
+
+ls -lh "$MODEL_DIR/$MODEL_NAME.onnx"
+ls -lh "$MODEL_DIR/$MODEL_NAME.har"
+ls -lh "$MODEL_DIR/${MODEL_NAME}_optimized.har"
+ls -lh "$MODEL_DIR/$MODEL_NAME.hef"
+```
+
+You can also inspect the HEF with Hailo tools available in your DFC/HailoRT environment.
+
+## Runtime command
+
+Once a physical Hailo device is available, the normal AnomaVision command should use the HEF directly:
+
+```bash
+anomavision detect \
+  --config config.yml \
+  --model distributions/patchcore/bottle/hailo/anomavision_patchcore_k26_end_to_end.hef \
+  --img_path ./test_images
+```
+
+The corresponding ONNX validation command is:
+
+```bash
+anomavision detect \
+  --config config.yml \
+  --model distributions/patchcore/bottle/hailo/anomavision_patchcore_k26_end_to_end.onnx \
+  --img_path ./test_images
+```
+
+The goal is that both commands produce nearly identical anomaly scores and heatmaps. Hailo-specific runtime execution cannot be validated on a host without a Hailo device; compilation success alone does not prove numerical parity.
 
 ## XModel path for the K26 DPU
 
-The AMD DPU path is separate from Hailo-8. Hailo uses `.hef`; the K26 DPU uses `.xmodel`. Start from a Vitis AI XIR graph and compile it with:
-
-```powershell
-uv run python -m anomavision.quantize.model.backends.xmodel.compiler `
-  --xir .\xir\anomavision_k26.xir `
-  --arch .\arch\DPUCZDX8G_ISA1_B4096.json `
-  --output-dir .\xmodel\k26
-```
-
-The compiler requires `vai_c_xir` from the Vitis AI toolchain and fails if no `.xmodel` is produced. It does not convert a Hailo HEF into an XModel. When the AMD Vitis AI runtime is installed on the board, `ModelWrapper` selects `KV260Backend` for `.xmodel` files. If VART/XIR is unavailable, initialization fails explicitly rather than falling back to CPU inference.
-
-## Verify supported layers and fallback status
-
-Run the verification script after compilation:
-
-```powershell
-uv run python scripts/verify_hailo8_graph.py `
-  --padim-onnx .\hailo\padim_k26\anomavision_padim_k26_end_to_end.onnx `
-  --patchcore-onnx .\hailo\patchcore_k26\anomavision_patchcore_k26_end_to_end.onnx `
-  --padim-hef .\hailo8_compile\padim\anomavision_padim_k26_hailo8.hef `
-  --patchcore-hef .\hailo8_compile\patchcore\anomavision_patchcore_k26_hailo8.hef `
-  --padim-har .\hailo8_compile\padim\anomavision_padim_k26_hailo8.har `
-  --patchcore-har .\hailo8_compile\patchcore\anomavision_patchcore_k26_hailo8.har `
-  --compiler-log .\hailo8_compile\compiler.log `
-  --output .\hailo8_compile\verification.json
-```
-
-The verifier checks that both ONNX graphs expose the complete `image_scores` and `score_map` outputs, lists all graph operators, requires a non-empty HEF, and scans the HAR/compiler evidence for CPU, ONNX Runtime, host-postprocess, or fallback markers. A HEF without a same-build HAR or compiler log is reported as **not proven fallback-free** rather than being accepted automatically.
-
-Without the Hailo compiler artifacts, the only valid result is `onnx_only_not_hardware_verified`. A successful ONNX export is not evidence that Hailo-8 supports every operation.
+The AMD DPU path is separate from Hailo-8. Hailo uses `.hef`; the K26 DPU uses `.xmodel`. Start from a Vitis AI XIR graph and compile it with the Vitis AI toolchain.
 
 ## Package locations
 
@@ -119,7 +158,6 @@ anomavision/inference/model/backends/k260_backend.py
 anomavision/quantize/model/backends/hef/exporter.py
 anomavision/quantize/model/backends/hef/verifier.py
 anomavision/quantize/model/backends/hef/audit.py
-anomavision/quantize/model/backends/xmodel/compiler.py
 ```
 
 ## Kria runtime
@@ -137,37 +175,14 @@ with HailoAnomalyRuntime("/opt/models/padim_k26.hef") as detector:
 
 The Kria image must provide the HailoRT Python package and a working Hailo device driver. The runtime deliberately fails if the HEF does not expose both final AnomaVision outputs; this prevents accidentally deploying a feature-only HEF while believing the whole algorithm is quantized.
 
-## Operator audit and support boundary
-
-The host export audit currently reports these operators in the complete graphs:
-
-| Graph | Emitted operations requiring Hailo-8 compiler verification |
-|---|---|
-| PaDiM | `AveragePool`, `Clip`, `Concat`, `Gather`, `MatMul`, `ReduceMax`, `ReduceMean`, `Resize`, `Sqrt`, `Sub`, `Transpose`, and shape/constant plumbing. |
-| PatchCore | `AveragePool`, `Concat`, `Div`, `MatMul`, `ReduceL2`, `ReduceMax`, `ReduceMean`, `Resize`, `Sqrt`, `Sub`, `Transpose`, and shape/constant plumbing. |
-
-The repository does not include the Hailo Dataflow Compiler, so these graphs are **not marked as compiled or hardware-verified**. The audit script is:
-
-```powershell
-uv run python scripts/audit_hailo_ops.py
-```
-
-If the Hailo parser rejects any operation, the graph must be rewritten before deployment. Moving the rejected distance or reduction operation to ONNX Runtime would improve compatibility but would violate the requirement that the whole algorithm be quantized on Hailo. The implementation therefore fails closed: it requires final `image_scores` and `score_map` outputs and does not silently fall back to CPU distance calculation.
-
 ## Validation requirements
 
-Before hardware deployment, compare the complete Hailo graph against the original PyTorch model on a held-out normal and anomalous set. Record image-score correlation, classification agreement at the selected threshold, pixel-map correlation, pixel AUROC, and P95 latency. Any calibration or compiler change requires repeating this parity check.
+Before hardware deployment, compare the complete Hailo graph against the original PyTorch and ONNX models on a held-out normal and anomalous set. Record image-score correlation, classification agreement at the selected threshold, pixel-map correlation, pixel AUROC, and P95 latency. Any calibration or compiler change requires repeating this parity check.
 
-The current host test suite validates graph construction, full score/map output shapes, ONNX export, artifact validation, and calibration-manifest generation. Actual HEF compilation and Kria latency measurements require the Hailo SDK and physical hardware; they cannot be honestly claimed from a CPU-only development host.
+The repository can validate graph construction and ONNX behavior without a Hailo device. Actual HEF inference and Kria latency measurements require the Hailo SDK/HailoRT and physical hardware.
 
 ## Important deployment constraints
 
 The graph uses fixed input dimensions and fixed patch grids. PaDiM covariance tensors and PatchCore memory banks are embedded as constants, so artifact size and compiler memory must be checked for each selected backbone, feature dimension, and coreset size. Ultra-light PatchCore should use a bounded memory bank and reduced feature dimension for K26 deployment. PaDiM should use channel selection and a compact patch grid before compilation.
 
-The Hailo toolchain performs the device-side quantization from representative data. A `float32` ONNX export is an input to that process, not evidence that the model has already been quantized. A CPU `int8` cast of outputs is not an acceptable substitute for compiling the distance and reduction operations into the HEF.
-
-## References
-
-[1]: https://hailo.ai/products/hailo-software/hailo-ai-software-suite/ "Hailo AI Software Suite"
-[2]: https://github.com/hailo-ai/hailo-apps/tree/main/hailo_apps/cpp/onnxrt_hailo_pipeline "Hailo ONNX Runtime pipeline example"
-[3]: https://www.amd.com/en/products/system-on-modules/kria/k26.html "AMD Kria K26 SOM"
+The Hailo toolchain performs device-side quantization from representative data. A float32 ONNX export is an input to that process, not evidence that the model has already been quantized. A CPU int8 cast of outputs is not an acceptable substitute for compiling the distance and reduction operations into the HEF.
