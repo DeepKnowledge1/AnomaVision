@@ -57,6 +57,19 @@ def _pct(value: Any) -> str:
     return "N/A" if value is None else f"{float(value):.1%}"
 
 
+def _json_default(value: Any) -> Any:
+    """Convert NumPy/PyTorch scalar values to JSON-safe Python values."""
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, torch.Tensor):
+        if value.ndim == 0:
+            return value.item()
+        return value.detach().cpu().tolist()
+    if isinstance(value, Path):
+        return str(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup: int, timing_batches: int) -> Dict[str, Any]:
     wrapper = ModelWrapper(model_path, device)
     timings = []
@@ -186,7 +199,7 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     if args.copy_config:
         shutil.copy2(args.config,output_dir/Path(args.config).name)
     manifest = {"schema_version":5,"selected_model":selected,"selected_artifact":packaged_model.name,"calibration_artifact":sidecar.name if sidecar else None,"dataset":{"path":str(Path(dataset_path).resolve()),"class_name":class_name,"samples":len(dataset)},"preprocessing":{"resize":cfg.get("resize",224),"crop_size":cfg.get("crop_size",224),"normalize":cfg.get("normalize",True),"mean":cfg.get("norm_mean"),"std":cfg.get("norm_std")},"candidates":candidates,"target_latency_ms":args.target_latency_ms,"environment":{"python":sys.version.split()[0],"platform":platform.platform(),"torch":torch.__version__,"device":device}}
-    (output_dir/"deployment_manifest.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
+    (output_dir/"deployment_manifest.json").write_text(json.dumps(manifest,indent=2,default=_json_default),encoding="utf-8")
     _write_report(manifest,output_dir)
     return manifest
 
