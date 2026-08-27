@@ -21,7 +21,6 @@ class _FeatureTeacher(nn.Module):
         super().__init__()
         weights = EfficientNet_B0_Weights.DEFAULT if pretrained else None
         net = efficientnet_b0(weights=weights)
-        # EfficientNet-B0 stage 5 produces a compact 112-channel feature map.
         self.features = nn.Sequential(*list(net.features[:6]))
         self.out_channels = 112
         for p in self.parameters():
@@ -36,7 +35,6 @@ class _FeatureTeacher(nn.Module):
 class _Student(nn.Module):
     def __init__(self, out_channels: int = 112) -> None:
         super().__init__()
-        # Four downsampling stages match the teacher's 1/16 spatial stride.
         self.net = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=2, padding=1),
             nn.BatchNorm2d(64),
@@ -65,7 +63,7 @@ class _AutoEncoder(nn.Module):
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(96, 64, 4, 2, 1), nn.ReLU(inplace=True),
             nn.ConvTranspose2d(64, 32, 4, 2, 1), nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(32, 3, 4, 2, 1), nn.Sigmoid(),
+            nn.ConvTranspose2d(32, 3, 4, 2, 1),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -112,9 +110,9 @@ class EfficientAD(nn.Module):
         self.to(self.device)
 
     def _normalise(self, x: torch.Tensor) -> torch.Tensor:
-        mean = x.new_tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-        std = x.new_tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
-        return (x - mean) / std
+        # Dataset tensors may already be ImageNet-normalized. This method is
+        # intentionally a no-op in that case; see ``normalize_input`` below.
+        return x
 
     def _signals(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         x_norm = self._normalise(x)
