@@ -1,38 +1,68 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Compile a complete AnomaVision Hailo ONNX graph into HAR and HEF.
-# IMPORTANT: every generated model artifact stays beside the ONNX model:
-#   <model-dir>/<model>.onnx
-#   <model-dir>/<model>.har
-#   <model-dir>/<model>_optimized.har
-#   <model-dir>/<model>.hef
+# Compile an AnomaVision Hailo model into HAR and HEF.
+# The AnomaVision quantize command creates the end-to-end ONNX graph first.
+# All generated model artifacts stay beside the model itself.
 #
 # Usage:
-#   bash scripts/hailo_compile.sh <model.onnx> <calibration_dir> [hw_arch]
+#   bash scripts/hailo_compile.sh <algorithm> <artifact> <calibration_dir> <output_dir> [hw_arch]
 #
-# Example:
+# Example (PaDiM):
 #   bash scripts/hailo_compile.sh \
-#     distributions/patchcore/bottle/hailo/anomavision_patchcore_k26_end_to_end.onnx \
+#     padim \
+#     distributions/padim/bottle/anomav_exp/model.pt \
 #     /root/dataset/bottle/train/good \
+#     distributions/padim/bottle/hailo \
+#     hailo8
+#
+# Example (PatchCore):
+#   bash scripts/hailo_compile.sh \
+#     patchcore \
+#     distributions/patchcore/bottle/anomav_exp/model.pt \
+#     /root/dataset/bottle/train/good \
+#     distributions/patchcore/bottle/hailo \
 #     hailo8
 
-MODEL="${1:-}"
-CALIBRATION_DIR="${2:-}"
-HW_ARCH="${3:-hailo8}"
+ALGORITHM="${1:-}"
+ARTIFACT="${2:-}"
+CALIBRATION_DIR="${3:-}"
+OUTPUT_DIR="${4:-}"
+HW_ARCH="${5:-hailo8}"
 
-if [[ -z "$MODEL" || -z "$CALIBRATION_DIR" ]]; then
-  echo "Usage: $0 <model.onnx> <calibration_dir> [hw_arch]"
+if [[ -z "$ALGORITHM" || -z "$ARTIFACT" || -z "$CALIBRATION_DIR" || -z "$OUTPUT_DIR" ]]; then
+  echo "Usage: $0 <algorithm> <artifact> <calibration_dir> <output_dir> [hw_arch]"
   exit 1
 fi
 
-if [[ ! -f "$MODEL" ]]; then
-  echo "ERROR: ONNX model not found: $MODEL"
+if [[ "$ALGORITHM" != "padim" && "$ALGORITHM" != "patchcore" ]]; then
+  echo "ERROR: algorithm must be 'padim' or 'patchcore'"
+  exit 1
+fi
+
+if [[ ! -f "$ARTIFACT" ]]; then
+  echo "ERROR: artifact not found: $ARTIFACT"
   exit 1
 fi
 
 if [[ ! -d "$CALIBRATION_DIR" ]]; then
   echo "ERROR: calibration directory not found: $CALIBRATION_DIR"
+  exit 1
+fi
+
+mkdir -p "$OUTPUT_DIR"
+
+# Step 1: use the AnomaVision CLI to create the complete end-to-end ONNX graph.
+echo "[1/4] AnomaVision quantize -> ONNX"
+anomavision quantize \
+  --algorithm "$ALGORITHM" \
+  --artifact "$ARTIFACT" \
+  --calibration-dir "$CALIBRATION_DIR" \
+  --output-dir "$OUTPUT_DIR"
+
+MODEL="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.onnx' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
+if [[ -z "${MODEL:-}" || ! -f "$MODEL" ]]; then
+  echo "ERROR: anomavision quantize completed but no ONNX model was found in $OUTPUT_DIR"
   exit 1
 fi
 
@@ -48,8 +78,8 @@ CALIB_DIR="$MODEL_DIR/calibration_npy"
 
 mkdir -p "$CALIB_DIR"
 
-# Hailo DFC optimization expects representative samples in HxWxC for this
-# fixed 224x224x3 network. Do not add a batch dimension here.
+# Hailo DFC optimization expects representative samples as HxWxC for the
+# fixed 224x224x3 AnomaVision input. Do not add a batch dimension.
 python - "$CALIBRATION_DIR" "$CALIB_DIR" <<'PY'
 import sys
 from pathlib import Path
@@ -75,7 +105,7 @@ for index, path in enumerate(images):
 print(f"Created {len(images)} calibration samples in {dst}")
 PY
 
-echo "[1/3] Parsing ONNX -> HAR"
+echo "[2/4] Parsing ONNX -> HAR"
 (
   cd "$MODEL_DIR"
   hailo parser onnx "$MODEL" --hw-arch "$HW_ARCH"
@@ -93,7 +123,7 @@ if [[ "$PARSED_HAR" != "$HAR" ]]; then
   mv -f "$PARSED_HAR" "$HAR"
 fi
 
-echo "[2/3] Optimizing / quantizing HAR"
+echo "[3/4] Optimizing / quantizing HAR"
 (
   cd "$MODEL_DIR"
   hailo optimize "$HAR" --hw-arch "$HW_ARCH" --calib-set-path "$CALIB_DIR"
@@ -108,7 +138,7 @@ if [[ "$OPT_FOUND" != "$OPT_HAR" ]]; then
   mv -f "$OPT_FOUND" "$OPT_HAR"
 fi
 
-echo "[3/3] Compiling optimized HAR -> HEF"
+echo "[4/4] Compiling optimized HAR -> HEF"
 (
   cd "$MODEL_DIR"
   hailo compiler "$OPT_HAR" --hw-arch "$HW_ARCH"
@@ -125,6 +155,8 @@ fi
 
 echo
 echo "Hailo compilation completed successfully."
+echo "Algorithm:   $ALGORITHM"
+echo "Artifact:    $(realpath "$ARTIFACT")"
 echo "ONNX:        $MODEL"
 echo "HAR:         $HAR"
 echo "Optimized:   $OPT_HAR"
