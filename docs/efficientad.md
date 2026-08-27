@@ -43,15 +43,25 @@ efficientad_pretrained_teacher: true
 
 EfficientAD uses ImageNet preprocessing for the teacher, so `normalize: true` is required by the AnomaVision integration.
 
-## Detection
+## Detection and thresholding
 
 Use the same command as the other algorithms:
 
 ```bash
-anomavision detect --config config.yml --model model.pt --img_path ./test_images
+anomavision detect --config config.yml --model model.onnx
 ```
 
-The model returns an image-level anomaly score and a full-resolution anomaly map, so the existing visualization and post-processing pipeline can be reused.
+EfficientAD and PaDiM do **not** produce scores on the same numerical scale. PaDiM's threshold (for example `13.0`) must not be reused for EfficientAD. EfficientAD normalizes its image score using the normal-training score mean and standard deviation, so its threshold is expressed in standard deviations from the normal score distribution.
+
+The default configuration uses an independent EfficientAD threshold:
+
+```yaml
+thresh_padim: 13.0
+thresh_patchcore: 0.25
+thresh_efficientad: 3.0
+```
+
+`3.0` is a conservative 3-sigma starting point for deployment. It is intentionally separate from PaDiM and should be calibrated on the validation set for the target MVTec class if you need the closest possible classification agreement with an existing PaDiM deployment.
 
 ## Export
 
@@ -69,7 +79,7 @@ The ONNX graph contains the EfficientAD inference path, including the teacher, s
 anomavision eval --config config.yml --model model.pt --class_name bottle
 ```
 
-EfficientAD has its own score distribution, so thresholds should be calibrated independently from PaDiM. Keep `thresh_efficientad: null` to let evaluation determine an appropriate threshold where the existing evaluation workflow supports automatic threshold selection.
+EfficientAD has its own score distribution, so thresholds should be calibrated independently from PaDiM. The inference threshold is controlled by `thresh_efficientad`.
 
 ## Model artifacts
 
