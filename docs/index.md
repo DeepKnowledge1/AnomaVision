@@ -24,6 +24,7 @@ AnomaVision is designed for **fast, lightweight, and accurate anomaly detection*
 * [CLI Reference](cli.md) → Full command-line options for all scripts
 * [API Reference](api.md) → Use AnomaVision directly in Python
 * [Configuration Guide](config.md) → Explanation of all `config.yml` fields
+* [Backend Validation](backend_validation.md) → Compare PT, ONNX, and Hailo inference outputs
 * [Benchmarks](benchmark.md) → MVTec & Visa results vs Anomalib
 * [Troubleshooting & FAQ](troubleshooting.md) → Common issues and fixes
 * [Contributing](contributing.md) → How to contribute to AnomaVision
