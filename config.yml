@@ -32,7 +32,6 @@ coreset_method: "kcenter"
 coreset_seed: 42
 
 # EfficientAD
-# EfficientAD uses ImageNet-normalized input and an EfficientNet-B0 teacher.
 efficientad_model_size: "s"              # s | m
 efficientad_lr: 0.0001
 efficientad_weight_decay: 0.00001
@@ -69,10 +68,9 @@ img_path: "D:/01-DATA/test"
 thresh: null
 thresh_padim: 13.0
 thresh_patchcore: 0.25
-# EfficientAD scores are z-normalized using the normal-training score
-# distribution. A 3-sigma threshold is the initial deployment default.
-# Tune this independently from PaDiM; PaDiM's 13.0 threshold is not valid here.
-thresh_efficientad: 3.0
+# EfficientAD uses its own score scale. Keep this independent from PaDiM.
+# The score is normalized against the normal-training score distribution.
+thresh_efficientad: 1.0
 num_workers: 1
 pin_memory: false
 overwrite: false
