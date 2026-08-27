@@ -164,6 +164,22 @@ def _dispatch_export(args: argparse.Namespace) -> None:
 
 
 def _dispatch_detect(args: argparse.Namespace) -> None:
+    if str(getattr(args, "algorithm", "")).lower() == "efficientad" and getattr(args, "thresh", None) is None:
+        from anomavision.efficientad_threshold import load_calibrated_threshold
+        from anomavision.config import load_config
+        from pathlib import Path
+
+        cfg = load_config(args.config) if getattr(args, "config", None) else {}
+        algorithm = str(getattr(args, "algorithm", None) or cfg.get("algorithm", "")).lower()
+        model_data_path = getattr(args, "model_data_path", None) or cfg.get("model_data_path", "./distributions")
+        class_name = getattr(args, "class_name", None) or cfg.get("class_name")
+        run_name = getattr(args, "run_name", None) or cfg.get("run_name")
+        model_name = getattr(args, "model", None) or cfg.get("model")
+
+        if algorithm == "efficientad" and class_name and run_name and model_name:
+            model_path = Path(model_data_path) / algorithm / class_name / run_name / model_name
+            args.thresh = load_calibrated_threshold(model_path)
+
     from anomavision import detect
 
     detect.main(args)
