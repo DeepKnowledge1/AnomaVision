@@ -14,7 +14,7 @@ norm_std:  [0.229, 0.224, 0.225]
 # Model / training
 # =========================
 backbone: "resnet18"
-algorithm: "padim"                       # padim | patchcore | efficientad
+algorithm: "efficientad"                       # padim | patchcore | efficientad
 # Equivalent native selector:
 # model:
 #   name: padim
