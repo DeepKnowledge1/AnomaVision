@@ -19,23 +19,23 @@ import numpy as np
 import torch
 from PIL import Image
 
-from .graphs import PadimEndToEndGraph, PatchCoreEndToEndGraph, exportable_output_names
+from .graphs import PadimEndToEndGraph, exportable_output_names
+from .patchcore import PatchCoreHailoGraph
 
 
-def _load_artifact(path: Path) -> Dict[str, Any]:
+def _load_artifact(path: Path) -> Any:
     """Load an AnomaVision deployment artifact from disk."""
-    artifact = torch.load(path, map_location="cpu", weights_only=False)
-    if not isinstance(artifact, dict):
-        raise ValueError(f"Expected a dictionary artifact, got {type(artifact)!r}")
-    return artifact
+    return torch.load(path, map_location="cpu", weights_only=False)
 
 
 def _build_graph(
-    algorithm: str, artifact: Dict[str, Any], input_size: Tuple[int, int]
+    algorithm: str, artifact: Any, input_size: Tuple[int, int]
 ):
     """Build the fixed-shape end-to-end graph for the selected algorithm."""
     algorithm = algorithm.lower()
     if algorithm == "padim":
+        if not isinstance(artifact, dict):
+            raise ValueError("PaDiM Hailo export requires a statistics artifact dictionary")
         required = {"backbone", "layer_indices", "channel_indices", "mean", "cov_inv"}
         missing = sorted(required.difference(artifact))
         if missing:
@@ -48,18 +48,35 @@ def _build_graph(
             cov_inv=artifact["cov_inv"],
             input_size=input_size,
         )
+
     if algorithm == "patchcore":
-        required = {"backbone", "layer_indices", "memory_bank"}
-        missing = sorted(required.difference(artifact))
-        if missing:
-            raise ValueError(f"PatchCore artifact is missing keys: {', '.join(missing)}")
-        return PatchCoreEndToEndGraph(
-            backbone=str(artifact["backbone"]),
-            layer_indices=list(artifact["layer_indices"]),
-            memory_bank=artifact["memory_bank"],
-            patch_grid=int(artifact.get("patch_grid", 14)),
+        if isinstance(artifact, dict):
+            required = {"backbone", "layer_indices", "memory_bank"}
+            missing = sorted(required.difference(artifact))
+            if missing:
+                raise ValueError(f"PatchCore artifact is missing keys: {', '.join(missing)}")
+            backbone = str(artifact["backbone"])
+            layer_indices = list(artifact["layer_indices"])
+            memory_bank = artifact["memory_bank"]
+            patch_grid = int(artifact.get("patch_grid", 14))
+        else:
+            try:
+                backbone = str(artifact.backbone)
+                layer_indices = list(artifact.layer_indices)
+                memory_bank = artifact.memory_bank
+                patch_grid = int(getattr(artifact, "patch_grid", 14))
+            except AttributeError as exc:
+                raise ValueError(
+                    "PatchCore artifact must be a PatchCore model or artifact dictionary"
+                ) from exc
+        return PatchCoreHailoGraph(
+            backbone=backbone,
+            layer_indices=layer_indices,
+            memory_bank=memory_bank,
+            patch_grid=patch_grid,
             input_size=input_size,
         )
+
     raise ValueError("algorithm must be 'padim' or 'patchcore'")
 
 
@@ -82,8 +99,6 @@ def _prepare_calibration(
     manifest = output_dir / "calibration_manifest.json"
     records = []
 
-    # Remove stale samples so a smaller new calibration set cannot accidentally
-    # reuse tensors from a previous export.
     for stale in calibration_dir.glob("*.npy"):
         stale.unlink()
 
