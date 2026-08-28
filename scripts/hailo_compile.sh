@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Compile an AnomaVision Hailo model into HAR and HEF.
-# The AnomaVision quantize command creates the end-to-end ONNX graph first.
-# All generated model artifacts stay beside the model itself.
+# Build a complete AnomaVision Hailo model: ONNX -> HAR -> optimized HAR -> HEF.
+# All generated artifacts are kept in the same directory as the ONNX model.
 #
 # Usage:
 #   bash scripts/hailo_compile.sh <algorithm> <artifact> <calibration_dir> <output_dir> [hw_arch]
 #
-# Example (PaDiM):
-#   bash scripts/hailo_compile.sh \
-#     padim \
-#     distributions/padim/bottle/anomav_exp/model.pt \
-#     /root/dataset/bottle/train/good \
-#     distributions/padim/bottle/hailo \
-#     hailo8
-#
-# Example (PatchCore):
+# Example:
 #   bash scripts/hailo_compile.sh \
 #     patchcore \
 #     distributions/patchcore/bottle/anomav_exp/model.pt \
@@ -40,20 +31,13 @@ if [[ "$ALGORITHM" != "padim" && "$ALGORITHM" != "patchcore" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$ARTIFACT" ]]; then
-  echo "ERROR: artifact not found: $ARTIFACT"
-  exit 1
-fi
-
-if [[ ! -d "$CALIBRATION_DIR" ]]; then
-  echo "ERROR: calibration directory not found: $CALIBRATION_DIR"
-  exit 1
-fi
+[[ -f "$ARTIFACT" ]] || { echo "ERROR: artifact not found: $ARTIFACT"; exit 1; }
+[[ -d "$CALIBRATION_DIR" ]] || { echo "ERROR: calibration directory not found: $CALIBRATION_DIR"; exit 1; }
 
 mkdir -p "$OUTPUT_DIR"
 
-# Step 1: use the AnomaVision CLI to create the complete end-to-end ONNX graph.
-echo "[1/4] AnomaVision quantize -> ONNX"
+# Step 1: export the complete graph and create Hailo HxWxC calibration tensors.
+echo "[1/4] AnomaVision quantize -> ONNX + calibration_npy"
 anomavision quantize \
   --algorithm "$ALGORITHM" \
   --artifact "$ARTIFACT" \
@@ -61,68 +45,44 @@ anomavision quantize \
   --output-dir "$OUTPUT_DIR"
 
 MODEL="$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.onnx' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
-if [[ -z "${MODEL:-}" || ! -f "$MODEL" ]]; then
-  echo "ERROR: anomavision quantize completed but no ONNX model was found in $OUTPUT_DIR"
-  exit 1
-fi
-
+[[ -n "${MODEL:-}" && -f "$MODEL" ]] || { echo "ERROR: no ONNX model was produced"; exit 1; }
 MODEL="$(realpath "$MODEL")"
-CALIBRATION_DIR="$(realpath "$CALIBRATION_DIR")"
 MODEL_DIR="$(dirname "$MODEL")"
 MODEL_NAME="$(basename "$MODEL" .onnx)"
-
+CALIB_DIR="$MODEL_DIR/calibration_npy"
 HAR="$MODEL_DIR/$MODEL_NAME.har"
 OPT_HAR="$MODEL_DIR/${MODEL_NAME}_optimized.har"
 HEF="$MODEL_DIR/$MODEL_NAME.hef"
-CALIB_DIR="$MODEL_DIR/calibration_npy"
 
-mkdir -p "$CALIB_DIR"
+[[ -d "$CALIB_DIR" ]] || { echo "ERROR: calibration_npy was not created: $CALIB_DIR"; exit 1; }
+COUNT="$(find "$CALIB_DIR" -maxdepth 1 -type f -name '*.npy' | wc -l)"
+[[ "$COUNT" -gt 0 ]] || { echo "ERROR: calibration_npy is empty: $CALIB_DIR"; exit 1; }
+echo "Calibration samples: $COUNT"
 
-# Hailo DFC optimization expects representative samples as HxWxC for the
-# fixed 224x224x3 AnomaVision input. Do not add a batch dimension.
-python - "$CALIBRATION_DIR" "$CALIB_DIR" <<'PY'
-import sys
-from pathlib import Path
-import numpy as np
-from PIL import Image
-
-src = Path(sys.argv[1])
-dst = Path(sys.argv[2])
-dst.mkdir(parents=True, exist_ok=True)
-
-suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-images = sorted(p for p in src.rglob("*") if p.suffix.lower() in suffixes)
-if not images:
-    raise SystemExit(f"ERROR: no calibration images found in {src}")
-
-images = images[:1024]
-for index, path in enumerate(images):
-    with Image.open(path) as image:
-        image = image.convert("RGB").resize((224, 224))
-        array = np.asarray(image, dtype=np.float32)
-    np.save(dst / f"sample_{index:04d}.npy", array)
-
-print(f"Created {len(images)} calibration samples in {dst}")
-PY
-
+# Step 2: PatchCore's fixed graph is parsed with the end nodes that Hailo DFC
+# successfully accepts for the production 224x224 graph. PaDiM keeps the
+# normal parser path so its graph can be adapted independently when needed.
 echo "[2/4] Parsing ONNX -> HAR"
-(
-  cd "$MODEL_DIR"
-  hailo parser onnx "$MODEL" --hw-arch "$HW_ARCH"
-)
+if [[ "$ALGORITHM" == "patchcore" ]]; then
+  (
+    cd "$MODEL_DIR"
+    hailo parser onnx "$MODEL" --hw-arch "$HW_ARCH" --end-node-names "/MaxPool" "/Squeeze"
+  )
+else
+  (
+    cd "$MODEL_DIR"
+    hailo parser onnx "$MODEL" --hw-arch "$HW_ARCH"
+  )
+fi
 
 PARSED_HAR="$MODEL_DIR/$MODEL_NAME.har"
 if [[ ! -f "$PARSED_HAR" ]]; then
   PARSED_HAR="$(find "$MODEL_DIR" -maxdepth 1 -type f -name '*.har' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
 fi
-if [[ -z "${PARSED_HAR:-}" || ! -f "$PARSED_HAR" ]]; then
-  echo "ERROR: parser completed but no HAR was produced in $MODEL_DIR"
-  exit 1
-fi
-if [[ "$PARSED_HAR" != "$HAR" ]]; then
-  mv -f "$PARSED_HAR" "$HAR"
-fi
+[[ -n "${PARSED_HAR:-}" && -f "$PARSED_HAR" ]] || { echo "ERROR: no HAR was produced"; exit 1; }
+[[ "$PARSED_HAR" == "$HAR" ]] || mv -f "$PARSED_HAR" "$HAR"
 
+# Step 3: INT8 optimization using the unbatched HxWxC calibration tensors.
 echo "[3/4] Optimizing / quantizing HAR"
 (
   cd "$MODEL_DIR"
@@ -130,14 +90,10 @@ echo "[3/4] Optimizing / quantizing HAR"
 )
 
 OPT_FOUND="$(find "$MODEL_DIR" -maxdepth 1 -type f -name '*_optimized.har' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
-if [[ -z "${OPT_FOUND:-}" || ! -f "$OPT_FOUND" ]]; then
-  echo "ERROR: optimization completed but no optimized HAR was produced in $MODEL_DIR"
-  exit 1
-fi
-if [[ "$OPT_FOUND" != "$OPT_HAR" ]]; then
-  mv -f "$OPT_FOUND" "$OPT_HAR"
-fi
+[[ -n "${OPT_FOUND:-}" && -f "$OPT_FOUND" ]] || { echo "ERROR: no optimized HAR was produced"; exit 1; }
+[[ "$OPT_FOUND" == "$OPT_HAR" ]] || mv -f "$OPT_FOUND" "$OPT_HAR"
 
+# Step 4: Compile to HEF.
 echo "[4/4] Compiling optimized HAR -> HEF"
 (
   cd "$MODEL_DIR"
@@ -145,18 +101,12 @@ echo "[4/4] Compiling optimized HAR -> HEF"
 )
 
 HEF_FOUND="$(find "$MODEL_DIR" -maxdepth 1 -type f -name '*.hef' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
-if [[ -z "${HEF_FOUND:-}" || ! -f "$HEF_FOUND" ]]; then
-  echo "ERROR: compilation completed but no HEF was produced in $MODEL_DIR"
-  exit 1
-fi
-if [[ "$HEF_FOUND" != "$HEF" ]]; then
-  mv -f "$HEF_FOUND" "$HEF"
-fi
+[[ -n "${HEF_FOUND:-}" && -f "$HEF_FOUND" ]] || { echo "ERROR: no HEF was produced"; exit 1; }
+[[ "$HEF_FOUND" == "$HEF" ]] || mv -f "$HEF_FOUND" "$HEF"
 
 echo
 echo "Hailo compilation completed successfully."
 echo "Algorithm:   $ALGORITHM"
-echo "Artifact:    $(realpath "$ARTIFACT")"
 echo "ONNX:        $MODEL"
 echo "HAR:         $HAR"
 echo "Optimized:   $OPT_HAR"
