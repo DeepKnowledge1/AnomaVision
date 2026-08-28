@@ -78,14 +78,15 @@ def _build_graph(algorithm: str, artifact: Any, input_size: Tuple[int, int]):
     raise ValueError("algorithm must be 'padim' or 'patchcore'")
 
 
-def _prepare_calibration(
+def _write_calibration_manifest(
     image_dir: Path, output_dir: Path, input_size: Tuple[int, int]
-) -> Tuple[Path, Path]:
-    """Create Hailo calibration tensors and a JSON manifest.
+) -> Path:
+    """Create normalized HxWx3 calibration arrays and a JSON manifest.
 
-    Each calibration file is one resized RGB image with shape ``H x W x C``.
-    Hailo DFC optimization expects this unbatched shape for the exported
-    AnomaVision input. A leading ``1`` must not be stored in the ``.npy`` file.
+    The exported end-to-end graphs consume normalized RGB tensors (float32 in
+    [0, 1]). Calibration data therefore uses exactly the same contract. The
+    arrays are unbatched HxWx3 because this is the representation expected by
+    the Hailo DFC calibration input pipeline.
     """
     suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
     paths = sorted(p for p in image_dir.rglob("*") if p.suffix.lower() in suffixes)
@@ -105,7 +106,7 @@ def _prepare_calibration(
             image = image.convert("RGB").resize(
                 (input_size[1], input_size[0]), Image.Resampling.BILINEAR
             )
-            array = np.asarray(image, dtype=np.float32)
+            array = np.asarray(image, dtype=np.float32) / 255.0
         np.save(calibration_dir / f"sample_{index:04d}.npy", array)
         records.append(
             {
@@ -114,11 +115,21 @@ def _prepare_calibration(
                     (calibration_dir / f"sample_{index:04d}.npy").resolve()
                 ),
                 "shape": list(array.shape),
+                "dtype": str(array.dtype),
+                "normalized": True,
             }
         )
 
     manifest.write_text(json.dumps(records, indent=2), encoding="utf-8")
-    return calibration_dir, manifest
+    return manifest
+
+
+def _prepare_calibration(
+    image_dir: Path, output_dir: Path, input_size: Tuple[int, int]
+) -> Tuple[Path, Path]:
+    """Create Hailo calibration tensors and a JSON manifest."""
+    manifest = _write_calibration_manifest(image_dir, output_dir, input_size)
+    return manifest.parent / "calibration_npy", manifest
 
 
 def export_onnx(
@@ -182,6 +193,7 @@ def main() -> None:
         "quantization_scope": "end_to_end",
         "graph_outputs": exportable_output_names(),
         "input_size": list(input_size),
+        "input_contract": "RGB float32 [0,1], NCHW at AnomaVision API, NHWC at Hailo VStream",
         "onnx": str(onnx_path),
         "calibration_dir": str(calibration_dir),
         "calibration_manifest": str(manifest),
