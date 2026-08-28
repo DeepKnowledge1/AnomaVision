@@ -163,13 +163,14 @@ The complete setup and commands are in the [KV260 XModel Guide](docs/kv260_xmode
 Train both candidate models first, then run the complete labeled split on CPU:
 
 ```bash
-anomavision autopilot \
-  --config config.yml \
-  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt \
-  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt \
-  --device cpu \
-  --validation_split 1.0 \
-  --target_latency_ms 50 \
+anomavision autopilot `
+  --config config.yml `
+  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt `
+  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt `
+  --efficientad_model ./distributions/efficientad/bottle/anomav_exp/model.onnx `
+  --device cpu `
+  --validation_split 1.0 `
+  --target_latency_ms 50 `
   --output_dir ./production_package
 ```
 

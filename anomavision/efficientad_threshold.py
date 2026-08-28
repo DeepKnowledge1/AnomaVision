@@ -30,10 +30,14 @@ def load_calibrated_threshold(model_path: str | Path) -> float:
         state = data.get("model_state", {})
         threshold = state.get("threshold") if isinstance(state, dict) else None
         if threshold is None:
-            raise ValueError(f"EfficientAD artifact has no calibrated threshold: {candidate}")
+            raise ValueError(
+                f"EfficientAD artifact has no calibrated threshold: {candidate}"
+            )
         value = float(torch.as_tensor(threshold).reshape(-1)[0].item())
         if not torch.isfinite(torch.tensor(value)):
-            raise ValueError(f"EfficientAD calibrated threshold is not finite: {candidate}")
+            raise ValueError(
+                f"EfficientAD calibrated threshold is not finite: {candidate}"
+            )
         return value
 
     raise FileNotFoundError(

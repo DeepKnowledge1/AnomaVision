@@ -30,9 +30,15 @@ class _Student(nn.Module):
     def __init__(self, out_channels=112):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(3, 64, 3, 2, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
-            nn.Conv2d(64, 96, 3, 2, 1), nn.BatchNorm2d(96), nn.ReLU(inplace=True),
-            nn.Conv2d(96, 112, 3, 2, 1), nn.BatchNorm2d(112), nn.ReLU(inplace=True),
+            nn.Conv2d(3, 64, 3, 2, 1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 96, 3, 2, 1),
+            nn.BatchNorm2d(96),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(96, 112, 3, 2, 1),
+            nn.BatchNorm2d(112),
+            nn.ReLU(inplace=True),
             nn.Conv2d(112, out_channels, 3, 2, 1),
         )
 
@@ -43,10 +49,18 @@ class _Student(nn.Module):
 class EfficientAD(nn.Module):
     """EfficientAD-compatible teacher/student anomaly detector for AnomaVision."""
 
-    def __init__(self, device=torch.device("cpu"), model_size="s", lr=1e-4,
-                 weight_decay=1e-5, pretrained_teacher=True, teacher_weights=None,
-                 feature_weight=1.0, reconstruction_weight=0.0,
-                 threshold_quantile=0.995):
+    def __init__(
+        self,
+        device=torch.device("cpu"),
+        model_size="s",
+        lr=1e-4,
+        weight_decay=1e-5,
+        pretrained_teacher=True,
+        teacher_weights=None,
+        feature_weight=1.0,
+        reconstruction_weight=0.0,
+        threshold_quantile=0.995,
+    ):
         super().__init__()
         model_size = str(model_size).lower()
         if model_size not in {"s", "m", "small", "medium"}:
@@ -62,7 +76,10 @@ class EfficientAD(nn.Module):
         self.threshold_quantile = float(threshold_quantile)
         self.teacher = _FeatureTeacher(pretrained_teacher)
         if teacher_weights:
-            self.teacher.load_state_dict(torch.load(teacher_weights, map_location="cpu", weights_only=False), strict=False)
+            self.teacher.load_state_dict(
+                torch.load(teacher_weights, map_location="cpu", weights_only=False),
+                strict=False,
+            )
         self.student = _Student(self.teacher.out_channels)
         self.register_buffer("map_mean", torch.zeros(1, 224, 224))
         self.register_buffer("map_std", torch.ones(1, 224, 224))
@@ -77,15 +94,21 @@ class EfficientAD(nn.Module):
 
     @torch.no_grad()
     def _raw_map(self, x, teacher=None):
-        teacher_features = self.teacher(self._normalise(x)) if teacher is None else teacher
+        teacher_features = (
+            self.teacher(self._normalise(x)) if teacher is None else teacher
+        )
         student_features = self.student(self._normalise(x))
         raw = (student_features - teacher_features).pow(2).mean(1, keepdim=True)
-        return F.interpolate(raw, size=x.shape[-2:], mode="bilinear", align_corners=False).squeeze(1)
+        return F.interpolate(
+            raw, size=x.shape[-2:], mode="bilinear", align_corners=False
+        ).squeeze(1)
 
     def forward(self, x, return_map=True, export=False):
         del export
         raw = self._raw_map(x)
-        normalized_map = (raw - self.map_mean.to(raw.device)) / self.map_std.to(raw.device).clamp_min(1e-6)
+        normalized_map = (raw - self.map_mean.to(raw.device)) / self.map_std.to(
+            raw.device
+        ).clamp_min(1e-6)
         scores = normalized_map.flatten(1).amax(1)
         return scores, normalized_map if return_map else None
 
@@ -101,7 +124,9 @@ class EfficientAD(nn.Module):
         if not cached:
             raise RuntimeError("EfficientAD training requires normal training images")
 
-        optimizer = torch.optim.AdamW(self.student.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        optimizer = torch.optim.AdamW(
+            self.student.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        )
         use_amp = self.device.type == "cuda"
         scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
         self.student.train()
@@ -110,7 +135,9 @@ class EfficientAD(nn.Module):
                 images = images_cpu.to(self.device, non_blocking=True)
                 teacher = teacher_cpu.to(self.device, non_blocking=True)
                 optimizer.zero_grad(set_to_none=True)
-                with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=use_amp):
+                with torch.autocast(
+                    device_type="cuda", dtype=torch.float16, enabled=use_amp
+                ):
                     student = self.student(self._normalise(images))
                     loss = F.mse_loss(student.float(), teacher.float())
                 scaler.scale(loss).backward()
@@ -142,7 +169,9 @@ class EfficientAD(nn.Module):
             raise RuntimeError("EfficientAD model is not trained. Call fit() first.")
         self.eval()
         with torch.inference_mode():
-            return self.forward(batch.to(self.device, non_blocking=True).float(), export=export)
+            return self.forward(
+                batch.to(self.device, non_blocking=True).float(), export=export
+            )
 
     def to_device(self, device):
         self.device = torch.device(device)
@@ -153,13 +182,16 @@ class EfficientAD(nn.Module):
             raise RuntimeError("Model is not trained. Call fit() first.")
         # Keep the calibrated threshold explicitly available to deployment tools.
         state = {k: v.detach().cpu() for k, v in self.state_dict().items()}
-        torch.save({
-            "algorithm": "efficientad",
-            "model_state": state,
-            "model_size": self.model_size,
-            "threshold": float(self.threshold.detach().cpu().item()),
-            "threshold_quantile": self.threshold_quantile,
-        }, path)
+        torch.save(
+            {
+                "algorithm": "efficientad",
+                "model_state": state,
+                "model_size": self.model_size,
+                "threshold": float(self.threshold.detach().cpu().item()),
+                "threshold_quantile": self.threshold_quantile,
+            },
+            path,
+        )
 
     @staticmethod
     def load_statistics(path: str, device: str = "cpu"):
@@ -168,8 +200,12 @@ class EfficientAD(nn.Module):
             obj.to_device(torch.device(device))
             return obj
         if isinstance(obj, dict) and obj.get("algorithm") == "efficientad":
-            model = EfficientAD(device=torch.device(device), model_size=obj.get("model_size", "s"),
-                                pretrained_teacher=False, threshold_quantile=obj.get("threshold_quantile", 0.995))
+            model = EfficientAD(
+                device=torch.device(device),
+                model_size=obj.get("model_size", "s"),
+                pretrained_teacher=False,
+                threshold_quantile=obj.get("threshold_quantile", 0.995),
+            )
             model.load_state_dict(obj["model_state"])
             return model
         raise ValueError("Not an EfficientAD artifact")
@@ -180,8 +216,12 @@ def build_efficientad_from_stats(stats, device="cpu"):
         stats.to_device(torch.device(device))
         return stats
     if isinstance(stats, dict):
-        model = EfficientAD(device=torch.device(device), model_size=stats.get("model_size", "s"),
-                            pretrained_teacher=False, threshold_quantile=stats.get("threshold_quantile", 0.995))
+        model = EfficientAD(
+            device=torch.device(device),
+            model_size=stats.get("model_size", "s"),
+            pretrained_teacher=False,
+            threshold_quantile=stats.get("threshold_quantile", 0.995),
+        )
         model.load_state_dict(stats["model_state"])
         return model
     raise ValueError("Unsupported EfficientAD statistics artifact")

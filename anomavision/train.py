@@ -309,7 +309,9 @@ def run_training(args):
             lr=float(config.get("efficientad_lr", 1e-4)),
             weight_decay=float(config.get("efficientad_weight_decay", 1e-5)),
             pretrained_teacher=bool(config.get("efficientad_pretrained_teacher", True)),
-            threshold_quantile=float(config.get("efficientad_threshold_quantile", 0.995)),
+            threshold_quantile=float(
+                config.get("efficientad_threshold_quantile", 0.995)
+            ),
         )
     else:
         model = anomavision.Padim(
