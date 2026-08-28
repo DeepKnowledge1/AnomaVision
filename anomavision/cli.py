@@ -19,12 +19,6 @@ Examples:
 import argparse
 import sys
 
-# Submodules are imported lazily inside _add_*_parser() and _dispatch_*().
-# CLI startup (including --help on the top-level parser) never touches torch/cv2.
-# Note: --help on a subcommand (e.g. `anomavision train --help`) WILL import
-# the submodule to build the parser — that is intentional and unavoidable if we
-# want the submodule to own its argument definitions.
-
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
@@ -55,7 +49,6 @@ For detailed help on each command:
         version_str = "AnomaVision"
 
     parser.add_argument("--version", action="version", version=version_str)
-
     subparsers = parser.add_subparsers(
         title="commands",
         description="Available AnomaVision operations",
@@ -63,31 +56,12 @@ For detailed help on each command:
         help="Operation to perform",
         required=True,
     )
-
     _add_train_parser(subparsers)
     _add_export_parser(subparsers)
     _add_detect_parser(subparsers)
     _add_eval_parser(subparsers)
     _add_autopilot_parser(subparsers)
-
     return parser
-
-
-# ============================================================
-# Subparser registration
-#
-# Each submodule owns its argument definitions in create_parser().
-# cli.py uses `parents=` to inherit all args — zero duplication.
-#
-# The key: call create_parser(add_help=False) so argparse doesn't
-# register -h on the parent. The child subparser adds its own -h
-# automatically. Setting add_help at *construction time* is the
-# only reliable way — mutating .add_help after construction does
-# not remove the already-registered -h action.
-#
-# Result: add --new-flag to detect.py and `anomavision detect --new-flag`
-# works immediately with no changes needed here.
-# ============================================================
 
 
 def _add_train_parser(subparsers) -> None:
@@ -145,12 +119,6 @@ def _add_autopilot_parser(subparsers) -> None:
     ).set_defaults(func=_dispatch_autopilot)
 
 
-# ============================================================
-# Dispatch functions — one line each, Namespace passed directly.
-# No sys.argv manipulation. No double-parsing.
-# ============================================================
-
-
 def _dispatch_train(args: argparse.Namespace) -> None:
     from anomavision import train
 
@@ -164,13 +132,37 @@ def _dispatch_export(args: argparse.Namespace) -> None:
 
 
 def _dispatch_detect(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from anomavision.config import load_config
+    from anomavision.efficientad_threshold import load_calibrated_threshold
+
+    cfg = load_config(args.config) if getattr(args, "config", None) else {}
+    algorithm = str(
+        getattr(args, "algorithm", None) or cfg.get("algorithm", "")
+    ).lower()
+
+    if algorithm == "efficientad" and getattr(args, "thresh", None) is None:
+        model_data_path = getattr(args, "model_data_path", None) or cfg.get(
+            "model_data_path", "./distributions"
+        )
+        class_name = getattr(args, "class_name", None) or cfg.get("class_name")
+        run_name = getattr(args, "run_name", None) or cfg.get("run_name")
+        model_name = getattr(args, "model", None) or cfg.get("model")
+
+        if class_name and run_name and model_name:
+            model_path = (
+                Path(model_data_path) / algorithm / class_name / run_name / model_name
+            )
+            args.thresh = load_calibrated_threshold(model_path)
+
     from anomavision import detect
 
     detect.main(args)
 
 
 def _dispatch_eval(args: argparse.Namespace) -> None:
-    from anomavision import eval as eval_module  # 'eval' shadows the Python builtin
+    from anomavision import eval as eval_module
 
     eval_module.main(args)
 
@@ -179,11 +171,6 @@ def _dispatch_autopilot(args: argparse.Namespace) -> None:
     from anomavision import autopilot
 
     autopilot.main(args)
-
-
-# ============================================================
-# Entry point
-# ============================================================
 
 
 def main() -> None:
