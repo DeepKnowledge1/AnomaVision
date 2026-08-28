@@ -23,10 +23,11 @@
 
 AnomaVision is a computer vision project for finding **defects and unusual patterns** in images.
 
-It supports two anomaly detection methods:
+It supports three anomaly detection methods:
 
 - **PaDiM** — a simple and fast baseline.
 - **PatchCore** — a lightweight memory-based method.
+- **EfficientAD** — a student/teacher model with a compact reconstruction branch for fast anomaly detection.
 
 You only need **normal (`good`) images** to train the anomaly detector.
 
@@ -43,6 +44,7 @@ You only need **normal (`good`) images** to train the anomaly detector.
 - Create anomaly heatmaps showing where the problem is.
 - Export models to **ONNX, OpenVINO, and TensorRT**.
 - Export and compile **PaDiM and PatchCore to XModel for the AMD/Xilinx Kria KV260**.
+- Switch between PaDiM, PatchCore, and EfficientAD without changing the CLI workflow.
 
 ## Quick start
 
@@ -53,28 +55,17 @@ You only need **normal (`good`) images** to train the anomaly detector.
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
-
-# Create and activate a virtual environment
 uv venv --python 3.11 .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
-
-# Install with your hardware extra
+source .venv/bin/activate        # Windows: .venv\\Scripts\\Activate.ps1
 uv sync --extra cpu              # CPU
 uv sync --extra cu121            # CUDA 12.1
 ```
 
----
-
 #### Option B — From PyPI (production / quick start)
 
 ```bash
-# CPU  ·  Mac, CI runners, edge devices
 uv pip install "anomavision[cpu]"
-
-# NVIDIA GPU  ·  pick your CUDA version
-uv pip install "anomavision[cu118]"   # CUDA 11.8
-uv pip install "anomavision[cu121]"   # CUDA 12.1
-uv pip install "anomavision[cu124]"   # CUDA 12.4
+uv pip install "anomavision[cu121]"
 ```
 
 For other environments, see [Installation](docs/installation.md).
@@ -87,9 +78,6 @@ Use a simple MVTec-style folder structure:
 dataset/
 └── bottle/
     ├── ground_truth/
-    │   ├── broken_large/
-    │   ├── broken_small/
-    │   └── contamination/
     ├── test/
     │   ├── broken_large/
     │   ├── broken_small/
@@ -101,33 +89,56 @@ dataset/
 
 Training uses the **good** images. Test images can contain defects.
 
-### 3. Train
+### 3. Choose an algorithm
 
-Create or edit `config.yml` and point `dataset_path` to your dataset.
+The existing configuration format works unchanged:
 
-Then run:
+```yaml
+algorithm: padim
+```
+
+Switch to EfficientAD by changing one value:
+
+```yaml
+algorithm: efficientad
+```
+
+You can also use the native model selector:
+
+```yaml
+model:
+  name: efficientad
+```
+
+The CLI commands remain the same.
+
+### 4. Train
 
 ```bash
 anomavision train --config config.yml
 ```
 
-PaDiM is the default model. For PatchCore, set `algorithm: patchcore` in the configuration.
+For a quick EfficientAD configuration, see [`examples/efficientad_cpu.yml`](examples/efficientad_cpu.yml).
 
-### 4. Detect
-
-```bash
-anomavision detect --config config.yml --img_path ./dataset/bottle/test
-```
-
-### 5. Export
-
-For a portable model, ONNX is a good place to start:
+### 5. Detect
 
 ```bash
-anomavision export --config config.yml --format onnx
+anomavision detect --config config.yml --model model.pt --img_path ./test_images
 ```
 
-For more export options, see [Export and deployment](docs/production_deployment.md).
+### 6. Export
+
+```bash
+anomavision export --config config.yml --model model.pt --format onnx
+```
+
+### 7. Evaluate
+
+```bash
+anomavision eval --config config.yml --model model.pt --class_name bottle
+```
+
+For EfficientAD-specific options and limitations, see [EfficientAD](docs/efficientad.md).
 
 ## KV260 support
 
@@ -141,9 +152,7 @@ PyTorch → INT8 quantization → XModel → KV260 DPU compilation
 
 Both PaDiM and PatchCore currently compile with **1 DPU subgraph** in the KV260 compiler.
 
-The complete setup and commands are in:
-
-**[KV260 XModel Guide](docs/kv260_xmodel.md)**
+The complete setup and commands are in the [KV260 XModel Guide](docs/kv260_xmodel.md).
 
 > XModel compilation has been validated in the Vitis AI environment. Final on-device KV260 validation requires the physical hardware.
 
@@ -168,17 +177,18 @@ The complete step-by-step guide, including calibration data, parser end nodes, o
 Train both candidate models first, then run the complete labeled split on CPU:
 
 ```bash
-anomavision autopilot \
-  --config config.yml \
-  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt \
-  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt \
-  --device cpu \
-  --validation_split 1.0 \
-  --target_latency_ms 50 \
+anomavision autopilot `
+  --config config.yml `
+  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt `
+  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt `
+  --efficientad_model ./distributions/efficientad/bottle/anomav_exp/model.onnx `
+  --device cpu `
+  --validation_split 1.0 `
+  --target_latency_ms 50 `
   --output_dir ./production_package
 ```
 
-Open `production_package/production_autopilot_report.html` to see the selected model, AUROC, calibrated threshold, localization diagnostics, memory, median latency, P95 latency, and deployment recommendation. The package also contains `deployment_manifest.json`, `localization_report.md`, and the selected model artifact. See [`docs/production_deployment.md`](docs/production_deployment.md) for GPU, TensorRT, INT8, and packaging details.
+Open `production_package/production_autopilot_report.html` to see the selected model, AUROC, calibrated threshold, localization diagnostics, memory, median latency, P95 latency, and deployment recommendation. See [`docs/production_deployment.md`](docs/production_deployment.md) for details.
 
 ## Documentation
 
@@ -187,6 +197,7 @@ Open `production_package/production_autopilot_report.html` to see the selected m
 | Quick start | [`docs/quickstart.md`](docs/quickstart.md) |
 | Installation | [`docs/installation.md`](docs/installation.md) |
 | CLI and configuration | [`docs/cli.md`](docs/cli.md), [`docs/config.md`](docs/config.md) |
+| EfficientAD | [`docs/efficientad.md`](docs/efficientad.md) |
 | Python API | [`docs/api.md`](docs/api.md) |
 | KV260 / XModel | [`docs/kv260_xmodel.md`](docs/kv260_xmodel.md) |
 | Hailo quantization | [`docs/hailo_quantization.md`](docs/hailo_quantization.md) |
@@ -198,23 +209,18 @@ Open `production_package/production_autopilot_report.html` to see the selected m
 
 ## Python example
 
-You can also use AnomaVision directly from Python:
-
 ```python
 import torch
-from torch.utils.data import DataLoader
 import anomavision
+from torch.utils.data import DataLoader
 
 train_set = anomavision.AnodetDataset("./dataset/bottle/train/good")
-train_loader = DataLoader(train_set, batch_size=16, shuffle=False)
+train_loader = DataLoader(train_set, batch_size=1, shuffle=False)
 
-model = anomavision.Padim(backbone="resnet18", device=torch.device("cpu"))
-model.fit(train_loader)
+model = anomavision.EfficientAD(device=torch.device("cpu"))
+model.fit(train_loader, epochs=1)
 
-batch = next(iter(train_loader))
-if isinstance(batch, (tuple, list)):
-    batch = batch[0]
-
+batch = next(iter(train_loader))[0]
 scores, maps = model.predict(batch)
 ```
 

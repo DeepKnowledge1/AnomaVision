@@ -13,19 +13,30 @@ def load_config(path: str = None):
     if not p.exists():
         raise FileNotFoundError(f"Config not found: {path}")
     if p.suffix.lower() in {".yml", ".yaml"}:
-        return yaml.safe_load(p.read_text())
-    if p.suffix.lower() == ".json":
-        return json.loads(p.read_text())
-    raise ValueError("Config must be .yml/.yaml or .json")
+        config = yaml.safe_load(p.read_text()) or {}
+    elif p.suffix.lower() == ".json":
+        config = json.loads(p.read_text()) or {}
+    else:
+        raise ValueError("Config must be .yml/.yaml or .json")
+
+    # Native model selector: allow either historical ``algorithm: padim``
+    # or ``model: {name: padim}`` configuration.
+    model_section = config.get("model")
+    if isinstance(model_section, dict):
+        if not config.get("algorithm") and model_section.get("name"):
+            config["algorithm"] = model_section["name"]
+        if model_section.get("file") and not config.get("model_path"):
+            config["model_path"] = model_section["file"]
+        # Existing detect/export code expects ``model`` to be the artifact name.
+        config["model"] = config.get("model_path")
+    return config
 
 
 def to_dict(ns: Namespace) -> dict:
-    # turn argparse Namespace into a dict (ignores None later)
     return {k: v for k, v in vars(ns).items()}
 
 
 def pick(*vals):
-    # first non-None
     for v in vals:
         if v is not None:
             return v

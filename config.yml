@@ -1,5 +1,5 @@
 # =========================
-# Dataset / preprocessing (shared by train, detect, eval, stream)
+# Dataset / preprocessing
 # =========================
 dataset_path: "/root/dataset/"               # Root dataset folder (MVTec-style: contains train/test subfolders)
 class_name: "bottle"                         # Class name for MVTec dataset
@@ -52,7 +52,7 @@ run_name: "anomav_exp"                        # Name of experiment run
 detailed_timing: false                        # Enable detailed timing measurements
 
 # =========================
-# Visualization (shared by detect & eval)
+# Visualization
 # =========================
 enable_visualization: true                     # Enable visualization during inference/evaluation
 save_visualizations: true                      # Save visualization results to disk
@@ -62,7 +62,7 @@ viz_padding: 40                               # Padding added around visualizati
 viz_color: "128,0,128"                        # RGB color for visualization overlays
 
 # =========================
-# Inference (detect.py)
+# Inference
 # =========================
 img_path: "D:/01-DATA/test"                   # Path to test images for inference
 thresh: null                                   # Legacy fallback; prefer algorithm-specific thresholds
@@ -75,12 +75,12 @@ pin_memory: false                              # Use pinned memory for faster GP
 overwrite: false                               # Overwrite existing run directory without auto-incrementing
 
 # =========================
-# Evaluation (eval.py)
+# Evaluation
 # =========================
 memory_efficient: true                          # Use memory efficient evaluation mode
 
 # =========================
-# Export (export.py)
+# Export
 # =========================
 format: "all"                                  # onnx | tensorrt | torchscript | openvino | all
 opset: 18                                      # ONNX opset version

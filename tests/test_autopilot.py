@@ -52,7 +52,7 @@ def test_autopilot_report_contains_manifest_summary(tmp_path):
     assert "0.9000" in html
     assert "Deployment confidence, before production." in html
     assert "<html" in html
-    assert "anomaly coverage" in html
+    assert "Anomaly coverage" in html
     assert "Normal images with false-positive maps" in html
     assert "healthy" in html
 
