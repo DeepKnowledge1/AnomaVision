@@ -23,6 +23,10 @@ from .graphs import PadimEndToEndGraph, exportable_output_names
 from .patchcore import PatchCoreHailoGraph
 
 
+DEFAULT_MEAN = (0.485, 0.456, 0.406)
+DEFAULT_STD = (0.229, 0.224, 0.225)
+
+
 def _load_artifact(path: Path) -> Any:
     """Load an AnomaVision deployment artifact from disk."""
     return torch.load(path, map_location="cpu", weights_only=False)
@@ -79,14 +83,18 @@ def _build_graph(algorithm: str, artifact: Any, input_size: Tuple[int, int]):
 
 
 def _write_calibration_manifest(
-    image_dir: Path, output_dir: Path, input_size: Tuple[int, int]
+    image_dir: Path,
+    output_dir: Path,
+    input_size: Tuple[int, int],
+    mean: Tuple[float, float, float] = DEFAULT_MEAN,
+    std: Tuple[float, float, float] = DEFAULT_STD,
 ) -> Path:
-    """Create normalized HxWx3 calibration arrays and a JSON manifest.
+    """Create ImageNet-normalized HxWx3 calibration arrays and a JSON manifest.
 
-    The exported end-to-end graphs consume normalized RGB tensors (float32 in
-    [0, 1]). Calibration data therefore uses exactly the same contract. The
-    arrays are unbatched HxWx3 because this is the representation expected by
-    the Hailo DFC calibration input pipeline.
+    The exported end-to-end graphs consume the same ImageNet-normalized RGB
+    float32 tensors as the regular AnomaVision ONNX/PyTorch inference path.
+    The arrays are unbatched HxWx3 because this is the representation expected
+    by the Hailo DFC calibration input pipeline.
     """
     suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
     paths = sorted(p for p in image_dir.rglob("*") if p.suffix.lower() in suffixes)
@@ -97,6 +105,8 @@ def _write_calibration_manifest(
     calibration_dir.mkdir(parents=True, exist_ok=True)
     manifest = output_dir / "calibration_manifest.json"
     records = []
+    mean_array = np.asarray(mean, dtype=np.float32).reshape(1, 1, 3)
+    std_array = np.asarray(std, dtype=np.float32).reshape(1, 1, 3)
 
     for stale in calibration_dir.glob("*.npy"):
         stale.unlink()
@@ -107,7 +117,8 @@ def _write_calibration_manifest(
                 (input_size[1], input_size[0]), Image.Resampling.BILINEAR
             )
             array = np.asarray(image, dtype=np.float32) / 255.0
-        np.save(calibration_dir / f"sample_{index:04d}.npy", array)
+            array = (array - mean_array) / std_array
+        np.save(calibration_dir / f"sample_{index:04d}.npy", array.astype(np.float32))
         records.append(
             {
                 "path": str(path.resolve()),
@@ -117,6 +128,11 @@ def _write_calibration_manifest(
                 "shape": list(array.shape),
                 "dtype": str(array.dtype),
                 "normalized": True,
+                "normalization": {
+                    "mean": list(mean),
+                    "std": list(std),
+                    "scale": "1/255 before mean/std",
+                },
             }
         )
 
@@ -193,7 +209,8 @@ def main() -> None:
         "quantization_scope": "end_to_end",
         "graph_outputs": exportable_output_names(),
         "input_size": list(input_size),
-        "input_contract": "RGB float32 [0,1], NCHW at AnomaVision API, NHWC at Hailo VStream",
+        "input_contract": "ImageNet-normalized RGB float32, NCHW at AnomaVision API, NHWC at Hailo VStream",
+        "normalization": {"mean": list(DEFAULT_MEAN), "std": list(DEFAULT_STD)},
         "onnx": str(onnx_path),
         "calibration_dir": str(calibration_dir),
         "calibration_manifest": str(manifest),
