@@ -13,7 +13,7 @@ import json
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Tuple
 
 import numpy as np
 import torch
@@ -21,10 +21,6 @@ from PIL import Image
 
 from .graphs import PadimEndToEndGraph, exportable_output_names
 from .patchcore import PatchCoreHailoGraph
-
-
-DEFAULT_MEAN = (0.485, 0.456, 0.406)
-DEFAULT_STD = (0.229, 0.224, 0.225)
 
 
 def _load_artifact(path: Path) -> Any:
@@ -83,19 +79,9 @@ def _build_graph(algorithm: str, artifact: Any, input_size: Tuple[int, int]):
 
 
 def _write_calibration_manifest(
-    image_dir: Path,
-    output_dir: Path,
-    input_size: Tuple[int, int],
-    mean: Tuple[float, float, float] = DEFAULT_MEAN,
-    std: Tuple[float, float, float] = DEFAULT_STD,
+    image_dir: Path, output_dir: Path, input_size: Tuple[int, int]
 ) -> Path:
-    """Create ImageNet-normalized HxWx3 calibration arrays and a JSON manifest.
-
-    The exported end-to-end graphs consume the same ImageNet-normalized RGB
-    float32 tensors as the regular AnomaVision ONNX/PyTorch inference path.
-    The arrays are unbatched HxWx3 because this is the representation expected
-    by the Hailo DFC calibration input pipeline.
-    """
+    """Create normalized calibration tensors and a JSON manifest."""
     suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
     paths = sorted(p for p in image_dir.rglob("*") if p.suffix.lower() in suffixes)
     if not paths:
@@ -104,9 +90,9 @@ def _write_calibration_manifest(
     calibration_dir = output_dir / "calibration_npy"
     calibration_dir.mkdir(parents=True, exist_ok=True)
     manifest = output_dir / "calibration_manifest.json"
+    mean = (0.485, 0.456, 0.406)
+    std = (0.229, 0.224, 0.225)
     records = []
-    mean_array = np.asarray(mean, dtype=np.float32).reshape(1, 1, 3)
-    std_array = np.asarray(std, dtype=np.float32).reshape(1, 1, 3)
 
     for stale in calibration_dir.glob("*.npy"):
         stale.unlink()
@@ -117,16 +103,15 @@ def _write_calibration_manifest(
                 (input_size[1], input_size[0]), Image.Resampling.BILINEAR
             )
             array = np.asarray(image, dtype=np.float32) / 255.0
-            array = (array - mean_array) / std_array
-        np.save(calibration_dir / f"sample_{index:04d}.npy", array.astype(np.float32))
+        array = (array - np.asarray(mean, dtype=np.float32)) / np.asarray(
+            std, dtype=np.float32
+        )
+        np.save(calibration_dir / f"sample_{index:04d}.npy", array)
         records.append(
             {
                 "path": str(path.resolve()),
-                "calibration": str(
-                    (calibration_dir / f"sample_{index:04d}.npy").resolve()
-                ),
+                "calibration": str((calibration_dir / f"sample_{index:04d}.npy").resolve()),
                 "shape": list(array.shape),
-                "dtype": str(array.dtype),
                 "normalized": True,
                 "normalization": {
                     "mean": list(mean),
@@ -171,6 +156,7 @@ def export_onnx(
             dynamic_axes=None,
             opset_version=opset,
             do_constant_folding=True,
+            dynamo=False,
         )
     return output_path
 
@@ -203,32 +189,12 @@ def main() -> None:
     calibration_dir, manifest = _prepare_calibration(
         args.calibration_dir, args.output_dir, input_size
     )
-    metadata = {
-        "algorithm": args.algorithm,
-        "quantization_scope": "end_to_end",
-        "graph_outputs": exportable_output_names(),
-        "input_size": list(input_size),
-        "input_contract": "ImageNet-normalized RGB float32, NCHW at AnomaVision API, NHWC at Hailo VStream",
-        "normalization": {"mean": list(DEFAULT_MEAN), "std": list(DEFAULT_STD)},
-        "onnx": str(onnx_path),
-        "calibration_dir": str(calibration_dir),
-        "calibration_manifest": str(manifest),
-        "hailo_compile_invoked": bool(args.hailo_command),
-    }
-    (args.output_dir / "hailo_export.json").write_text(
-        json.dumps(metadata, indent=2), encoding="utf-8"
-    )
+    print(f"ONNX: {onnx_path}")
+    print(f"Calibration: {calibration_dir}")
+    print(f"Manifest: {manifest}")
 
     if args.hailo_command:
         _run_hailo_command(args.hailo_command, onnx_path, args.output_dir)
-    else:
-        print("ONNX graph and Hailo calibration tensors created.")
-        print(f"ONNX:        {onnx_path}")
-        print(f"Calibration: {calibration_dir}")
-        print(
-            "No Hailo compiler was invoked; run hailo parser/optimize/compiler "
-            "with the generated files to create the HEF."
-        )
 
 
 if __name__ == "__main__":
