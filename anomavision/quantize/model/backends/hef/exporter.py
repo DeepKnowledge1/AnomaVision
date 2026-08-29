@@ -1,9 +1,9 @@
 """Export complete AnomaVision anomaly graphs for Hailo Dataflow Compiler.
 
-This module produces a fixed-shape, end-to-end ONNX graph for PaDiM or
-PatchCore and prepares representative calibration tensors in the format
-expected by the Hailo Dataflow Compiler. The Hailo SDK performs the actual
-INT8 optimization and HEF compilation.
+This module produces a fixed-shape, end-to-end ONNX graph for PaDiM, PatchCore,
+or EfficientAD and prepares representative calibration tensors in the format
+expected by the Hailo Dataflow Compiler. The Hailo SDK performs the actual INT8
+optimization and HEF compilation.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+from .efficientad import EfficientADHailoGraph
 from .graphs import PadimEndToEndGraph, exportable_output_names
 from .patchcore import PatchCoreHailoGraph
 
@@ -26,6 +27,31 @@ from .patchcore import PatchCoreHailoGraph
 def _load_artifact(path: Path) -> Any:
     """Load an AnomaVision deployment artifact from disk."""
     return torch.load(path, map_location="cpu", weights_only=False)
+
+
+def _build_efficientad_graph(artifact: Any, input_size: Tuple[int, int]):
+    """Build the fixed-shape EfficientAD Hailo graph."""
+    from anomavision.algorithm.efficientad.efficientad import EfficientAD
+
+    if isinstance(artifact, EfficientAD):
+        model = artifact
+    elif isinstance(artifact, dict) and artifact.get("algorithm") == "efficientad":
+        model = EfficientAD(
+            device=torch.device("cpu"),
+            model_size=artifact.get("model_size", "s"),
+            pretrained_teacher=False,
+            threshold_quantile=artifact.get("threshold_quantile", 0.995),
+        )
+        model.load_state_dict(artifact["model_state"], strict=True)
+    else:
+        raise ValueError(
+            "EfficientAD Hailo export requires an EfficientAD model or "
+            "an EfficientAD statistics artifact"
+        )
+
+    if not bool(model.trained.item()):
+        raise ValueError("EfficientAD artifact is not trained/calibrated")
+    return EfficientADHailoGraph(model, input_size=input_size)
 
 
 def _build_graph(algorithm: str, artifact: Any, input_size: Tuple[int, int]):
@@ -75,7 +101,10 @@ def _build_graph(algorithm: str, artifact: Any, input_size: Tuple[int, int]):
             input_size=input_size,
         )
 
-    raise ValueError("algorithm must be 'padim' or 'patchcore'")
+    if algorithm == "efficientad":
+        return _build_efficientad_graph(artifact, input_size)
+
+    raise ValueError("algorithm must be 'padim', 'patchcore' or 'efficientad'")
 
 
 def _write_calibration_manifest(
@@ -172,7 +201,9 @@ def _run_hailo_command(command: str, onnx_path: Path, output_dir: Path) -> None:
 def main() -> None:
     """Export an end-to-end Hailo graph and prepare calibration data."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--algorithm", choices=["padim", "patchcore"], required=True)
+    parser.add_argument(
+        "--algorithm", choices=["padim", "patchcore", "efficientad"], required=True
+    )
     parser.add_argument("--artifact", type=Path, required=True)
     parser.add_argument("--calibration-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
