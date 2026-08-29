@@ -10,17 +10,7 @@ import torch.nn.functional as F
 
 
 class EfficientADHailoGraph(nn.Module):
-    """Export-friendly EfficientAD inference graph.
-
-    The teacher, student and calibrated map statistics are kept inside the graph.
-    Hailo can therefore quantize the complete anomaly-scoring path instead of
-    running the scoring logic on the host CPU.
-
-    The graph intentionally avoids ``pow``, ``mean`` reductions, division and
-    global ``amax``. Squaring is written as multiplication, channel averaging
-    as average pooling, normalization as multiply-by-inverse-std, and the final
-    image score as fixed-size max pooling.
-    """
+    """Export-friendly EfficientAD inference graph for Hailo."""
 
     def __init__(self, model: nn.Module, input_size: Tuple[int, int] = (224, 224)) -> None:
         super().__init__()
@@ -33,6 +23,14 @@ class EfficientADHailoGraph(nn.Module):
         self.register_buffer("map_mean", model.map_mean.detach().float().clone())
         map_std = model.map_std.detach().float().clone().clamp_min(1e-6)
         self.register_buffer("map_inv_std", map_std.reciprocal())
+
+        # Reduce the 112 feature channels with a 1x1 convolution instead of
+        # ReduceMean/AvgPool. This is equivalent to mean(dim=1) but maps to a
+        # standard convolution that Hailo can quantize reliably.
+        self.channel_mean = nn.Conv2d(112, 1, kernel_size=1, bias=False)
+        with torch.no_grad():
+            self.channel_mean.weight.fill_(1.0 / 112.0)
+        self.channel_mean.weight.requires_grad_(False)
 
     def forward(self, image: torch.Tensor):
         teacher_features = self.teacher(image)
@@ -49,7 +47,6 @@ class EfficientADHailoGraph(nn.Module):
         )
         normalized = (raw - self.map_mean.unsqueeze(0)) * self.map_inv_std.unsqueeze(0)
 
-        # Fixed global max via pooling avoids an unsupported global ReduceMax.
         image_scores = F.max_pool2d(
             normalized, kernel_size=(224, 224), stride=(224, 224)
         ).flatten(1)
