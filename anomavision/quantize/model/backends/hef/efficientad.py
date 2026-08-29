@@ -20,6 +20,14 @@ class EfficientADHailoGraph(nn.Module):
         self.input_size = (224, 224)
         self.teacher = model.teacher.eval()
         self.student = model.student.eval()
+
+        # EfficientAD's teacher uses AdaptiveAvgPool2d(1). Hailo's quantizer
+        # can fail on the resulting GlobalAveragePool for these large spatial
+        # reductions. Replace each adaptive pool with a fixed kernel whose
+        # size is known for the fixed 224x224 Hailo input.
+        self._replace_adaptive_avgpools(self.teacher)
+        self._replace_adaptive_avgpools(self.student)
+
         self.register_buffer("map_mean", model.map_mean.detach().float().clone())
         map_std = model.map_std.detach().float().clone().clamp_min(1e-6)
         self.register_buffer("map_inv_std", map_std.reciprocal())
@@ -28,6 +36,22 @@ class EfficientADHailoGraph(nn.Module):
         with torch.no_grad():
             self.channel_mean.weight.fill_(1.0 / 112.0)
         self.channel_mean.weight.requires_grad_(False)
+
+    @staticmethod
+    def _replace_adaptive_avgpools(module: nn.Module) -> None:
+        """Replace AdaptiveAvgPool2d(1) with fixed AvgPool2d for 224x224 input."""
+        spatial = 224
+        for name, child in module.named_children():
+            if isinstance(child, nn.AdaptiveAvgPool2d):
+                output_size = child.output_size
+                if output_size != 1 and output_size != (1, 1):
+                    raise ValueError(
+                        f"Unsupported AdaptiveAvgPool2d output_size={output_size}; expected 1"
+                    )
+                setattr(module, name, nn.AvgPool2d(kernel_size=spatial, stride=spatial))
+            else:
+                EfficientADHailoGraph._replace_adaptive_avgpools(child)
+                spatial = max(1, spatial // 2)
 
     def forward(self, image: torch.Tensor):
         teacher_features = self.teacher(image)
