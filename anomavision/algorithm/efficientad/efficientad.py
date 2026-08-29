@@ -10,11 +10,59 @@ from torch import nn
 from torchvision.models import EfficientNet_B0_Weights, efficientnet_b0
 
 
+class _HailoGlobalAvgPool(nn.Module):
+    """Exact global average pooling split into smaller pooling operations.
+
+    Hailo can have difficulty quantizing a single very large global average
+    pool. Splitting the reduction into two non-overlapping average pools keeps
+    the result mathematically identical while reducing the spatial kernel of
+    each operation.
+    """
+
+    def __init__(self, spatial_size: int, reduction: int = 2) -> None:
+        super().__init__()
+        if spatial_size < 1 or spatial_size % reduction != 0:
+            raise ValueError(
+                f"spatial_size={spatial_size} must be divisible by reduction={reduction}"
+            )
+        reduced_size = spatial_size // reduction
+        self.first = nn.AvgPool2d(reduction, stride=reduction)
+        self.second = nn.AvgPool2d(reduced_size, stride=reduced_size)
+
+    def forward(self, x):
+        return self.second(self.first(x))
+
+
+def _replace_hailo_se_avgpools(module: nn.Module, spatial_size: int) -> None:
+    """Replace AdaptiveAvgPool2d used by EfficientNet SE blocks."""
+    for name, child in module.named_children():
+        if isinstance(child, nn.AdaptiveAvgPool2d):
+            setattr(module, name, _HailoGlobalAvgPool(spatial_size))
+        else:
+            _replace_hailo_se_avgpools(child, spatial_size)
+
+
 class _FeatureTeacher(nn.Module):
     def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         weights = EfficientNet_B0_Weights.DEFAULT if pretrained else None
         net = efficientnet_b0(weights=weights)
+
+        # EfficientNet-B0 uses AdaptiveAvgPool2d inside its Squeeze-and-Excite
+        # blocks. For a fixed 224x224 Hailo graph, replace those global pools
+        # with two smaller, exact average-pool reductions. This preserves the
+        # teacher computation while avoiding Hailo's large global-pool shift
+        # limitation during INT8 quantization.
+        stage_spatial_sizes = {
+            1: 112,
+            2: 56,
+            3: 28,
+            4: 14,
+            5: 14,
+        }
+        for stage, spatial_size in stage_spatial_sizes.items():
+            _replace_hailo_se_avgpools(net.features[stage], spatial_size)
+
         self.features = nn.Sequential(*list(net.features[:6]))
         self.out_channels = 112
         for p in self.parameters():
@@ -153,7 +201,7 @@ class EfficientAD(nn.Module):
                 maps.append(self._raw_map(images, teacher).float())
         normal_maps = torch.cat(maps, 0)
         mean = normal_maps.mean(0, keepdim=True)
-        std = normal_maps.std(0, unbiased=False, keepdim=True).clamp_min(1e-6)
+        std = normal_maps.std(unbiased=False, keepdim=True).clamp_min(1e-6)
         normalized = (normal_maps - mean) / std
         scores = normalized.flatten(1).amax(1)
         self.map_mean.copy_(mean.cpu())
