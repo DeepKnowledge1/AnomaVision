@@ -72,7 +72,7 @@ class EfficientAD(torch.nn.Module):
         return F.mse_loss(student, teacher)
 
     @torch.no_grad()
-    def _scores(
+    def _raw_scores(
         self, batch: torch.Tensor, teacher: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         batch = batch.to(self.device, non_blocking=True)
@@ -82,9 +82,8 @@ class EfficientAD(torch.nn.Module):
         student = F.normalize(self.student(batch), dim=1)
         score = (teacher - student).pow(2).mean(dim=1)
 
-        # Use the mean of the highest-scoring 1% of locations instead of a
-        # single maximum. This keeps small defects sensitive while reducing
-        # false positives caused by one noisy feature location.
+        # Mean of the highest-scoring 1% of locations is more robust than a
+        # single maximum while remaining sensitive to small defects.
         flat = score.flatten(1)
         k = max(1, int(flat.shape[1] * 0.01))
         image_scores = flat.topk(k, dim=1).values.mean(dim=1)
@@ -121,14 +120,16 @@ class EfficientAD(torch.nn.Module):
 
         self.student.eval()
 
-        # Calibrate using the same image-score calculation used at inference.
+        # Calibrate from normal training scores using the exact score that is
+        # used for inference.
         normal_scores = []
         for batch, teacher in cached:
-            scores, _ = self._scores(batch, teacher)
+            scores, _ = self._raw_scores(batch, teacher)
             normal_scores.append(scores.cpu())
         self.threshold = float(
             torch.quantile(torch.cat(normal_scores), self.threshold_percentile / 100.0)
         )
+        self.threshold = max(self.threshold, 1e-8)
         self._fitted = True
 
     @torch.no_grad()
@@ -137,7 +138,13 @@ class EfficientAD(torch.nn.Module):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if not self._fitted:
             raise RuntimeError("EfficientAD is not fitted. Call fit() first.")
-        image_scores, score_map = self._scores(x)
+        image_scores, score_map = self._raw_scores(x)
+
+        # Normalize scores by the training-derived threshold. This embeds the
+        # adaptive threshold into the exported model: >= 1.0 means anomalous.
+        scale = image_scores.new_tensor(self.threshold)
+        image_scores = image_scores / scale
+        score_map = score_map / scale
         return image_scores, score_map if return_map else None
 
     def predict(
@@ -188,6 +195,6 @@ def build_efficientad_from_stats(
     state = stats["student"]
     model.student.load_state_dict({key: value.float() for key, value in state.items()})
     model.student.eval()
-    model.threshold = float(stats.get("threshold", 0.0))
+    model.threshold = max(float(stats.get("threshold", 0.0)), 1e-8)
     model._fitted = True
     return model
