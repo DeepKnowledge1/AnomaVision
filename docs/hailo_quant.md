@@ -353,6 +353,14 @@ If the Hailo compiler cannot support an operation, do not describe a feature-ext
 
 
 ```
+if you have no permission to write file:
+
+sudo chown -R vitis-ai-user:vitis-ai-group /workspace
+
+docker run --rm -it   -v ~/Vitis-AI/AnomaVision:/workspace/AnomaVision   -v /root/dataset:/workspace/dataset   xilinx/vitis-ai-pytorch-cpu:latest   bash
+activate vitis-ai-pytorch
+
+
 python -m anomavision.quantize.model.backends.hef.exporter \
   --algorithm patchcore \
   --artifact distributions/patchcore/bottle/anomav_exp/model.pt \

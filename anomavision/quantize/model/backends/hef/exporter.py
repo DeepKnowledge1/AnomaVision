@@ -171,7 +171,6 @@ def export_onnx(
             dynamic_axes=None,
             opset_version=opset,
             do_constant_folding=True,
-            dynamo=False,
         )
     return output_path
 
