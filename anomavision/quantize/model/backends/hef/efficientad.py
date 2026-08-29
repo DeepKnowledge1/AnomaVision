@@ -21,10 +21,9 @@ class EfficientADHailoGraph(nn.Module):
         self.teacher = model.teacher.eval()
         self.student = model.student.eval()
 
-        # EfficientAD's teacher uses AdaptiveAvgPool2d(1). Hailo's quantizer
-        # can fail on the resulting GlobalAveragePool for these large spatial
-        # reductions. Replace each adaptive pool with a fixed kernel whose
-        # size is known for the fixed 224x224 Hailo input.
+        # The EfficientAD teacher uses AdaptiveAvgPool2d(1). Hailo can fail
+        # while quantizing the resulting GlobalAveragePool. The Hailo graph
+        # has a fixed 224x224 input, so replace it with fixed AvgPool2d kernels.
         self._replace_adaptive_avgpools(self.teacher)
         self._replace_adaptive_avgpools(self.student)
 
@@ -39,8 +38,14 @@ class EfficientADHailoGraph(nn.Module):
 
     @staticmethod
     def _replace_adaptive_avgpools(module: nn.Module) -> None:
-        """Replace AdaptiveAvgPool2d(1) with fixed AvgPool2d for 224x224 input."""
-        spatial = 224
+        """Replace AdaptiveAvgPool2d(1) with fixed kernels for 224x224 input."""
+        spatial_by_stage = {
+            "1": 112,
+            "2": 56,
+            "3": 28,
+            "4": 14,
+            "5": 14,
+        }
         for name, child in module.named_children():
             if isinstance(child, nn.AdaptiveAvgPool2d):
                 output_size = child.output_size
@@ -48,10 +53,28 @@ class EfficientADHailoGraph(nn.Module):
                     raise ValueError(
                         f"Unsupported AdaptiveAvgPool2d output_size={output_size}; expected 1"
                     )
-                setattr(module, name, nn.AvgPool2d(kernel_size=spatial, stride=spatial))
+                stage = name
+                if stage in spatial_by_stage:
+                    kernel = spatial_by_stage[stage]
+                else:
+                    # The pools are nested under features.<stage>.<block>.
+                    # Their parent stage is recovered from the module path by
+                    # finding the corresponding features container below.
+                    kernel = None
+                    for path, submodule in module.named_modules():
+                        if submodule is child:
+                            parts = path.split(".")
+                            try:
+                                idx = parts.index("features")
+                                kernel = spatial_by_stage[parts[idx + 1]]
+                            except (ValueError, IndexError, KeyError):
+                                pass
+                            break
+                    if kernel is None:
+                        raise ValueError(f"Cannot determine spatial size for AdaptiveAvgPool2d '{name}'")
+                setattr(module, name, nn.AvgPool2d(kernel_size=kernel, stride=kernel))
             else:
                 EfficientADHailoGraph._replace_adaptive_avgpools(child)
-                spatial = max(1, spatial // 2)
 
     def forward(self, image: torch.Tensor):
         teacher_features = self.teacher(image)
