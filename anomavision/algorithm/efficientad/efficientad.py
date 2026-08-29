@@ -29,15 +29,7 @@ class _Student(nn.Module):
 
 
 class EfficientAD(torch.nn.Module):
-    """Minimal teacher-student EfficientAD implementation.
-
-    A frozen ImageNet ResNet teacher provides layer-1 features and a very small
-    CNN student learns those features from normal images. At inference, the
-    teacher-student feature error is used as the anomaly map.
-
-    The public API mirrors PaDiM/PatchCore: ``fit`` trains on normal images and
-    ``predict`` returns image scores plus a spatial anomaly map.
-    """
+    """Minimal teacher-student EfficientAD implementation."""
 
     def __init__(
         self,
@@ -46,6 +38,7 @@ class EfficientAD(torch.nn.Module):
         layer_indices: Optional[List[int]] = None,
         epochs: int = 5,
         learning_rate: float = 1e-3,
+        threshold_percentile: float = 99.5,
     ) -> None:
         super().__init__()
         if backbone != "resnet18":
@@ -55,6 +48,10 @@ class EfficientAD(torch.nn.Module):
         self.layer_indices = [0]
         self.epochs = max(1, int(epochs))
         self.learning_rate = float(learning_rate)
+        self.threshold_percentile = float(threshold_percentile)
+        if not 0.0 < self.threshold_percentile <= 100.0:
+            raise ValueError("threshold_percentile must be in (0, 100].")
+        self.threshold = 0.0
 
         self.teacher = ResnetEmbeddingsExtractor(backbone, self.device)
         for parameter in self.teacher.parameters():
@@ -69,17 +66,17 @@ class EfficientAD(torch.nn.Module):
         features, width, height = self.teacher(batch, layer_indices=[0])
         return features.reshape(batch.shape[0], width, height, 64).permute(0, 3, 1, 2)
 
-    def _loss(self, batch: torch.Tensor) -> torch.Tensor:
-        with torch.no_grad():
-            teacher = self._teacher_features(batch)
-            teacher = F.normalize(teacher, dim=1)
+    def _loss(self, teacher: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        teacher = F.normalize(teacher, dim=1)
         student = F.normalize(self.student(batch), dim=1)
         return F.mse_loss(student, teacher)
 
     @torch.no_grad()
-    def _scores(self, batch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _scores(self, batch: torch.Tensor, teacher: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         batch = batch.to(self.device, non_blocking=True)
-        teacher = F.normalize(self._teacher_features(batch), dim=1)
+        if teacher is None:
+            teacher = self._teacher_features(batch)
+        teacher = F.normalize(teacher, dim=1)
         student = F.normalize(self.student(batch), dim=1)
         score = (teacher - student).pow(2).mean(dim=1)
         image_scores = score.flatten(1).amax(1)
@@ -92,25 +89,44 @@ class EfficientAD(torch.nn.Module):
         return image_scores, score_map
 
     def fit(self, dataloader: torch.utils.data.DataLoader, extractions: int = 1) -> None:
-        """Train the small student using only normal training images."""
+        """Train the student and calibrate an adaptive threshold on normal images."""
         optimizer = torch.optim.Adam(self.student.parameters(), lr=self.learning_rate)
-        self.student.train()
-        for _ in range(self.epochs):
+
+        # Compute frozen teacher features once. This avoids running ResNet for
+        # every epoch and makes CPU training considerably faster.
+        cached = []
+        self.teacher.eval()
+        with torch.no_grad():
             for item in dataloader:
                 batch = item[0] if isinstance(item, (tuple, list)) else item
                 batch = batch.to(self.device, non_blocking=True)
+                cached.append((batch.detach(), self._teacher_features(batch).detach()))
+
+        self.student.train()
+        for _ in range(self.epochs):
+            for batch, teacher in cached:
                 optimizer.zero_grad(set_to_none=True)
-                loss = self._loss(batch)
+                loss = self._loss(teacher, batch)
                 loss.backward()
                 optimizer.step()
+
         self.student.eval()
+
+        # Calibrate from normal training scores. A high percentile keeps the
+        # false-positive rate low without requiring a manually chosen score.
+        normal_scores = []
+        for batch, teacher in cached:
+            scores, _ = self._scores(batch, teacher)
+            normal_scores.append(scores.cpu())
+        self.threshold = float(
+            torch.quantile(torch.cat(normal_scores), self.threshold_percentile / 100.0)
+        )
         self._fitted = True
 
     @torch.no_grad()
     def forward(
         self, x: torch.Tensor, return_map: bool = True, export: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Return image-level anomaly scores and an optional spatial map."""
         if not self._fitted:
             raise RuntimeError("EfficientAD is not fitted. Call fit() first.")
         image_scores, score_map = self._scores(x)
@@ -119,7 +135,6 @@ class EfficientAD(torch.nn.Module):
     def predict(
         self, batch: torch.Tensor, export: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Run inference using the standard AnomaVision prediction contract."""
         return self.forward(batch, return_map=True, export=export)
 
     def to_device(self, device: torch.device) -> None:
@@ -128,7 +143,6 @@ class EfficientAD(torch.nn.Module):
         self.student.to(self.device)
 
     def save_statistics(self, path: str, half: Optional[bool] = False) -> None:
-        """Save a compact student/teacher deployment artifact."""
         if not self._fitted:
             raise RuntimeError("EfficientAD is not fitted. Call fit() first.")
         student_state = {
@@ -142,6 +156,8 @@ class EfficientAD(torch.nn.Module):
                 "layer_indices": self.layer_indices,
                 "epochs": self.epochs,
                 "learning_rate": self.learning_rate,
+                "threshold_percentile": self.threshold_percentile,
+                "threshold": self.threshold,
                 "model_type": "efficientad",
                 "dtype": "fp16" if half else "fp32",
             },
@@ -159,9 +175,11 @@ def build_efficientad_from_stats(
         layer_indices=[0],
         epochs=int(stats.get("epochs", 5)),
         learning_rate=float(stats.get("learning_rate", 1e-3)),
+        threshold_percentile=float(stats.get("threshold_percentile", 99.5)),
     )
     state = stats["student"]
     model.student.load_state_dict({key: value.float() for key, value in state.items()})
     model.student.eval()
+    model.threshold = float(stats.get("threshold", 0.0))
     model._fitted = True
     return model
