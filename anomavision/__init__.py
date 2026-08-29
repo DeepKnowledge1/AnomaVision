@@ -11,6 +11,7 @@ Provides functions for performing anomaly detection in images.
 from .algorithm.common.feature_extraction import ResnetEmbeddingsExtractor
 from .algorithm.padim import Padim
 from .algorithm.patchcore import PatchCore
+from .algorithm.efficientad import EfficientAD
 from .datasets.dataset import AnodetDataset
 from .datasets.mvtec_dataset import MVTecDataset
 from .sampling_methods.kcenter_greedy import kCenterGreedy
