@@ -37,6 +37,26 @@ efficientad_learning_rate: 0.001           # Student optimizer learning rate
 efficientad_threshold_percentile: 99.5      # Percentile of normal scores used to learn the adaptive threshold
 
 # =========================
+# Inference performance tests
+# =========================
+# Opt-in benchmark used to catch inference regressions for every algorithm.
+# Run with: pytest tests/test_inference_performance.py -s
+inference_benchmark:
+  enabled: false                            # Set true to run model benchmarks
+  warmup_runs: 10                           # Warm-up predictions excluded from timing
+  test_runs: 50                             # Timed predictions per algorithm
+  batch_size: 2                             # Batch size used by the benchmark
+  max_inference_ms:                         # Maximum allowed pure inference time per batch
+    padim: 100.0
+    patchcore: 100.0
+    efficientad: 100.0
+  max_regression_percent: 25.0              # Allowed regression if a baseline is configured
+  baseline_inference_ms:                   # Optional per-algorithm baseline; null disables regression check
+    padim: null
+    patchcore: null
+    efficientad: 47.15
+
+# =========================
 # Logging / run metadata
 # =========================
 log_level: "INFO"                          # Logging level: DEBUG | INFO | WARNING | ERROR
@@ -103,7 +123,7 @@ stream_source:
   loop: false                              # Restart video when it reaches the end
   broker: "localhost"                     # MQTT broker hostname/IP
   port: 1883                               # MQTT broker port
-  topic: "camera/frames"                  # MQTT topic containing frames
+  topic: "camera/frames"                   # MQTT topic containing frames
   client_id: null                          # Optional MQTT client ID
   keepalive: 60                            # MQTT keepalive interval in seconds
   qos: 0                                   # MQTT quality of service: 0 | 1 | 2
