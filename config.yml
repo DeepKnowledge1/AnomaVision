@@ -3,7 +3,7 @@
 # =========================
 dataset_path: "D:/01-DATA"                 # Root dataset directory (contains train/test folders)
 class_name: "bottle"                       # Dataset class to train/evaluate
-aresize: [224, 224]                        # Input image size [width, height]
+resize: [224, 224]                         # Input image size [width, height]
 crop_size:                                 # Optional center crop size [width, height]
 normalize: true                            # Apply ImageNet normalization
 no_normalize: false                        # Explicitly disable normalization when true
@@ -14,7 +14,7 @@ norm_std:  [0.229, 0.224, 0.225]           # Normalization standard deviation fo
 # Model / training
 # =========================
 backbone: "resnet18"                       # Backbone network: resnet18 | wide_resnet50
-algorithm: "efficientad"                   # Anomaly algorithm: padim | patchcore | efficientad
+algorithm: "efficientad"                  # Anomaly algorithm: padim | patchcore | efficientad
 coreset_ratio: 0.02                        # PatchCore fraction of patches kept in memory
 max_memory_patches: 2048                   # Maximum number of PatchCore memory-bank patches
 patch_grid: 14                             # PatchCore feature-map grid size
@@ -23,18 +23,18 @@ coreset_method: "kcenter"                 # PatchCore coreset method: kcenter | 
 coreset_seed: 42                           # Random seed for PatchCore coreset selection
 feat_dim: 50                               # PaDiM number of feature dimensions to keep
 layer_indices: [0]                         # Backbone feature layers used by PaDiM/PatchCore/EfficientAD
-model_data_path: "./distributions"         # Directory for trained models and statistics
+model_data_path: "./distributions"        # Directory for trained models and statistics
 model: "model.pt"                          # Model filename used by detect/eval/export
 output_model: "model.pt"                   # Filename written by the train command
 batch_size: 2                              # Training/inference batch size
-device: "auto"                             # Device: auto | cpu | cuda
+device: "auto"                             # Device to run on: auto | cpu | cuda
 
 # =========================
 # Lightweight EfficientAD
 # =========================
 efficientad_epochs: 5                        # Number of student training epochs
 efficientad_learning_rate: 0.001           # Student optimizer learning rate
-efficientad_threshold_percentile: 99.5      # Percentile of normal scores used for adaptive threshold
+efficientad_threshold_percentile: 99.5      # Percentile of normal scores used to learn the adaptive threshold
 
 # =========================
 # Logging / run metadata
@@ -60,7 +60,7 @@ img_path: "D:/01-DATA/test"                # Input image or directory for detect
 thresh: null                               # Generic legacy threshold fallback
 thresh_padim: 13.0                         # Fixed PaDiM anomaly threshold
 thresh_patchcore: 0.25                     # Fixed PatchCore anomaly threshold
-thresh_efficientad: null                   # EfficientAD threshold; null uses the trained adaptive threshold
+thresh_efficientad: 1.0                    # EfficientAD threshold; 1.0 means the model's adaptive training threshold
 num_workers: 1                             # Number of data-loader worker processes
 pin_memory: false                          # Pin CPU memory for faster GPU transfers
 overwrite: false                           # Overwrite an existing output directory
