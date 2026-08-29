@@ -48,13 +48,11 @@ class EfficientAD(torch.nn.Module):
         learning_rate: float = 1e-3,
     ) -> None:
         super().__init__()
-        if backbone not in {"resnet18"}:
+        if backbone != "resnet18":
             raise ValueError("EfficientAD lightweight supports backbone='resnet18' only.")
         self.device = torch.device(device)
         self.backbone = backbone
-        self.layer_indices = list(layer_indices or [0])
-        if self.layer_indices != [0]:
-            raise ValueError("EfficientAD lightweight uses layer_indices=[0].")
+        self.layer_indices = [0]
         self.epochs = max(1, int(epochs))
         self.learning_rate = float(learning_rate)
 
@@ -80,8 +78,9 @@ class EfficientAD(torch.nn.Module):
 
     @torch.no_grad()
     def _scores(self, batch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch = batch.to(self.device, non_blocking=True)
         teacher = F.normalize(self._teacher_features(batch), dim=1)
-        student = F.normalize(self.student(batch.to(self.device)), dim=1)
+        student = F.normalize(self.student(batch), dim=1)
         score = (teacher - student).pow(2).mean(dim=1)
         image_scores = score.flatten(1).amax(1)
         score_map = F.interpolate(
@@ -157,7 +156,7 @@ def build_efficientad_from_stats(
     model = EfficientAD(
         backbone=str(stats.get("backbone", "resnet18")),
         device=torch.device(device),
-        layer_indices=list(stats.get("layer_indices", [0])),
+        layer_indices=[0],
         epochs=int(stats.get("epochs", 5)),
         learning_rate=float(stats.get("learning_rate", 1e-3)),
     )
