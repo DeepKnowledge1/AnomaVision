@@ -131,6 +131,7 @@ class EfficientAD(torch.nn.Module):
         )
         self.threshold = max(self.threshold, 1e-8)
         self._fitted = True
+        self.eval()
 
     @torch.no_grad()
     def forward(
@@ -197,4 +198,5 @@ def build_efficientad_from_stats(
     model.student.eval()
     model.threshold = max(float(stats.get("threshold", 0.0)), 1e-8)
     model._fitted = True
+    model.eval()
     return model
