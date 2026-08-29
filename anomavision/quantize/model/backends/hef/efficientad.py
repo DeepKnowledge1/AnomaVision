@@ -24,9 +24,6 @@ class EfficientADHailoGraph(nn.Module):
         map_std = model.map_std.detach().float().clone().clamp_min(1e-6)
         self.register_buffer("map_inv_std", map_std.reciprocal())
 
-        # Reduce the 112 feature channels with a 1x1 convolution instead of
-        # ReduceMean/AvgPool. This is equivalent to mean(dim=1) but maps to a
-        # standard convolution that Hailo can quantize reliably.
         self.channel_mean = nn.Conv2d(112, 1, kernel_size=1, bias=False)
         with torch.no_grad():
             self.channel_mean.weight.fill_(1.0 / 112.0)
@@ -38,10 +35,8 @@ class EfficientADHailoGraph(nn.Module):
         diff = student_features - teacher_features
         squared = diff * diff
 
-        # EfficientAD produces 112 channels at 14x14. Average pooling performs
-        # the channel mean without exporting a ReduceMean node.
-        # raw = F.avg_pool2d(squared, kernel_size=(112, 1), stride=(112, 1))
-        raw = squared.mean(dim=1, keepdim=True)
+        # Reduce the 112 feature channels with a fixed 1x1 convolution.
+        raw = self.channel_mean(squared)
         raw = F.interpolate(
             raw, size=(224, 224), mode="bilinear", align_corners=False
         )
