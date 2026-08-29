@@ -72,14 +72,23 @@ class EfficientAD(torch.nn.Module):
         return F.mse_loss(student, teacher)
 
     @torch.no_grad()
-    def _scores(self, batch: torch.Tensor, teacher: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _scores(
+        self, batch: torch.Tensor, teacher: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         batch = batch.to(self.device, non_blocking=True)
         if teacher is None:
             teacher = self._teacher_features(batch)
         teacher = F.normalize(teacher, dim=1)
         student = F.normalize(self.student(batch), dim=1)
         score = (teacher - student).pow(2).mean(dim=1)
-        image_scores = score.flatten(1).amax(1)
+
+        # Use the mean of the highest-scoring 1% of locations instead of a
+        # single maximum. This keeps small defects sensitive while reducing
+        # false positives caused by one noisy feature location.
+        flat = score.flatten(1)
+        k = max(1, int(flat.shape[1] * 0.01))
+        image_scores = flat.topk(k, dim=1).values.mean(dim=1)
+
         score_map = F.interpolate(
             score.unsqueeze(1),
             size=batch.shape[-2:],
@@ -112,8 +121,7 @@ class EfficientAD(torch.nn.Module):
 
         self.student.eval()
 
-        # Calibrate from normal training scores. A high percentile keeps the
-        # false-positive rate low without requiring a manually chosen score.
+        # Calibrate using the same image-score calculation used at inference.
         normal_scores = []
         for batch, teacher in cached:
             scores, _ = self._scores(batch, teacher)
