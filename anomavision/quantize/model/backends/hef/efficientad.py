@@ -42,7 +42,8 @@ class EfficientADHailoGraph(nn.Module):
 
         # EfficientAD produces 112 channels at 14x14. Average pooling performs
         # the channel mean without exporting a ReduceMean node.
-        raw = F.avg_pool2d(squared, kernel_size=(112, 1), stride=(112, 1))
+        # raw = F.avg_pool2d(squared, kernel_size=(112, 1), stride=(112, 1))
+        raw = squared.mean(dim=1, keepdim=True)
         raw = F.interpolate(
             raw, size=(224, 224), mode="bilinear", align_corners=False
         )

@@ -245,3 +245,24 @@ anomavision detect \
 ```
 
 > **Note:** Running a HEF requires a connected and accessible Hailo device.
+
+
+
+python -m anomavision.quantize.model.backends.hef.exporter   --algorithm efficientad   --artifact distributions/efficientad/bottle/anomav_exp/model.pt   --calibration-dir /root/dataset/bottle/train/good   --output-dir distributions/efficientad/bottle/hailo
+
+
+hailo parser onnx \
+  distributions/efficientad/bottle/hailo/anomavision_efficientad_k26_end_to_end.onnx \
+  --end-node-names "/MaxPool" "/Squeeze"
+
+
+hailo optimize \
+  anomavision_efficientad_k26_end_to_end.har \
+  --hw-arch hailo8 \
+  --calib-set-path distributions/patchcore/bottle/hailo/calibration_npy
+
+
+hailo compiler \
+  anomavision_efficientad_k26_end_to_end.har \
+  --hw-arch hailo8
+

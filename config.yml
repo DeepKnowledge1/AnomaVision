@@ -1,7 +1,7 @@
 # =========================
 # Dataset / preprocessing (shared by train, detect, eval, stream)
 # =========================
-dataset_path: "D:/01-DATA"
+dataset_path: "/root/dataset"
 class_name: "bottle"
 resize: [224, 224]
 crop_size:
