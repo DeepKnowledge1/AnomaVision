@@ -12,6 +12,8 @@ have already passed through the AnomaVision dataset preprocessing pipeline.
 
 from __future__ import annotations
 
+import ctypes
+import os
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -19,6 +21,79 @@ import numpy as np
 from PIL import Image
 
 from .base import InferenceBackend
+
+
+def _load_hailort():
+    """Load HailoRT and preload its native shared library when necessary."""
+    version = "5.3.0"
+    library_name = f"libhailort.so.{version}"
+    candidates = []
+
+    configured = os.environ.get("HAILORT_LIB_PATH")
+    if configured:
+        configured_path = Path(configured)
+        if configured_path.is_file():
+            candidates.append(configured_path)
+        elif configured_path.is_dir():
+            candidates.append(configured_path / library_name)
+
+    for directory in (
+        "/usr/lib",
+        "/usr/lib/aarch64-linux-gnu",
+        "/usr/lib/x86_64-linux-gnu",
+        "/usr/local/lib",
+    ):
+        candidates.append(Path(directory) / library_name)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            try:
+                ctypes.CDLL(str(candidate), mode=ctypes.RTLD_GLOBAL)
+                break
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Found {candidate}, but it could not be loaded: {exc}. "
+                    "Install the matching HailoRT native runtime and PCIe driver."
+                ) from exc
+
+    try:
+        from hailo_platform import (
+            HEF,
+            ConfigureParams,
+            FormatType,
+            HailoStreamInterface,
+            InferVStreams,
+            InputVStreamParams,
+            OutputVStreamParams,
+            VDevice,
+        )
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "HailoRT Python bindings are not installed. Install the matching "
+            "HailoRT Python wheel (5.3.0) on the target system."
+        ) from exc
+    except ImportError as exc:
+        message = str(exc)
+        if "libhailort.so" in message:
+            raise RuntimeError(
+                "HailoRT Python bindings are installed, but the native "
+                f"{library_name} library is not available to the dynamic linker. "
+                "Install the matching HailoRT runtime package, or set "
+                "HAILORT_LIB_PATH to the directory/file containing "
+                f"{library_name}. The Python wheel alone is not sufficient."
+            ) from exc
+        raise RuntimeError(f"HailoRT could not be imported: {exc}") from exc
+
+    return {
+        "ConfigureParams": ConfigureParams,
+        "FormatType": FormatType,
+        "HEF": HEF,
+        "HailoStreamInterface": HailoStreamInterface,
+        "InputVStreamParams": InputVStreamParams,
+        "InferVStreams": InferVStreams,
+        "OutputVStreamParams": OutputVStreamParams,
+        "VDevice": VDevice,
+    }
 
 
 class HailoAnomalyRuntime:
@@ -32,33 +107,8 @@ class HailoAnomalyRuntime:
         mean: Tuple[float, float, float] = (0.485, 0.456, 0.406),
         std: Tuple[float, float, float] = (0.229, 0.224, 0.225),
     ) -> None:
-        try:
-            from hailo_platform import (
-                HEF,
-                ConfigureParams,
-                FormatType,
-                HailoStreamInterface,
-                InferVStreams,
-                InputVStreamParams,
-                OutputVStreamParams,
-                VDevice,
-            )
-        except ImportError as exc:  # pragma: no cover - depends on Kria image
-            raise RuntimeError(
-                "HailoRT is not installed. Install the HailoRT Python package on "
-                "the Kria K26 image before loading a HEF."
-            ) from exc
-
-        self._api = {
-            "ConfigureParams": ConfigureParams,
-            "FormatType": FormatType,
-            "HEF": HEF,
-            "HailoStreamInterface": HailoStreamInterface,
-            "InputVStreamParams": InputVStreamParams,
-            "InferVStreams": InferVStreams,
-            "OutputVStreamParams": OutputVStreamParams,
-            "VDevice": VDevice,
-        }
+        api = _load_hailort()
+        self._api = api
         self.hef_path = Path(hef_path)
         if not self.hef_path.exists():
             raise FileNotFoundError(self.hef_path)
@@ -66,8 +116,8 @@ class HailoAnomalyRuntime:
         self.input_dtype = input_dtype
         self.mean = np.asarray(mean, dtype=np.float32).reshape(1, 1, 3)
         self.std = np.asarray(std, dtype=np.float32).reshape(1, 1, 3)
-        self.device = VDevice()
-        self.hef = HEF(str(self.hef_path))
+        self.device = api["VDevice"]()
+        self.hef = api["HEF"](str(self.hef_path))
         self.network_groups = self.device.configure(self.hef)
         if not self.network_groups:
             raise RuntimeError(f"No network group found in {self.hef_path}")
@@ -89,14 +139,7 @@ class HailoAnomalyRuntime:
         self.output_names = output_names
 
     def _prepare_input(self, batch) -> np.ndarray:
-        """Convert AnomaVision NCHW input to the HEF's NHWC input.
-
-        ``detect.py`` already applies resize/crop and ImageNet normalization,
-        exactly as it does for ONNX/PyTorch inference. Therefore a tensor coming
-        from the normal detection pipeline is only transposed here. A raw PIL or
-        uint8 HWC image is supported for direct backend use and is preprocessed
-        once using the same resize and ImageNet normalization.
-        """
+        """Convert AnomaVision NCHW input to the HEF's NHWC input."""
         if isinstance(batch, Image.Image):
             array = np.asarray(batch.convert("RGB"), dtype=np.uint8)
             return self._preprocess_raw_hwc(array)[None]
@@ -115,18 +158,17 @@ class HailoAnomalyRuntime:
                 raise ValueError(
                     f"Hailo input must be {self.input_size}, got {array.shape[1:]}"
                 )
-            # Already ImageNet-normalized NCHW from AnomaVision.
-            return np.ascontiguousarray(np.transpose(array, (1, 2, 0)), dtype=self.input_dtype)
+            return np.ascontiguousarray(
+                np.transpose(array, (1, 2, 0)), dtype=self.input_dtype
+            )
 
         if array.shape[2] == 3:
-            # Raw HWC input is accepted only when it is clearly an image.
             if np.issubdtype(array.dtype, np.integer):
                 return self._preprocess_raw_hwc(array)
             if array.shape[:2] != self.input_size:
                 raise ValueError(
                     f"Hailo input must be {self.input_size}, got {array.shape[:2]}"
                 )
-            # Float HWC is assumed to already use the common normalized contract.
             return np.ascontiguousarray(array, dtype=self.input_dtype)
 
         raise ValueError("batch must be RGB with three channels")
@@ -144,10 +186,14 @@ class HailoAnomalyRuntime:
         """Run one image and return the HEF's complete anomaly outputs."""
         api = self._api
         input_params = api["InputVStreamParams"].make(
-            self.network_group, quantized=False, format_type=api["FormatType"].FLOAT32
+            self.network_group,
+            quantized=False,
+            format_type=api["FormatType"].FLOAT32,
         )
         output_params = api["OutputVStreamParams"].make(
-            self.network_group, quantized=False, format_type=api["FormatType"].FLOAT32
+            self.network_group,
+            quantized=False,
+            format_type=api["FormatType"].FLOAT32,
         )
         tensor = self._prepare_input(image)
         with self.network_group.activate(self.network_group_params):
