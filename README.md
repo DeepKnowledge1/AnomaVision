@@ -21,14 +21,15 @@
   <a href="docs/kv260_xmodel.md"><img src="https://img.shields.io/badge/KV260-DPU-blue" alt="KV260 DPU support"/></a>
 </p>
 
-AnomaVision is a computer vision project for finding **defects and unusual patterns** in images.
+AnomaVision is a production-oriented computer vision toolkit for detecting **defects and unusual patterns** from normal images.
 
-It supports two anomaly detection methods:
+It supports three anomaly detection methods:
 
-- **PaDiM** — a simple and fast baseline.
-- **PatchCore** — a lightweight memory-based method.
+- **PaDiM** — a simple, fast feature-distribution baseline.
+- **PatchCore** — a lightweight memory-based method designed for efficient inference.
+- **EfficientAD** — a lightweight student-teacher method designed for fast industrial anomaly detection.
 
-You only need **normal (`good`) images** to train the anomaly detector.
+Training requires only **normal (`good`) images**. Labeled test images can then be used for evaluation, threshold calibration, and production model selection.
 
 <p align="center">
   <a href="https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection"><img src="https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-xl-dark.svg" alt="Open the AnomaVision live demo"/></a>
@@ -39,50 +40,46 @@ You only need **normal (`good`) images** to train the anomaly detector.
 ## What can AnomaVision do?
 
 - Train anomaly detection models using normal images.
-- Detect image-level anomalies.
-- Create anomaly heatmaps showing where the problem is.
-- Export models to **ONNX, OpenVINO, and TensorRT**.
+- Detect image-level anomalies and generate anomaly heatmaps.
+- Evaluate anomaly detection and localization performance.
+- Calibrate anomaly thresholds from validation data.
+- Export models to **ONNX, OpenVINO, and TensorRT** where supported.
+- Run production model selection with **Production Autopilot**.
 - Export and compile **PaDiM and PatchCore to XModel for the AMD/Xilinx Kria KV260**.
 
 ## Quick start
 
 ### 1. Install
 
-#### Option A — From Source (development)
+#### Option A — From Source
 
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
 
-# Create and activate a virtual environment
 uv venv --python 3.11 .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
 
-# Install with your hardware extra
 uv sync --extra cpu              # CPU
 uv sync --extra cu121            # CUDA 12.1
 ```
 
----
-
-#### Option B — From PyPI (production / quick start)
+#### Option B — From PyPI
 
 ```bash
-# CPU  ·  Mac, CI runners, edge devices
 uv pip install "anomavision[cpu]"
 
-# NVIDIA GPU  ·  pick your CUDA version
-uv pip install "anomavision[cu118]"   # CUDA 11.8
-uv pip install "anomavision[cu121]"   # CUDA 12.1
-uv pip install "anomavision[cu124]"   # CUDA 12.4
+# NVIDIA GPU
+uv pip install "anomavision[cu118]"
+uv pip install "anomavision[cu121]"
+uv pip install "anomavision[cu124]"
 ```
-
 
 For other environments, see [Installation](docs/installation.md).
 
-### 2. Prepare your images
+### 2. Prepare your dataset
 
-Use a simple MVTec-style folder structure:
+Use an MVTec-style structure:
 
 ```text
 dataset/
@@ -100,19 +97,21 @@ dataset/
         └── good/
 ```
 
-Training uses the **good** images. Test images can contain defects.
+Training uses only `train/good`. Test images may contain defects.
 
 ### 3. Train
 
-Create or edit `config.yml` and point `dataset_path` to your dataset.
-
-Then run:
+Create or edit `config.yml` and set `dataset_path` to your dataset.
 
 ```bash
 anomavision train --config config.yml
 ```
 
-PaDiM is the default model. For PatchCore, set `algorithm: patchcore` in the configuration.
+Select the algorithm in the configuration:
+
+```yaml
+algorithm: padim       # padim | patchcore | efficientad
+```
 
 ### 4. Detect
 
@@ -122,19 +121,73 @@ anomavision detect --config config.yml --img_path ./dataset/bottle/test
 
 ### 5. Export
 
-For a portable model, ONNX is a good place to start:
-
 ```bash
 anomavision export --config config.yml --format onnx
 ```
 
-For more export options, see [Export and deployment](docs/production_deployment.md).
+See [Export and deployment](docs/production_deployment.md) for deployment-specific options.
+
+## Production Autopilot
+
+Production Autopilot compares trained anomaly models on the **same validation data**, measures their performance and latency on the target device, calibrates thresholds, and selects the best candidate for deployment.
+
+PaDiM, PatchCore, and EfficientAD can be supplied as independent candidate models. The model paths are provided directly through the CLI:
+
+```bash
+anomavision autopilot \
+  --config config.yml \
+  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt \
+  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt \
+  --efficientad_model ./distributions/efficientad/bottle/anomav_exp/model.pt \
+  --device cpu \
+  --validation_split 1.0 \
+  --target_latency_ms 50 \
+  --output_dir ./production_package
+```
+
+### How selection works
+
+For every supplied model, Autopilot:
+
+1. Evaluates the model on the validation split.
+2. Calibrates an image-level anomaly threshold.
+3. Measures inference latency on the selected device.
+4. Calculates image-level and pixel-level metrics when localization maps are available.
+5. Checks localization quality and false-positive behavior.
+6. Applies the target latency constraint when selecting the production candidate.
+7. Packages the selected model and writes a deployment manifest.
+
+If multiple models satisfy the latency target, the model with the strongest image-level AUROC is preferred, with latency used as a tie-breaker.
+
+### Output
+
+Autopilot creates a production package containing:
+
+```text
+production_package/
+├── model.pt
+├── deployment_manifest.json
+├── localization_report.md
+└── production_autopilot_report.html
+```
+
+The HTML report is a self-contained dashboard showing the candidate comparison, selected model, AUROC, calibrated threshold, latency, localization diagnostics, and deployment recommendation.
+
+## Inference performance tests
+
+AnomaVision includes optional regression tests for PaDiM, PatchCore, and EfficientAD. The limits are controlled from the benchmark section of `config.yml`, so performance expectations can be adjusted for the target hardware.
+
+Run the benchmark with:
+
+```bash
+pytest tests/test_inference_performance.py -s
+```
+
+The test reports pure model inference time, FPS, and throughput for each algorithm and fails when a configured performance limit is exceeded.
 
 ## KV260 support
 
-AnomaVision also supports a **Vitis AI workflow for PaDiM and PatchCore on the AMD/Xilinx Kria KV260**.
-
-The workflow is:
+AnomaVision supports a **Vitis AI workflow for PaDiM and PatchCore on the AMD/Xilinx Kria KV260**.
 
 ```text
 PyTorch → INT8 quantization → XModel → KV260 DPU compilation
@@ -142,33 +195,9 @@ PyTorch → INT8 quantization → XModel → KV260 DPU compilation
 
 Both PaDiM and PatchCore currently compile with **1 DPU subgraph** in the KV260 compiler.
 
-The complete setup and commands are in:
-
-**[KV260 XModel Guide](docs/kv260_xmodel.md)**
+See the complete [KV260 XModel Guide](docs/kv260_xmodel.md).
 
 > XModel compilation has been validated in the Vitis AI environment. Final on-device KV260 validation requires the physical hardware.
-
-
-## Production Autopilot
-
-**Production Autopilot is the easiest way to move from two trained models to one deployable choice.** It compares PaDiM and ultra-light PatchCore on the same labeled test split, calibrates a separate threshold for each, profiles median and P95 latency on your hardware, checks localization health, and packages the selected artifact with a self-contained HTML dashboard.
-
-Train both candidate models first, then run the complete labeled split on CPU:
-
-```bash
-anomavision autopilot \
-  --config config.yml \
-  --padim_model ./distributions/padim/bottle/anomav_exp/model.onnx \
-  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.onnx \
-  --efficientad_model ./distributions/efficientad/bottle/anomav_exp/model.onnx \
-  --device cpu \
-  --validation_split 1.0 \
-  --target_latency_ms 50 \
-  --output_dir ./production_package
-```
-
-Open `production_package/production_autopilot_report.html` to see the selected model, AUROC, calibrated threshold, localization diagnostics, memory, median latency, P95 latency, and deployment recommendation. The package also contains `deployment_manifest.json`, `localization_report.md`, and the selected model artifact. See [`docs/production_deployment.md`](docs/production_deployment.md) for GPU, TensorRT, INT8, and packaging details.
-
 
 ## Documentation
 
@@ -186,8 +215,6 @@ Open `production_package/production_autopilot_report.html` to see the selected m
 | Contributing | [`docs/contributing.md`](docs/contributing.md) |
 
 ## Python example
-
-You can also use AnomaVision directly from Python:
 
 ```python
 import torch
