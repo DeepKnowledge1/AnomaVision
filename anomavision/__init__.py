@@ -9,6 +9,7 @@ Provides functions for performing anomaly detection in images.
 """
 
 from .algorithm.common.feature_extraction import ResnetEmbeddingsExtractor
+from .algorithm.efficientad import EfficientAD
 from .algorithm.padim import Padim
 from .algorithm.patchcore import PatchCore
 from .datasets.dataset import AnodetDataset

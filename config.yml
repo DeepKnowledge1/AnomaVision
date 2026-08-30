@@ -1,124 +1,139 @@
 # =========================
 # Dataset / preprocessing (shared by train, detect, eval, stream)
 # =========================
-dataset_path: "D:/01-DATA"               # Root dataset folder (MVTec-style: contains train/test subfolders)
-class_name: "bottle"                     # Class name for MVTec dataset
-resize: [224, 224]                       # Resize dimensions before processing [width, height]
-crop_size:                               # Final crop size [width, height]
-normalize: true                          # Whether to normalize images
-no_normalize: false                      # Inverse flag (used by CLI) – keep in sync with "normalize"
-norm_mean: [0.485, 0.456, 0.406]         # Mean values for normalization (ImageNet default)
-norm_std:  [0.229, 0.224, 0.225]         # Standard deviation for normalization (ImageNet default)
+dataset_path: "D:/01-DATA"                 # Root dataset directory (contains train/test folders)
+class_name: "bottle"                       # Dataset class to train/evaluate
+resize: [224, 224]                         # Input image size [width, height]
+crop_size:                                 # Optional center crop size [width, height]
+normalize: true                            # Apply ImageNet normalization
+no_normalize: false                        # Explicitly disable normalization when true
+norm_mean: [0.485, 0.456, 0.406]           # Normalization mean for RGB channels
+norm_std:  [0.229, 0.224, 0.225]           # Normalization standard deviation for RGB channels
 
 # =========================
 # Model / training
 # =========================
-backbone: "resnet18"                     # Backbone CNN architecture (resnet18 | wide_resnet50)
-algorithm: "padim"                       # Algorithm to use: padim or patchcore
-coreset_ratio: 0.02                      # Ultra-light PatchCore memory fraction
-max_memory_patches: 2048                 # Hard memory-bank cap for low latency
-patch_grid: 14                            # Pool feature maps to at most 14x14 patches
-search_chunk_size: 1024                   # Bound nearest-neighbor working memory
-coreset_method: "kcenter"                # PatchCore selection: kcenter or random
-coreset_seed: 42                          # Reproducible k-center initialization
-feat_dim: 50                             # Feature dimension size for embedding
-layer_indices: [0]                       # Which backbone layers to extract features from (0,1,2,3)
-model_data_path: "./distributions"  # Path to store/load model-related data
-model: "model.pt"                  # File name for saved model (used by detect/eval/export)
-output_model: "model.pt"           # File name for saving trained model (train.py expects this)
-batch_size: 2                            # Training/evaluation/inference batch size
-device: "auto"                           # Device to run on: "cpu", "cuda", or "auto"
+backbone: "resnet18"                       # Backbone network: resnet18 | wide_resnet50
+algorithm: "efficientad"                  # Anomaly algorithm: padim | patchcore | efficientad
+coreset_ratio: 0.02                        # PatchCore fraction of patches kept in memory
+max_memory_patches: 2048                   # Maximum number of PatchCore memory-bank patches
+patch_grid: 14                             # PatchCore feature-map grid size
+search_chunk_size: 1024                    # PatchCore nearest-neighbor search chunk size
+coreset_method: "kcenter"                 # PatchCore coreset method: kcenter | random
+coreset_seed: 42                           # Random seed for PatchCore coreset selection
+feat_dim: 50                               # PaDiM number of feature dimensions to keep
+layer_indices: [0]                         # Backbone feature layers used by PaDiM/PatchCore/EfficientAD
+model_data_path: "./distributions"        # Directory for trained models and statistics
+model: "model.pt"                          # Model filename used by detect/eval/export
+output_model: "model.pt"                   # Filename written by the train command
+batch_size: 2                              # Training/inference batch size
+device: "auto"                             # Device to run on: auto | cpu | cuda
+
+# =========================
+# Lightweight EfficientAD
+# =========================
+efficientad_epochs: 5                        # Number of student training epochs
+efficientad_learning_rate: 0.001           # Student optimizer learning rate
+efficientad_threshold_percentile: 99.5      # Percentile of normal scores used to learn the adaptive threshold
+
+# =========================
+# Inference performance tests
+# =========================
+# Opt-in benchmark used to catch inference regressions for every algorithm.
+# Run with: pytest tests/test_inference_performance.py -s
+inference_benchmark:
+  enabled: true                            # Set true to run model benchmarks
+  warmup_runs: 10                           # Warm-up predictions excluded from timing
+  test_runs: 50                             # Timed predictions per algorithm
+  batch_size: 2                             # Batch size used by the benchmark
+  max_inference_ms:                         # Maximum allowed pure inference time per batch
+    padim: 100.0
+    patchcore: 100.0
+    efficientad: 150.0
+  max_regression_percent: 25.0              # Allowed regression if a baseline is configured
+  baseline_inference_ms:                   # Optional per-algorithm baseline; null disables regression check
+    padim: null
+    patchcore: null
+    efficientad: 47.15
 
 # =========================
 # Logging / run metadata
 # =========================
-log_level: "INFO"                        # Logging level: DEBUG, INFO, WARNING, ERROR
-run_name: "anomav_exp"                   # Name of experiment run (used for organizing results)
-detailed_timing: false                   # Enable detailed timing measurements
+log_level: "INFO"                          # Logging level: DEBUG | INFO | WARNING | ERROR
+run_name: "anomav_exp"                     # Experiment name used in output directories
+detailed_timing: false                     # Enable detailed timing information
 
 # =========================
-# Visualization (shared by detect & eval)
+# Visualization (detect/eval)
 # =========================
-enable_visualization: true               # Enable visualization during inference/evaluation
-save_visualizations: true                # Save visualization results to disk
-viz_output_dir: "./visualizations/"      # Directory to save visualization results
-viz_alpha: 0.5                           # Transparency factor for overlay heatmaps
-viz_padding: 40                          # Padding added around visualization
-viz_color: "128,0,128"                   # RGB color for visualization overlays
+enable_visualization: true                  # Enable anomaly visualization
+save_visualizations: true                  # Save generated visualizations to disk
+viz_output_dir: "./visualizations/"        # Directory for visualization output
+viz_alpha: 0.5                             # Heatmap overlay transparency
+viz_padding: 40                            # Extra visualization border/padding
+viz_color: "128,0,128"                     # RGB color used for anomaly overlays
 
 # =========================
-# Inference (detect.py)
+# Inference (detect)
 # =========================
-img_path: "D:/01-DATA/test"  # Path to test images for inference
-thresh: null                            # Legacy fallback; prefer algorithm-specific thresholds
-thresh_padim: 13.0                       # PaDiM score threshold; null lets eval auto-select
-thresh_patchcore: 0.25                   # PatchCore score threshold; null lets eval auto-select
-num_workers: 1                          # Number of workers for dataloader
-pin_memory: false                       # Use pinned memory for faster GPU transfers
-overwrite: false                        # Overwrite existing run directory without auto-incrementing
+img_path: "D:/01-DATA/test"                # Input image or directory for detection
+thresh: null                               # Generic legacy threshold fallback
+thresh_padim: 13.0                         # Fixed PaDiM anomaly threshold
+thresh_patchcore: 0.25                     # Fixed PatchCore anomaly threshold
+thresh_efficientad: 1.0                    # EfficientAD threshold; 1.0 means the model's adaptive training threshold
+num_workers: 1                             # Number of data-loader worker processes
+pin_memory: false                          # Pin CPU memory for faster GPU transfers
+overwrite: false                           # Overwrite an existing output directory
 
 # =========================
-# Evaluation (eval.py)
+# Evaluation (eval)
 # =========================
-memory_efficient: true                  # Use memory efficient evaluation mode
+memory_efficient: true                      # Reduce memory usage during evaluation
 
 # =========================
-# Export (export.py)
+# Export (export)
 # =========================
-format: "all"                           # onnx, tensorrt, torchscript, openvino, all
-opset: 18                               # ONNX opset version
-precision: "auto"                      # ONNX/TorchScript precision: auto, fp16, fp32
-tensorrt_precision: "fp16"             # TensorRT precision: fp32, fp16, int8
-dynamic_batch: true                     # Allow dynamic batch size in exported model
-static_batch: false                     # Disable dynamic batch size (if true)
-min_batch: 1                            # TensorRT dynamic profile minimum batch
-opt_batch: 1                            # TensorRT dynamic profile optimal batch
-max_batch: 4                            # TensorRT dynamic profile maximum batch
-workspace_gb: 2.0                       # TensorRT workspace limit in GiB
-calib_dir: null                         # INT8 calibration image directory; auto-derived when null
-calib_samples: 100                      # Maximum real images used for INT8 calibration
-quantize_dynamic: false                  # Also write dynamically quantized INT8 ONNX
-quantize_static: false                   # Also write statically quantized INT8 ONNX
-optimize: false                         # Enable mobile optimization for TorchScript
-output_path: null                       # Optional explicit output filename
-half: false                             # Legacy compatibility field
-int8: false                             # Legacy compatibility field; use tensorrt_precision: int8
+format: "all"                              # Export format: onnx | tensorrt | torchscript | openvino | all
+opset: 18                                  # ONNX operator-set version
+precision: "auto"                          # Export precision: auto | fp16 | fp32
+tensorrt_precision: "fp16"                # TensorRT precision: fp32 | fp16 | int8
+dynamic_batch: true                        # Allow variable batch size in exported models
+static_batch: false                        # Force a fixed batch size when true
+min_batch: 1                               # Minimum TensorRT dynamic batch size
+opt_batch: 1                               # Optimal TensorRT dynamic batch size
+max_batch: 4                               # Maximum TensorRT dynamic batch size
+workspace_gb: 2.0                          # TensorRT workspace memory limit in GiB
+calib_dir: null                            # Directory containing INT8 calibration images
+calib_samples: 100                         # Maximum number of calibration images
+quantize_dynamic: false                    # Also generate dynamically quantized INT8 ONNX
+quantize_static: false                     # Also generate statically quantized INT8 ONNX
+optimize: false                            # Enable TorchScript/mobile optimization
+output_path: null                          # Optional explicit export output path
+half: false                                # Legacy FP16 compatibility option
+int8: false                                # Legacy INT8 compatibility option
 
 # =========================
-# Streaming Configuration
+# Streaming
 # =========================
-stream_mode: false                       # true = real-time streaming, false = static dataset
-
+stream_mode: false                         # Enable real-time streaming mode
 stream_source:
-  type: "webcam"                         # webcam | video | mqtt | tcp
-
-  # Webcam settings (type: webcam)
-  camera_id: 0                           # Camera device index
-
-  # Video file settings (type: video)
-  video_path: "path/to/video.mp4"        # Path to video file
-  loop: false                            # Loop video when it ends
-
-  # MQTT settings (type: mqtt)
-  broker: "localhost"                    # MQTT broker hostname/IP
-  port: 1883                             # MQTT broker port
-  topic: "camera/frames"                 # Topic to subscribe to
-  client_id: null                        # Optional client ID
-  keepalive: 60                          # Keepalive interval (seconds)
-  qos: 0                                 # QoS level (0, 1, or 2)
-  max_queue_size: 10                     # Max buffered frames
-  read_timeout: 1.0                      # Timeout for reading frames (seconds)
-
-  # TCP settings (type: tcp)
-  host: "192.168.1.100"                  # TCP server hostname/IP
-  port: 8080                             # TCP server port (matches code)
-  recv_timeout: 1.0                      # Socket timeout for recv (seconds)
-  header_size: 4                         # Length header size in bytes
-  max_message_size: 10485760             # Max payload size (10MB)
-
-
-# Streaming processing settings
-stream_max_frames: null                  # Max frames to process (null = infinite)
-stream_display_fps: true                 # Show FPS during streaming
-stream_save_detections: true             # Save detected anomalies to disk
-stream_detection_dir: "./stream_detections/"  # Directory for saved detections
+  type: "webcam"                          # Source type: webcam | video | mqtt | tcp
+  camera_id: 0                             # Webcam device index
+  video_path: "path/to/video.mp4"          # Video file path
+  loop: false                              # Restart video when it reaches the end
+  broker: "localhost"                     # MQTT broker hostname/IP
+  port: 1883                               # MQTT broker port
+  topic: "camera/frames"                   # MQTT topic containing frames
+  client_id: null                          # Optional MQTT client ID
+  keepalive: 60                            # MQTT keepalive interval in seconds
+  qos: 0                                   # MQTT quality of service: 0 | 1 | 2
+  max_queue_size: 10                       # Maximum buffered streaming frames
+  read_timeout: 1.0                        # Streaming read timeout in seconds
+  host: "192.168.1.100"                   # TCP server hostname/IP
+  recv_timeout: 1.0                        # TCP receive timeout in seconds
+  header_size: 4                           # TCP message length-header size in bytes
+  max_message_size: 10485760               # Maximum TCP message size in bytes
+stream_max_frames: null                    # Maximum frames to process; null means unlimited
+stream_display_fps: true                   # Display FPS during streaming
+stream_save_detections: true               # Save streaming anomaly detections
+stream_detection_dir: "./stream_detections/" # Output directory for streaming detections
