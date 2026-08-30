@@ -42,7 +42,9 @@ class EfficientAD(torch.nn.Module):
     ) -> None:
         super().__init__()
         if backbone != "resnet18":
-            raise ValueError("EfficientAD lightweight supports backbone='resnet18' only.")
+            raise ValueError(
+                "EfficientAD lightweight supports backbone='resnet18' only."
+            )
         self.device = torch.device(device)
         self.backbone = backbone
         self.layer_indices = [0]
@@ -96,7 +98,9 @@ class EfficientAD(torch.nn.Module):
         ).squeeze(1)
         return image_scores, score_map
 
-    def fit(self, dataloader: torch.utils.data.DataLoader, extractions: int = 1) -> None:
+    def fit(
+        self, dataloader: torch.utils.data.DataLoader, extractions: int = 1
+    ) -> None:
         """Train the student and calibrate an adaptive threshold on normal images."""
         optimizer = torch.optim.Adam(self.student.parameters(), lr=self.learning_rate)
 
@@ -162,7 +166,11 @@ class EfficientAD(torch.nn.Module):
         if not self._fitted:
             raise RuntimeError("EfficientAD is not fitted. Call fit() first.")
         student_state = {
-            key: value.detach().cpu().half() if half and value.is_floating_point() else value.detach().cpu()
+            key: (
+                value.detach().cpu().half()
+                if half and value.is_floating_point()
+                else value.detach().cpu()
+            )
             for key, value in self.student.state_dict().items()
         }
         torch.save(

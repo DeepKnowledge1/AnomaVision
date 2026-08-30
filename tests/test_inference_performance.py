@@ -22,7 +22,6 @@ from anomavision.config import load_config
 from anomavision.general import determine_device
 from anomavision.inference.model.wrapper import ModelWrapper
 
-
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yml"
 ALGORITHMS = ("padim", "patchcore", "efficientad")
 

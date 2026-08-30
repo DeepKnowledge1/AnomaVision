@@ -37,13 +37,29 @@ class TorchBackend(InferenceBackend):
             logger.info("torch.jit.load failed (%s); falling back to torch.load.", exc)
 
         if loaded_obj is None:
-            loaded_obj = torch.load(model_path, map_location=self.device, weights_only=False)
+            loaded_obj = torch.load(
+                model_path, map_location=self.device, weights_only=False
+            )
 
-        if isinstance(loaded_obj, dict) and {"mean", "cov_inv", "channel_indices", "layer_indices", "backbone"}.issubset(loaded_obj):
+        if isinstance(loaded_obj, dict) and {
+            "mean",
+            "cov_inv",
+            "channel_indices",
+            "layer_indices",
+            "backbone",
+        }.issubset(loaded_obj):
             model = build_padim_from_stats(loaded_obj, device=device)
-        elif isinstance(loaded_obj, dict) and {"memory_bank", "layer_indices", "backbone"}.issubset(loaded_obj):
+        elif isinstance(loaded_obj, dict) and {
+            "memory_bank",
+            "layer_indices",
+            "backbone",
+        }.issubset(loaded_obj):
             model = build_patchcore_from_stats(loaded_obj, device=device)
-        elif isinstance(loaded_obj, dict) and {"student", "backbone", "threshold"}.issubset(loaded_obj):
+        elif isinstance(loaded_obj, dict) and {
+            "student",
+            "backbone",
+            "threshold",
+        }.issubset(loaded_obj):
             logger.info("Detected EfficientAD statistics artifact.")
             model = build_efficientad_from_stats(loaded_obj, device=device)
         else:
