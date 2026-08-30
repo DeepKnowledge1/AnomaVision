@@ -143,9 +143,7 @@ def _profile_model(model_path: str, dataloader: DataLoader, device: str, warmup:
         localization["anomaly_mean_mask_area_fraction"] = float(area[anomaly_idx].mean()) if anomaly_idx.any() else None
         localization["normal_mean_mask_area_fraction"] = float(area[normal_idx].mean()) if normal_idx.any() else None
         localization["verdict"] = (
-            "healthy"
-            if (localization["normal_false_positive_fraction"] or 0.0) <= 0.10
-            else "review false positives"
+            "healthy" if (localization["normal_false_positive_fraction"] or 0.0) <= 0.10 else "review false positives"
         ) if pixel_auroc is not None else "maps available; pixel AUROC unavailable"
 
     batch_size = max(1, dataloader.batch_size or 1)
@@ -175,37 +173,44 @@ def _select(results: Dict[str, Dict[str, Any]], target_latency_ms: Optional[floa
 
 def _write_report(manifest: Dict[str, Any], output_dir: Path) -> None:
     selected = manifest["selected_model"]
-    cards = []
-    rows = []
+    selected_result = manifest["candidates"][selected]
+    target = manifest.get("target_latency_ms")
+    cards, rows = [], []
     for name, result in manifest["candidates"].items():
         metrics, loc = result["metrics"], result["localization"]
         active = name == selected
+        status = "Selected" if active else "Candidate"
         cards.append(
-            f'<article class="model-card {"selected" if active else ""}"><b>{escape(name.upper())}</b>'
-            f'<h2>{_format_metric(metrics.get("image_auroc"))}</h2><span>image AUROC</span>'
-            f'<p>p95: {result["latency_ms"]["p95"]:.2f} ms · pixel AUROC: {_format_metric(metrics.get("pixel_auroc"))}</p></article>'
+            f'<article class="model-card {"selected" if active else ""}"><div class="card-top"><span class="model-name">{escape(name.upper())}</span><span class="badge">{status}</span></div>'
+            f'<div class="score">{_format_metric(metrics.get("image_auroc"))}<small> image AUROC</small></div>'
+            f'<div class="mini-grid"><div><b>{_format_metric(metrics.get("pixel_auroc"))}</b><span>pixel AUROC</span></div><div><b>{result["latency_ms"]["p95"]:.1f} ms</b><span>p95 latency</span></div><div><b>{_format_percent(loc.get("anomaly_non_empty_fraction"))}</b><span>anomaly coverage</span></div></div></article>'
         )
         rows.append(
-            f'<tr><td>{escape(name)}</td><td>{_format_metric(metrics.get("image_auroc"))}</td>'
-            f'<td>{_format_metric(metrics.get("pixel_auroc"))}</td><td>{result["latency_ms"]["median"]:.2f}</td>'
-            f'<td>{result["latency_ms"]["p95"]:.2f}</td><td>{_format_percent(loc.get("normal_false_positive_fraction"))}</td>'
-            f'<td>{result["threshold"]:.6f}</td></tr>'
+            f'<tr class="{"active" if active else ""}"><td><strong>{escape(name)}</strong></td><td>{_format_metric(metrics.get("image_auroc"))}</td><td>{_format_metric(metrics.get("pixel_auroc"))}</td><td>{result["latency_ms"]["median"]:.2f}</td><td>{result["latency_ms"]["p95"]:.2f}</td><td>{_format_percent(loc.get("anomaly_non_empty_fraction"))}</td><td>{_format_percent(loc.get("normal_false_positive_fraction"))}</td><td><code>{result["threshold"]:.6f}</code></td></tr>'
         )
-    html = f'''<!doctype html><html><head><meta charset="utf-8"><title>AnomaVision Production Autopilot</title>
-<style>body{{font:15px system-ui;margin:40px;background:#f5f7fb;color:#14213d}}main{{max-width:1100px;margin:auto}}header,.card,.table{{background:white;border-radius:16px;padding:24px;margin-bottom:20px}}.cards{{display:flex;gap:16px;flex-wrap:wrap}}.model-card{{background:white;border:1px solid #ddd;border-radius:16px;padding:20px;min-width:260px}}.selected{{border:2px solid #315efb}}table{{width:100%;border-collapse:collapse}}th,td{{padding:12px;border-bottom:1px solid #ddd;text-align:left}}</style></head>
-<body><main><header><h1>Deployment confidence, before production.</h1><p>Selected model: <b>{escape(selected)}</b> · Class: <b>{escape(str(manifest["dataset"]["class_name"]))}</b></p></header>
-<div class="cards">{"".join(cards)}</div><section class="table"><h2>Model comparison</h2><table><tr><th>Model</th><th>Image AUROC</th><th>Pixel AUROC</th><th>Median ms</th><th>P95 ms</th><th>Normal FP</th><th>Threshold</th></tr>{"".join(rows)}</table></section></main></body></html>'''
+    target_text = f"under {target:.1f} ms p95" if target is not None else "with the strongest measured accuracy/latency balance"
+    environment_json = escape(json.dumps(manifest["environment"], indent=2))
+    html = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AnomaVision Production Autopilot</title><style>
+:root{{--ink:#14213d;--muted:#667085;--line:#e6eaf0;--blue:#315efb;--teal:#0f9d8a;--bg:#f5f7fb;--card:#fff}}
+*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}}.wrap{{max-width:1180px;margin:auto;padding:34px 24px 60px}}
+.hero{{background:linear-gradient(135deg,#172554,#315efb 58%,#5b8cff);color:white;border-radius:24px;padding:34px 38px;box-shadow:0 18px 42px #315efb2b}}.eyebrow{{font-size:12px;text-transform:uppercase;letter-spacing:.18em;opacity:.75;font-weight:700}}h1{{font-size:clamp(30px,5vw,52px);line-height:1.04;margin:12px 0}}.hero p{{max-width:690px;margin:0;color:#e6ecff;font-size:17px}}.hero-meta{{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}}.pill{{background:#ffffff22;border:1px solid #ffffff3b;border-radius:999px;padding:7px 12px;font-size:13px}}
+.section{{margin-top:28px}}.section-title{{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:12px}}h2{{font-size:21px;margin:0}}.muted{{color:var(--muted)}}.recommend{{background:#fff;border:1px solid #dbe3ff;border-left:5px solid var(--blue);border-radius:16px;padding:20px 22px;box-shadow:0 8px 25px #14213d0b}}.recommend strong{{color:var(--blue)}}
+.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}}.model-card{{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 8px 22px #14213d08}}.model-card.selected{{border-color:#9eb0ff;box-shadow:0 10px 28px #315efb20}}.card-top{{display:flex;justify-content:space-between;align-items:center}}.model-name{{font-weight:800;letter-spacing:.08em}}.badge{{font-size:12px;border-radius:999px;padding:4px 9px;background:#eef1f6;color:var(--muted)}}.selected .badge{{background:#e5eaff;color:var(--blue)}}.score{{font-size:42px;font-weight:800;margin:18px 0 12px;letter-spacing:-.04em}}.score small{{font-size:12px;letter-spacing:0;color:var(--muted);font-weight:600}}.mini-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}}.mini-grid div{{border-top:1px solid var(--line);padding-top:8px}}.mini-grid b,.mini-grid span{{display:block}}.mini-grid b{{font-size:16px}}.mini-grid span{{font-size:11px;color:var(--muted)}}
+.table-wrap{{overflow:auto;background:#fff;border:1px solid var(--line);border-radius:16px}}table{{border-collapse:collapse;width:100%;min-width:720px}}th,td{{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line)}}th{{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:#fafbfc}}tr:last-child td{{border-bottom:0}}tr.active td{{background:#f3f6ff}}code{{background:#eef1f6;border-radius:6px;padding:3px 6px;font-size:12px}}.two-col{{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}}.panel{{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px}}.check{{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}}.check:last-child{{border-bottom:0}}.ok{{color:var(--teal);font-weight:700}}pre{{overflow:auto;background:#111827;color:#dbeafe;padding:16px;border-radius:12px;font-size:12px}}footer{{margin-top:28px;color:var(--muted);font-size:12px;text-align:center}}@media(max-width:760px){{.wrap{{padding:20px 14px 40px}}.hero{{padding:26px 22px;border-radius:18px}}.two-col{{grid-template-columns:1fr}}}}
+</style></head><body><main class="wrap">
+<section class="hero"><div class="eyebrow">AnomaVision / Production Autopilot</div><h1>Deployment confidence, before production.</h1><p>Calibrated thresholds, hardware-aware profiling, and localization health checks in one reproducible report.</p><div class="hero-meta"><span class="pill">Selected: <b>{escape(selected)}</b></span><span class="pill">Class: <b>{escape(str(manifest["dataset"]["class_name"]))}</b></span><span class="pill">Samples: <b>{manifest["dataset"]["samples"]}</b></span><span class="pill">Device: <b>{escape(str(manifest["environment"].get("device", "unknown")))}</b></span></div></section>
+<section class="section"><div class="recommend"><strong>Recommendation</strong><br>Deploy <b>{escape(selected)}</b> with threshold <code>{selected_result["threshold"]:.6f}</code>. It was selected {escape(target_text)}. Recheck this threshold on a production validation set before release.</div></section>
+<section class="section"><div class="section-title"><h2>Candidate overview</h2><span class="muted">Measured on the same validation data</span></div><div class="cards">{"".join(cards)}</div></section>
+<section class="section"><div class="section-title"><h2>Detailed comparison</h2><span class="muted">Higher AUROC is better; lower false positives and latency are better</span></div><div class="table-wrap"><table><thead><tr><th>Model</th><th>Image AUROC</th><th>Pixel AUROC</th><th>Median ms</th><th>P95 ms</th><th>Anomaly coverage</th><th>Normal false positives</th><th>Threshold</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div></section>
+<section class="section two-col"><div class="panel"><h2>Localization health</h2><div class="check"><span>Selected model maps available</span><span class="ok">{"PASS" if selected_result["localization"]["available"] else "CHECK"}</span></div><div class="check"><span>Anomaly images with localization</span><span class="ok">{_format_percent(selected_result["localization"].get("anomaly_non_empty_fraction"))}</span></div><div class="check"><span>Normal images with false-positive maps</span><span>{_format_percent(selected_result["localization"].get("normal_false_positive_fraction"))}</span></div><div class="check"><span>Localization verdict</span><span class="ok">{escape(str(selected_result["localization"].get("verdict", "N/A")))}</span></div></div><div class="panel"><h2>Deployment artifact</h2><div class="check"><span>Artifact</span><code>{escape(str(manifest["selected_artifact"]))}</code></div><div class="check"><span>Format</span><code>{escape(str(selected_result["model_format"]))}</code></div><div class="check"><span>Preprocessing</span><span>{escape(str(manifest["preprocessing"].get("resize")))} px</span></div><div class="check"><span>Target latency</span><span>{escape(str(target)) if target is not None else "not set"}</span></div></div></section>
+<section class="section"><div class="panel"><h2>Reproducibility environment</h2><pre>{environment_json}</pre></div></section><footer>Generated by AnomaVision Production Autopilot · manifest schema {manifest["schema_version"]}</footer>
+</main></body></html>'''
     (output_dir / "production_autopilot_report.html").write_text(html, encoding="utf-8")
     (output_dir / "localization_report.md").write_text(
-        f"# AnomaVision Production Autopilot Report\n\n**Selected model:** `{selected}`\n",
+        f"# AnomaVision Production Autopilot Report\n\n**Selected model:** `{selected}`\n\nSee `production_autopilot_report.html` for the full dashboard.\n",
         encoding="utf-8",
     )
-
-
-def _config_model(cfg: Dict[str, Any], name: str) -> Optional[str]:
-    section = cfg.get("autopilot", {}) or {}
-    value = section.get(f"{name}_model")
-    return str(value) if value else None
 
 
 def run(args: argparse.Namespace) -> Dict[str, Any]:
@@ -222,15 +227,14 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     )
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=False)
 
-    paths = {
-        "padim": args.padim_model or _config_model(cfg, "padim"),
-        "patchcore": args.patchcore_model or _config_model(cfg, "patchcore"),
-        "efficientad": args.efficientad_model or _config_model(cfg, "efficientad"),
-    }
-    candidates = {
-        name: _profile_model(path, dataloader, device, args.warmup, args.timing_batches)
-        for name, path in paths.items() if path
-    }
+    candidates = {}
+    for name, model_path in (
+        ("padim", args.padim_model),
+        ("patchcore", args.patchcore_model),
+        ("efficientad", args.efficientad_model),
+    ):
+        if model_path:
+            candidates[name] = _profile_model(model_path, dataloader, device, args.warmup, args.timing_batches)
     if not candidates:
         raise ValueError("Provide at least one model: --padim_model, --patchcore_model, or --efficientad_model.")
 
@@ -249,6 +253,7 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
         "preprocessing": {"resize": cfg.get("resize", 224), "crop_size": cfg.get("crop_size", 224), "normalize": cfg.get("normalize", True), "mean": cfg.get("norm_mean"), "std": cfg.get("norm_std")},
         "candidates": candidates,
         "target_latency_ms": args.target_latency_ms,
+        "validation_split": args.validation_split,
         "environment": {"python": sys.version.split()[0], "platform": platform.platform(), "torch": torch.__version__, "device": device},
     }
     (output_dir / "deployment_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
