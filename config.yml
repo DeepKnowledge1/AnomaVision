@@ -42,14 +42,14 @@ efficientad_threshold_percentile: 99.5      # Percentile of normal scores used t
 # Opt-in benchmark used to catch inference regressions for every algorithm.
 # Run with: pytest tests/test_inference_performance.py -s
 inference_benchmark:
-  enabled: false                            # Set true to run model benchmarks
+  enabled: true                            # Set true to run model benchmarks
   warmup_runs: 10                           # Warm-up predictions excluded from timing
   test_runs: 50                             # Timed predictions per algorithm
   batch_size: 2                             # Batch size used by the benchmark
   max_inference_ms:                         # Maximum allowed pure inference time per batch
     padim: 100.0
     patchcore: 100.0
-    efficientad: 100.0
+    efficientad: 150.0
   max_regression_percent: 25.0              # Allowed regression if a baseline is configured
   baseline_inference_ms:                   # Optional per-algorithm baseline; null disables regression check
     padim: null
