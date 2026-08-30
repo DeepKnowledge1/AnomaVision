@@ -103,15 +103,16 @@ Training uses only `train/good`. Test images may contain defects.
 
 Create or edit `config.yml` and set `dataset_path` to your dataset.
 
-```bash
-anomavision train --config config.yml
-```
-
 Select the algorithm in the configuration:
 
 ```yaml
 algorithm: padim       # padim | patchcore | efficientad
 ```
+
+```bash
+anomavision train --config config.yml
+```
+
 
 ### 4. Detect
 
@@ -173,17 +174,6 @@ production_package/
 
 The HTML report is a self-contained dashboard showing the candidate comparison, selected model, AUROC, calibrated threshold, latency, localization diagnostics, and deployment recommendation.
 
-## Inference performance tests
-
-AnomaVision includes optional regression tests for PaDiM, PatchCore, and EfficientAD. The limits are controlled from the benchmark section of `config.yml`, so performance expectations can be adjusted for the target hardware.
-
-Run the benchmark with:
-
-```bash
-pytest tests/test_inference_performance.py -s
-```
-
-The test reports pure model inference time, FPS, and throughput for each algorithm and fails when a configured performance limit is exceeded.
 
 ## KV260 support
 
