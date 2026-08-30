@@ -158,8 +158,9 @@ Train both candidate models first, then run the complete labeled split on CPU:
 ```bash
 anomavision autopilot \
   --config config.yml \
-  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt \
-  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt \
+  --padim_model ./distributions/padim/bottle/anomav_exp/model.onnx \
+  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.onnx \
+  --efficientad_model ./distributions/efficientad/bottle/anomav_exp/model.onnx \
   --device cpu \
   --validation_split 1.0 \
   --target_latency_ms 50 \
