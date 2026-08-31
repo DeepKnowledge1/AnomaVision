@@ -27,9 +27,14 @@ class OnnxBackend(InferenceBackend):
         sess_options.enable_mem_reuse = True
         sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
+        # AnomaVision production inference is normally batch=1.  The exporter
+        # may keep a symbolic batch dimension for compatibility, but telling ORT
+        # the real deployment value lets it specialize the dynamic dimension and
+        # recover memory-pattern/reuse optimizations without changing the model.
         try:
             sess_options.add_free_dimension_override_by_name("batch_size", 1)
         except Exception:
+            # Older ORT versions may not expose this API.
             pass
 
         if self.device.startswith("cuda"):
@@ -76,24 +81,13 @@ class OnnxBackend(InferenceBackend):
             if isinstance(batch, np.ndarray):
                 input_arr = np.ascontiguousarray(batch, dtype=np.float32)
             else:
-                input_arr = np.ascontiguousarray(
-                    batch.detach().cpu().numpy(), dtype=np.float32
-                )
-
-            # Keep the CPU execution on ORT's I/O-binding path as well. This
-            # avoids rebuilding the feed/output dictionaries on every call and
-            # lets ORT reuse its CPU memory planning for the fixed batch=1 path.
-            io_binding = self.session.io_binding()
-            io_binding.bind_cpu_input(self.input_names[0], input_arr)
-            for name in self.output_names:
-                io_binding.bind_output(name, "cpu")
-            self.session.run_with_iobinding(io_binding)
-            outputs = io_binding.copy_outputs_to_cpu()
+                input_arr = np.ascontiguousarray(batch.detach().cpu().numpy(), dtype=np.float32)
+            outputs = self.session.run(
+                self.output_names, {self.input_names[0]: input_arr}
+            )
 
         if len(outputs) < 2:
-            raise RuntimeError(
-                f"Expected at least 2 outputs (scores, maps), got {len(outputs)}"
-            )
+            raise RuntimeError(f"Expected at least 2 outputs (scores, maps), got {len(outputs)}")
         scores, maps = outputs[0], outputs[1]
         return scores, maps
 
@@ -101,6 +95,7 @@ class OnnxBackend(InferenceBackend):
         self.session = None
 
     def warmup(self, batch, runs: int = 2) -> None:
+        # Warm up the exact same execution path used by production inference.
         for _ in range(max(1, runs)):
             self.predict(batch)
         logger.info("OnnxBackend warm-up completed (runs=%d).", runs)
