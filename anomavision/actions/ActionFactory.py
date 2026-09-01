@@ -3,6 +3,7 @@ from typing import Any, Dict, Iterable, List
 from anomavision.actions.ActionBase import ActionBase
 from anomavision.actions.EvidenceAction import EvidenceAction
 from anomavision.actions.MQTTAction import MQTTAction
+from anomavision.actions.OPCUAAction import OPCUAAction
 
 
 class ActionFactory:
@@ -15,6 +16,7 @@ class ActionFactory:
     _ACTIONS = {
         "mqtt": MQTTAction,
         "evidence": EvidenceAction,
+        "opcua": OPCUAAction,
     }
 
     @classmethod
