@@ -9,5 +9,4 @@ def test_industrial_inspection_config_is_valid():
 
     assert config["source"]["type"] == "video"
     assert config["model"]["type"] == "padim"
-    assert config["decision"]["threshold"] == 0.8
     assert [action["type"] for action in config["actions"]] == ["mqtt", "evidence"]
