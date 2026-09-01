@@ -1,0 +1,30 @@
+# Example production inspection configuration.
+# This file documents how the new actions layer can be composed with an
+# existing AnomaVision source/model pipeline.
+
+source:
+  type: video
+  path: ./examples/data/inspection.mp4
+
+model:
+  type: padim
+  path: ./models/model.pt
+
+decision:
+  threshold: 0.8
+
+actions:
+  - type: mqtt
+    broker: 127.0.0.1
+    port: 1883
+    topic: anomavision/inspection/results
+    qos: 1
+
+  - type: evidence
+    directory: ./evidence
+
+  # Enable when an OPC UA server is available:
+  # - type: opcua
+  #   endpoint: opc.tcp://192.168.1.50:4840
+  #   decision_node: ns=2;s=Line1.InspectionResult
+  #   score_node: ns=2;s=Line1.AnomalyScore
