@@ -1,7 +1,5 @@
-"""Production inspection primitives for AnomaVision."""
+"""Inspection result types."""
 
-from anomavision.inspection.DecisionEngine import DecisionEngine
-from anomavision.inspection.InspectionPipeline import InspectionPipeline
 from anomavision.inspection.InspectionResult import InspectionResult
 
-__all__ = ["DecisionEngine", "InspectionPipeline", "InspectionResult"]
+__all__ = ["InspectionResult"]
