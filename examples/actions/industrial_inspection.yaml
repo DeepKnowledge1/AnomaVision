@@ -1,6 +1,5 @@
 # Example production inspection configuration.
-# This file documents how the new actions layer can be composed with an
-# existing AnomaVision source/model pipeline.
+# Actions extend an existing AnomaVision source/model pipeline.
 
 source:
   type: video
@@ -10,8 +9,7 @@ model:
   type: padim
   path: ./models/model.pt
 
-decision:
-  threshold: 0.8
+# Thresholds and classification remain part of the existing AnomaVision pipeline.
 
 actions:
   - type: mqtt
