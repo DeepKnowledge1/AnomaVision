@@ -6,20 +6,7 @@ from anomavision.actions.ActionBase import ActionBase
 
 
 class OPCUAAction(ActionBase):
-    """Publish inspection results to configured OPC UA nodes.
-
-    The optional ``opcua`` dependency is imported lazily so users who only use
-    video/offline inference do not need an OPC UA client installed.
-
-    Configuration example::
-
-        {
-            "type": "opcua",
-            "endpoint": "opc.tcp://192.168.1.50:4840",
-            "decision_node": "ns=2;s=Line1.InspectionResult",
-            "score_node": "ns=2;s=Line1.AnomalyScore"
-        }
-    """
+    """Publish inspection results to configured OPC UA nodes."""
 
     def __init__(
         self,
@@ -76,9 +63,9 @@ class OPCUAAction(ActionBase):
                 pass
             raise
 
-    def execute(self, result: dict) -> bool:
+    def execute(self, result: Dict[str, Any]) -> bool:
         """Write the inspection decision and optional anomaly score."""
-        if not self._connected or self._decision is None:
+        if not self.is_connected() or self._decision is None:
             raise RuntimeError("OPC UA action is not connected")
 
         decision = str(result.get("decision", "UNKNOWN")).upper()
@@ -86,10 +73,8 @@ class OPCUAAction(ActionBase):
             raise ValueError(f"Unsupported inspection decision: {decision}")
 
         self._decision.set_value(self.decision_values[decision])
-
         if self._score is not None and result.get("anomaly_score") is not None:
             self._score.set_value(float(result["anomaly_score"]))
-
         return True
 
     def disconnect(self) -> None:
@@ -101,3 +86,7 @@ class OPCUAAction(ActionBase):
                 self._connected = False
                 self._decision = None
                 self._score = None
+
+    def is_connected(self) -> bool:
+        """Return whether the OPC UA action has an active connection."""
+        return self._connected
