@@ -11,13 +11,9 @@ from anomavision.inspection.InspectionResult import InspectionResult
 
 
 def create_action_dispatcher(
-    actions_config, logger=None, fail_fast: bool = True
+    actions_config, logger=None, fail_fast: bool = False
 ) -> Optional[ActionDispatcher]:
-    """Create and connect configured actions.
-
-    ``fail_fast=False`` keeps inference running when an external integration
-    such as MQTT or OPC UA is unavailable.
-    """
+    """Create and connect configured actions without blocking inference by default."""
     if not actions_config:
         return None
 
