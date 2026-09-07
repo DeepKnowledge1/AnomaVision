@@ -59,7 +59,7 @@ def test_dispatcher_rolls_back_connections_on_startup_failure():
         def connect(self):
             raise RuntimeError("connection failed")
 
-    dispatcher = ActionDispatcher([working, FailingConnectAction()])
+    dispatcher = ActionDispatcher([working, FailingConnectAction()], fail_fast=True)
 
     try:
         dispatcher.connect_all()
@@ -69,3 +69,17 @@ def test_dispatcher_rolls_back_connections_on_startup_failure():
         raise AssertionError("connect_all should raise")
 
     assert working.disconnected
+
+
+def test_dispatcher_continues_when_action_connection_fails():
+    class FailingConnectAction(RecordingAction):
+        def connect(self):
+            raise ConnectionError("broker unavailable")
+
+    working = RecordingAction()
+    dispatcher = ActionDispatcher([FailingConnectAction(), working])
+
+    dispatcher.connect_all()
+
+    assert dispatcher.execute_all({"decision": "PASS"}) == [False, True]
+    assert working.executed == [{"decision": "PASS"}]
