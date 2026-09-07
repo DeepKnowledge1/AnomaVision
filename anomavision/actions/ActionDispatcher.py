@@ -7,7 +7,7 @@ from anomavision.actions.ActionBase import ActionBase
 class ActionDispatcher:
     """Execute configured industrial actions without coupling them to inference."""
 
-    def __init__(self, actions: Iterable[ActionBase], logger=None, fail_fast: bool = True):
+    def __init__(self, actions: Iterable[ActionBase], logger=None, fail_fast: bool = False):
         self.actions: List[ActionBase] = list(actions)
         self.logger = logger or logging.getLogger(__name__)
         self.fail_fast = fail_fast
