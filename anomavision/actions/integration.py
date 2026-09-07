@@ -13,13 +13,27 @@ from anomavision.inspection.InspectionResult import InspectionResult
 def create_action_dispatcher(
     actions_config, logger=None, fail_fast: bool = False
 ) -> Optional[ActionDispatcher]:
-    """Create and connect configured actions without blocking inference by default."""
+    """Create configured actions without making external integrations mandatory.
+
+    By default, unavailable MQTT/OPC UA services are logged and skipped so
+    inference can continue. Set ``fail_fast=True`` for strict deployments.
+    """
     if not actions_config:
         return None
 
     actions = ActionFactory.create_all(actions_config)
     dispatcher = ActionDispatcher(actions, logger=logger, fail_fast=fail_fast)
-    dispatcher.connect_all()
+
+    try:
+        dispatcher.connect_all()
+    except Exception:
+        if fail_fast:
+            raise
+        if logger is not None:
+            logger.exception(
+                "Industrial action startup failed; continuing inference"
+            )
+
     return dispatcher
 
 
