@@ -5,36 +5,51 @@ from anomavision.actions.ActionBase import ActionBase
 
 
 class ActionDispatcher:
-    """Execute configured actions without coupling the inference pipeline to them."""
+    """Execute configured industrial actions without coupling them to inference."""
 
-    def __init__(self, actions: Iterable[ActionBase], logger=None):
+    def __init__(self, actions: Iterable[ActionBase], logger=None, fail_fast: bool = True):
         self.actions: List[ActionBase] = list(actions)
         self.logger = logger or logging.getLogger(__name__)
+        self.fail_fast = fail_fast
+        self._connected = set()
 
     def connect_all(self) -> None:
-        """Connect all actions before processing starts."""
+        """Connect actions, optionally continuing when an integration is unavailable."""
         connected = []
-        try:
-            for action in self.actions:
+        for action in self.actions:
+            try:
                 action.connect()
                 connected.append(action)
-        except Exception:
-            # Roll back already-connected actions so startup is deterministic.
-            for action in reversed(connected):
-                try:
-                    action.disconnect()
-                except Exception:
-                    self.logger.exception("Failed to disconnect action during rollback")
-            raise
+                self._connected.add(id(action))
+            except Exception:
+                self.logger.exception(
+                    "Action %s failed to connect; %s",
+                    action.__class__.__name__,
+                    "continuing because fail_fast is disabled"
+                    if not self.fail_fast else "aborting startup",
+                )
+                if self.fail_fast:
+                    for connected_action in reversed(connected):
+                        try:
+                            connected_action.disconnect()
+                        except Exception:
+                            self.logger.exception(
+                                "Failed to disconnect action during rollback"
+                            )
+                    self._connected.clear()
+                    raise
 
     def execute_all(self, result) -> List[bool]:
-        """Execute every action and isolate failures between integrations.
-
-        A failing PLC/MQTT integration must not terminate image inference.
-        The returned list contains one success flag per configured action.
-        """
+        """Execute every available action and isolate integration failures."""
         statuses = []
         for action in self.actions:
+            if id(action) not in self._connected and not action.is_connected():
+                statuses.append(False)
+                self.logger.warning(
+                    "Skipping disconnected action %s",
+                    action.__class__.__name__,
+                )
+                continue
             try:
                 statuses.append(bool(action.execute(result)))
             except Exception:
@@ -43,6 +58,8 @@ class ActionDispatcher:
                     "Action %s failed while processing inspection result",
                     action.__class__.__name__,
                 )
+                if self.fail_fast:
+                    raise
         return statuses
 
     def disconnect_all(self) -> None:
@@ -55,3 +72,4 @@ class ActionDispatcher:
                     "Failed to disconnect action %s",
                     action.__class__.__name__,
                 )
+        self._connected.clear()
