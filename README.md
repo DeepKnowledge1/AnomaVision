@@ -5,74 +5,47 @@
 </p>
 
 <p align="center">
-  <strong>Simple visual anomaly detection from normal images.</strong>
+  <strong>Production-oriented anomaly detection and industrial computer vision.</strong>
 </p>
 
 <p align="center">
   <a href="https://pypi.org/project/anomavision/"><img src="https://img.shields.io/pypi/v/anomavision?label=PyPI&color=blue" alt="PyPI version"/></a>
-  <a href="https://pypi.org/project/anomavision/"><img src="https://img.shields.io/pypi/dm/anomavision?color=blue" alt="PyPI downloads"/></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10--3.12-blue" alt="Python 3.10 to 3.12"/></a>
-  <a href="https://pytorch.org/"><img src="https://img.shields.io/badge/PyTorch-2.0%2B-red" alt="PyTorch 2.0 or newer"/></a>
-  <a href="https://onnx.ai/"><img src="https://img.shields.io/badge/ONNX-Export%20Ready-orange" alt="ONNX export ready"/></a>
-  <a href="https://developer.nvidia.com/tensorrt"><img src="https://img.shields.io/badge/TensorRT-Supported-76b900" alt="TensorRT supported"/></a>
-  <a href="https://docs.openvino.ai/"><img src="https://img.shields.io/badge/OpenVINO-Supported-0071C5" alt="OpenVINO supported"/></a>
+  <a href="https://img.shields.io/badge/Python-3.10--3.12-blue"><img src="https://img.shields.io/badge/Python-3.10--3.12-blue" alt="Python 3.10 to 3.12"/></a>
   <a href="https://github.com/DeepKnowledge1/AnomaVision/actions/workflows/ci.yml"><img src="https://github.com/DeepKnowledge1/AnomaVision/actions/workflows/ci.yml/badge.svg" alt="CI status"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT license"/></a>
-  <a href="docs/kv260_xmodel.md"><img src="https://img.shields.io/badge/KV260-DPU-blue" alt="KV260 DPU support"/></a>
 </p>
 
-AnomaVision is a production-oriented computer vision toolkit for detecting **defects and unusual patterns** from normal images.
+AnomaVision is an open-source computer vision toolkit for detecting **defects and unusual patterns** from normal images. It is designed to support the full journey from experimentation to edge and industrial deployment.
 
-It supports three anomaly detection methods:
+## Highlights
 
-- **PaDiM** — a simple, fast feature-distribution baseline.
-- **PatchCore** — a lightweight memory-based method designed for efficient inference.
-- **EfficientAD** — a lightweight student-teacher method designed for fast industrial anomaly detection.
-
-Training requires only **normal (`good`) images**. Labeled test images can then be used for evaluation, threshold calibration, and production model selection.
-
-<p align="center">
-  <a href="https://huggingface.co/spaces/DeepKnowledge1/mvtec-anomaly-detection"><img src="https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-xl-dark.svg" alt="Open the AnomaVision live demo"/></a>
-</p>
+- Train using only normal (`good`) images.
+- Detect image-level anomalies and generate anomaly heatmaps.
+- Evaluate models and calibrate anomaly thresholds.
+- Choose between **PaDiM, PatchCore, and EfficientAD**.
+- Run from files, cameras, video, MQTT, TCP, and other streaming sources.
+- Export to **ONNX, OpenVINO, and TensorRT** where supported.
+- Deploy PaDiM and PatchCore on the **AMD/Xilinx Kria KV260**.
+- Connect detection results to industrial systems through optional **Industrial Actions**.
 
 **New here?** Start with the [five-minute quickstart](docs/quickstart.md).
-
-## What can AnomaVision do?
-
-- Train anomaly detection models using normal images.
-- Detect image-level anomalies and generate anomaly heatmaps.
-- Evaluate anomaly detection and localization performance.
-- Calibrate anomaly thresholds from validation data.
-- Export models to **ONNX, OpenVINO, and TensorRT** where supported.
-- Run production model selection with **Production Autopilot**.
-- Export and compile **PaDiM and PatchCore to XModel for the AMD/Xilinx Kria KV260**.
 
 ## Quick start
 
 ### 1. Install
 
-#### Option A — From Source
-
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
 cd AnomaVision
-
 uv venv --python 3.11 .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
-
-uv sync --extra cpu              # CPU
-uv sync --extra cu121            # CUDA 12.1
 ```
 
-#### Option B — From PyPI
+Activate the environment and install dependencies:
 
 ```bash
-uv pip install "anomavision[cpu]"
-
-# NVIDIA GPU
-uv pip install "anomavision[cu118]"
-uv pip install "anomavision[cu121]"
-uv pip install "anomavision[cu124]"
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+uv sync --extra cpu
 ```
 
 For other environments, see [Installation](docs/installation.md).
@@ -84,35 +57,29 @@ Use an MVTec-style structure:
 ```text
 dataset/
 └── bottle/
-    ├── ground_truth/
-    │   ├── broken_large/
-    │   ├── broken_small/
-    │   └── contamination/
-    ├── test/
-    │   ├── broken_large/
-    │   ├── broken_small/
-    │   ├── contamination/
+    ├── train/
     │   └── good/
-    └── train/
-        └── good/
+    ├── test/
+    │   ├── good/
+    │   └── defect_type/
+    └── ground_truth/
 ```
 
 Training uses only `train/good`. Test images may contain defects.
 
 ### 3. Train
 
-Create or edit `config.yml` and set `dataset_path` to your dataset.
-
-Select the algorithm in the configuration:
+Select an algorithm in `config.yml`:
 
 ```yaml
-algorithm: padim       # padim | patchcore | efficientad
+algorithm: padim  # padim | patchcore | efficientad
 ```
+
+Then run:
 
 ```bash
 anomavision train --config config.yml
 ```
-
 
 ### 4. Detect
 
@@ -126,68 +93,88 @@ anomavision detect --config config.yml --img_path ./dataset/bottle/test
 anomavision export --config config.yml --format onnx
 ```
 
-See [Export and deployment](docs/production_deployment.md) for deployment-specific options.
+See [Production deployment](docs/production_deployment.md) for deployment options.
+
+## Industrial Actions
+
+Industrial Actions allow AnomaVision to send the **existing detection result** to external systems after inference.
+
+```text
+Image or Stream
+      ↓
+AnomaVision inference
+      ↓
+Existing anomaly decision
+      ↓
+Industrial Action
+ ├── MQTT
+ ├── OPC UA
+ └── Evidence storage
+```
+
+Industrial Actions do **not** introduce a second inference or decision pipeline. AnomaVision continues to use its existing anomaly score and classification logic, while Actions consume the resulting event.
+
+### Disabled by default
+
+Industrial Actions are explicitly disabled in the default configuration:
+
+```yaml
+actions_enabled: false
+actions_fail_fast: false
+actions: []
+```
+
+This means existing AnomaVision workflows work exactly as before. No MQTT, OPC UA, or external connection is attempted unless you explicitly enable Actions.
+
+### Enable MQTT
+
+For example:
+
+```yaml
+actions_enabled: true
+actions_fail_fast: false
+
+actions:
+  - type: mqtt
+    broker: localhost
+    port: 1883
+    topic: factory/anomavision/results
+```
+
+When MQTT is unavailable and `actions_fail_fast` is `false`, AnomaVision logs the action failure and continues inference. This is useful for development and non-critical integrations.
+
+Set `actions_fail_fast: true` only when an external action is required for your deployment and an action failure should stop execution.
+
+> **Note:** Enabling MQTT requires an MQTT broker to be running and reachable at the configured address.
+
+See [`docs/config.md`](docs/config.md) for configuration details and action-specific options.
 
 ## Production Autopilot
 
-Production Autopilot compares trained anomaly models on the **same validation data**, measures their performance and latency on the target device, calibrates thresholds, and selects the best candidate for deployment.
-
-PaDiM, PatchCore, and EfficientAD can be supplied as independent candidate models. The model paths are provided directly through the CLI:
+Production Autopilot compares candidate models on the same validation data, measures performance and latency, calibrates thresholds, and selects a suitable candidate for deployment.
 
 ```bash
 anomavision autopilot \
   --config config.yml \
-  --padim_model ./distributions/padim/bottle/anomav_exp/model.pt \
-  --patchcore_model ./distributions/patchcore/bottle/anomav_exp/model.pt \
-  --efficientad_model ./distributions/efficientad/bottle/anomav_exp/model.pt \
+  --padim_model ./padim/model.pt \
+  --patchcore_model ./patchcore/model.pt \
+  --efficientad_model ./efficientad/model.pt \
   --device cpu \
-  --validation_split 1.0 \
   --target_latency_ms 50 \
   --output_dir ./production_package
 ```
 
-### How selection works
-
-For every supplied model, Autopilot:
-
-1. Evaluates the model on the validation split.
-2. Calibrates an image-level anomaly threshold.
-3. Measures inference latency on the selected device.
-4. Calculates image-level and pixel-level metrics when localization maps are available.
-5. Checks localization quality and false-positive behavior.
-6. Applies the target latency constraint when selecting the production candidate.
-7. Packages the selected model and writes a deployment manifest.
-
-If multiple models satisfy the latency target, the model with the strongest image-level AUROC is preferred, with latency used as a tie-breaker.
-
-### Output
-
-Autopilot creates a production package containing:
-
-```text
-production_package/
-├── model.pt
-├── deployment_manifest.json
-├── localization_report.md
-└── production_autopilot_report.html
-```
-
-The HTML report is a self-contained dashboard showing the candidate comparison, selected model, AUROC, calibrated threshold, latency, localization diagnostics, and deployment recommendation.
-
+The generated production package can include the selected model, deployment manifest, localization report, and an HTML comparison report.
 
 ## KV260 support
 
-AnomaVision supports a **Vitis AI workflow for PaDiM and PatchCore on the AMD/Xilinx Kria KV260**.
+AnomaVision supports a Vitis AI workflow for PaDiM and PatchCore on the AMD/Xilinx Kria KV260:
 
 ```text
 PyTorch → INT8 quantization → XModel → KV260 DPU compilation
 ```
 
-Both PaDiM and PatchCore currently compile with **1 DPU subgraph** in the KV260 compiler.
-
 See the complete [KV260 XModel Guide](docs/kv260_xmodel.md).
-
-> XModel compilation has been validated in the Vitis AI environment. Final on-device KV260 validation requires the physical hardware.
 
 ## Documentation
 
@@ -197,8 +184,8 @@ See the complete [KV260 XModel Guide](docs/kv260_xmodel.md).
 | Installation | [`docs/installation.md`](docs/installation.md) |
 | CLI and configuration | [`docs/cli.md`](docs/cli.md), [`docs/config.md`](docs/config.md) |
 | Python API | [`docs/api.md`](docs/api.md) |
-| KV260 / XModel | [`docs/kv260_xmodel.md`](docs/kv260_xmodel.md) |
 | Production deployment | [`docs/production_deployment.md`](docs/production_deployment.md) |
+| KV260 / XModel | [`docs/kv260_xmodel.md`](docs/kv260_xmodel.md) |
 | Benchmarks | [`docs/benchmark.md`](docs/benchmark.md) |
 | Troubleshooting | [`docs/troubleshooting.md`](docs/troubleshooting.md) |
 | Examples | [`examples/README.md`](examples/README.md) |
@@ -214,7 +201,10 @@ import anomavision
 train_set = anomavision.AnodetDataset("./dataset/bottle/train/good")
 train_loader = DataLoader(train_set, batch_size=16, shuffle=False)
 
-model = anomavision.Padim(backbone="resnet18", device=torch.device("cpu"))
+model = anomavision.Padim(
+    backbone="resnet18",
+    device=torch.device("cpu"),
+)
 model.fit(train_loader)
 
 batch = next(iter(train_loader))
@@ -224,10 +214,10 @@ if isinstance(batch, (tuple, list)):
 scores, maps = model.predict(batch)
 ```
 
+## Questions and contributions
+
+Found a problem or have an idea? Feel free to open an issue or contribute to the project. AnomaVision welcomes contributions around industrial computer vision, edge deployment, data pipelines, integrations, and anomaly detection.
+
 ## License
 
 AnomaVision is released under the **MIT License**. See [`LICENSE`](LICENSE).
-
-## Questions and contributions
-
-Found a problem or have an idea? Feel free to open an issue or contribute to the project.
