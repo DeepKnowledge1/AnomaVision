@@ -26,7 +26,7 @@ AnomaVision is an open-source computer vision toolkit for detecting **defects an
 - Run from files, cameras, video, MQTT, TCP, and other streaming sources.
 - Export to **ONNX, OpenVINO, and TensorRT** where supported.
 - Deploy PaDiM and PatchCore on the **AMD/Xilinx Kria KV260**.
-- Connect detection results to industrial systems through optional **Industrial Actions**.
+- Optionally send detection results to industrial systems through **Industrial Actions**.
 
 **New here?** Start with the [five-minute quickstart](docs/quickstart.md).
 
@@ -97,26 +97,24 @@ See [Production deployment](docs/production_deployment.md) for deployment option
 
 ## Industrial Actions
 
-Industrial Actions allow AnomaVision to send the **existing detection result** to external systems after inference.
+Industrial Actions connect AnomaVision's **existing inference result** to external systems. They are an optional output layer; they do not replace or duplicate the anomaly detection pipeline.
 
 ```text
-Image or Stream
-      ↓
-AnomaVision inference
-      ↓
-Existing anomaly decision
-      ↓
-Industrial Action
- ├── MQTT
- ├── OPC UA
- └── Evidence storage
+Image / Camera / Stream
+          ↓
+   AnomaVision inference
+          ↓
+ Existing anomaly decision
+          ↓
+    Industrial Actions
+      ├── MQTT
+      ├── OPC UA
+      └── Evidence
 ```
-
-Industrial Actions do **not** introduce a second inference or decision pipeline. AnomaVision continues to use its existing anomaly score and classification logic, while Actions consume the resulting event.
 
 ### Disabled by default
 
-Industrial Actions are explicitly disabled in the default configuration:
+Industrial Actions are disabled unless explicitly enabled in `config.yml`:
 
 ```yaml
 actions_enabled: false
@@ -124,11 +122,9 @@ actions_fail_fast: false
 actions: []
 ```
 
-This means existing AnomaVision workflows work exactly as before. No MQTT, OPC UA, or external connection is attempted unless you explicitly enable Actions.
+With this configuration, AnomaVision does not attempt any MQTT, OPC UA, or other external connection. Existing users can therefore upgrade without changing their normal detection workflow.
 
 ### Enable MQTT
-
-For example:
 
 ```yaml
 actions_enabled: true
@@ -141,13 +137,19 @@ actions:
     topic: factory/anomavision/results
 ```
 
-When MQTT is unavailable and `actions_fail_fast` is `false`, AnomaVision logs the action failure and continues inference. This is useful for development and non-critical integrations.
+The MQTT broker must be running and reachable at the configured address.
 
-Set `actions_fail_fast: true` only when an external action is required for your deployment and an action failure should stop execution.
+By default, an unavailable external action does **not** stop image inference. Set `actions_fail_fast: true` when an external system is mandatory and an action failure should stop the process.
 
-> **Note:** Enabling MQTT requires an MQTT broker to be running and reachable at the configured address.
+### Evidence storage
 
-See [`docs/config.md`](docs/config.md) for configuration details and action-specific options.
+Evidence actions can save inspection results for later review, debugging, and dataset improvement. Configure the output directory in `config.yml`.
+
+### OPC UA
+
+OPC UA can be used to publish inspection results to industrial automation systems. See the configuration guide for the required endpoint and node settings.
+
+For all available action settings and examples, see [Industrial Actions configuration](docs/config.md).
 
 ## Production Autopilot
 
