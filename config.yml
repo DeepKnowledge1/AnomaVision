@@ -8,7 +8,7 @@ crop_size:
 normalize: true
 no_normalize: false
 norm_mean: [0.485, 0.456, 0.406]
-norm_std:  [0.229, 0.224, 0.225]
+norm_std: [0.229, 0.224, 0.225]
 
 # =========================
 # Model / training
@@ -29,9 +29,6 @@ output_model: "model.pt"
 batch_size: 2
 device: "auto"
 
-# =========================
-# Lightweight EfficientAD
-# =========================
 efficientad_epochs: 5
 efficientad_learning_rate: 0.001
 efficientad_threshold_percentile: 99.5
@@ -86,13 +83,17 @@ overwrite: false
 # =========================
 # Industrial Actions / PLC Integration
 # =========================
-# Actions are opt-in. With null, AnomaVision runs normally with no external outputs.
-# When actions are enabled, unavailable integrations do NOT stop inference by default.
-# Set actions_fail_fast: true when an industrial integration must be available.
-actions: null
+# Explicitly disabled by default. Normal AnomaVision inference never connects
+# to MQTT, OPC UA, or other external systems unless this is set to true.
+actions_enabled: false
+
+# If true, a configured action failure stops inference. Default is false.
 actions_fail_fast: false
 
-# Example MQTT:
+# Configure actions here. They are ignored while actions_enabled is false.
+actions: []
+
+# Example MQTT action:
 # actions:
 #   - type: mqtt
 #     broker: "localhost"
@@ -102,23 +103,22 @@ actions_fail_fast: false
 #     keepalive: 60
 #     qos: 1
 #     retain: false
-#     connect_timeout: 5.0
-#
-# Example OPC UA:
-# actions:
-#   - type: opcua
-#     endpoint: "opc.tcp://192.168.1.100:4840"
-#     decision_node: "ns=2;s=AnomaVision.Decision"
-#     score_node: "ns=2;s=AnomaVision.AnomalyScore"
-#     timeout: 5.0
-#
-# Example evidence:
+
+# Example evidence action:
 # actions:
 #   - type: evidence
 #     directory: "./evidence"
 #     save_pass: false
 #     save_fail: true
 #     save_unknown: true
+
+# Example OPC UA action:
+# actions:
+#   - type: opcua
+#     endpoint: "opc.tcp://192.168.1.100:4840"
+#     decision_node: "ns=2;s=AnomaVision.Decision"
+#     score_node: "ns=2;s=AnomaVision.AnomalyScore"
+#     timeout: 5.0
 
 # =========================
 # Evaluation (eval)
