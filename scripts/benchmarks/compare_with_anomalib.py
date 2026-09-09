@@ -21,8 +21,21 @@ Important fairness note:
     includes framework/training-loop overhead and must not be presented as
     pure algorithm execution time.
 
+Anomalib source:
+    The benchmark uses a local Anomalib clone located next to AnomaVision,
+    for example::
+
+        D:\\Projects\\
+        ├── AnomaVision\\
+        └── anomalib\\
+
+    Both ``anomalib\\src`` and a flat ``anomalib\\anomalib`` layout are
+    supported. Anomalib itself is NOT installed from PyPI by this script.
+    Its runtime dependencies, such as Lightning, must still be installed in
+    the Python environment used to run the benchmark.
+
 Requirements:
-    pip install anomalib torch torchvision numpy pandas matplotlib scikit-learn psutil
+    torch torchvision numpy pandas scikit-learn psutil tabulate lightning
 
 Examples:
     python scripts/benchmarks/compare_with_anomalib.py \
@@ -40,6 +53,7 @@ import inspect
 import json
 import platform
 import random
+import sys
 import time
 import warnings
 from dataclasses import asdict, dataclass, field
@@ -55,6 +69,42 @@ from tabulate import tabulate
 from torch.utils.data import DataLoader
 
 warnings.filterwarnings("ignore")
+
+
+# -----------------------------------------------------------------------------
+# Local Anomalib source
+# -----------------------------------------------------------------------------
+# Do not install Anomalib as a package just to run this benchmark. Prefer the
+# sibling source checkout so the comparison is against the exact code being
+# inspected/modified locally.
+ANOMAVISION_ROOT = Path(__file__).resolve().parents[2]
+ANOMALIB_ROOT = ANOMAVISION_ROOT.parent / "anomalib"
+
+
+def add_local_anomalib_to_path() -> Path:
+    """Add the sibling Anomalib source checkout to ``sys.path``.
+
+    Supports both the modern ``anomalib/src/anomalib`` layout and a flat
+    ``anomalib/anomalib`` layout. The returned path is the directory that
+    should be placed on ``sys.path``.
+    """
+    candidates = [ANOMALIB_ROOT / "src", ANOMALIB_ROOT]
+
+    for candidate in candidates:
+        package_dir = candidate / "anomalib"
+        if package_dir.is_dir():
+            candidate_str = str(candidate.resolve())
+            if candidate_str not in sys.path:
+                sys.path.insert(0, candidate_str)
+            return candidate.resolve()
+
+    raise ModuleNotFoundError(
+        "Local Anomalib clone was not found. Expected one of:\n"
+        f"  {ANOMALIB_ROOT / 'src' / 'anomalib'}\n"
+        f"  {ANOMALIB_ROOT / 'anomalib'}\n"
+        "The benchmark intentionally does not install Anomalib from PyPI."
+    )
+
 
 # -----------------------------------------------------------------------------
 # One benchmark contract. Do not change one side independently.
@@ -368,6 +418,21 @@ class BenchmarkRunner:
         print("\n" + "=" * 70)
         print("ANOMALIB PaDiM")
         print("=" * 70)
+
+        # Use the sibling source checkout, not a pip-installed Anomalib.
+        add_local_anomalib_to_path()
+
+        try:
+            import lightning  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError(
+                "The local Anomalib clone was found, but its Lightning runtime "
+                "dependency is missing. Install the dependency in this venv "
+                "with:\n\n"
+                "    python -m pip install lightning\n\n"
+                "Do NOT install Anomalib from PyPI for this benchmark."
+            ) from exc
+
         from anomalib.engine import Engine
         from anomalib.models import Padim as AnomalibPadim
 
@@ -486,6 +551,7 @@ class BenchmarkRunner:
                 "accuracy_metric": "sklearn.metrics.roc_auc_score on raw outputs",
                 "training_time_definition": "end-to-end training including framework overhead",
                 "model_size_definition": "serialized model.state_dict() only",
+                "anomalib_source": str(ANOMALIB_ROOT.resolve()),
             },
             "results": {name: asdict(metrics) for name, metrics in results.items()},
         }
@@ -508,64 +574,24 @@ def print_metrics(metrics: ModelMetrics) -> None:
     print(f"  Batch-1 P95        : {metrics.p95_latency_ms:.2f} ms")
     print(f"  Batch-1 throughput : {metrics.throughput_fps:.2f} FPS")
     print(f"  State dict size    : {metrics.state_dict_size_mb:.2f} MB")
-    print(f"  Measured memory    : {metrics.inference_memory_mb:.2f} MB")
-
-
-def generate_summary_report(all_results: Dict[str, Dict[str, ModelMetrics]]) -> None:
-    """Create class-by-class CSV and aggregate means without inventing a winner score."""
-    rows = []
-    for class_name, results in all_results.items():
-        if not results:
-            continue
-        av, ab = results["anomavision"], results["anomalib"]
-        rows.append({
-            "class": class_name,
-            "anomavision_image_auroc": av.image_auroc,
-            "anomalib_image_auroc": ab.image_auroc,
-            "anomavision_pixel_auroc": av.pixel_auroc,
-            "anomalib_pixel_auroc": ab.pixel_auroc,
-            "anomavision_latency_ms": av.latency_ms,
-            "anomalib_latency_ms": ab.latency_ms,
-            "anomavision_fps": av.throughput_fps,
-            "anomalib_fps": ab.throughput_fps,
-            "anomavision_state_dict_mb": av.state_dict_size_mb,
-            "anomalib_state_dict_mb": ab.state_dict_size_mb,
-            "anomavision_training_s": av.training_time_s,
-            "anomalib_training_s": ab.training_time_s,
-        })
-    if not rows:
-        return
-    output_dir = Path("benchmark_results")
-    df = pd.DataFrame(rows)
-    df.to_csv(output_dir / "summary_all_classes.csv", index=False)
-    print("\n" + "=" * 70)
-    print("ALL-CLASS MEANS")
-    print("=" * 70)
-    print(df.select_dtypes(include=[np.number]).mean().to_string())
+    print(f"  Memory             : {metrics.inference_memory_mb:.2f} MB")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fair AnomaVision vs Anomalib PaDiM benchmark")
-    parser.add_argument("--dataset_path", required=True, help="Path to the MVTec AD root")
+    parser.add_argument("--dataset_path", required=True, help="Path to MVTec AD root directory")
     parser.add_argument("--class_name", default="bottle", choices=MVTec_CLASSES)
     parser.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     parser.add_argument("--seed", type=int, default=SEED)
-    parser.add_argument("--all_classes", action="store_true")
+    parser.add_argument("--all_classes", action="store_true", help="Run all 15 MVTec classes")
     args = parser.parse_args()
 
     if args.all_classes:
-        all_results = {}
         for class_name in MVTec_CLASSES:
-            print(f"\n{'#' * 70}\n# {class_name}\n{'#' * 70}")
-            try:
-                all_results[class_name] = BenchmarkRunner(args.dataset_path, class_name, args.device, args.seed).run()
-            except Exception as exc:
-                print(f"FAILED: {class_name}: {exc}")
-                all_results[class_name] = None
-        generate_summary_report(all_results)
-        return
-
-    BenchmarkRunner(args.dataset_path, args.class_name, args.device, args.seed).run()
+            print(f"\n\n{'#' * 80}\n# {class_name.upper()}\n{'#' * 80}")
+            BenchmarkRunner(args.dataset_path, class_name, args.device, args.seed).run()
+    else:
+        BenchmarkRunner(args.dataset_path, args.class_name, args.device, args.seed).run()
 
 
 if __name__ == "__main__":
