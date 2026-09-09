@@ -143,6 +143,30 @@ def tensor_to_numpy(value: Any) -> np.ndarray:
     return np.asarray(value)
 
 
+def _get_anomalib_batch_value(batch: Any, name: str) -> Any:
+    """Read fields from Anomalib dataclass batches with compatibility fallbacks."""
+    if hasattr(batch, name):
+        return getattr(batch, name)
+
+    aliases = {
+        "image": ("image",),
+        "label": ("gt_label", "label"),
+        "mask": ("gt_mask", "mask"),
+    }
+
+    if isinstance(batch, dict):
+        for key in aliases[name]:
+            if key in batch:
+                return batch[key]
+
+    if isinstance(batch, (tuple, list)):
+        index = {"image": 0, "label": 1, "mask": 2}[name]
+        if len(batch) > index:
+            return batch[index]
+
+    return None
+
+
 def extract_anomalib_outputs(output: Any) -> Tuple[torch.Tensor, torch.Tensor]:
     """Extract image scores and anomaly maps across Anomalib API versions."""
     score = None
@@ -233,15 +257,7 @@ def environment(device: torch.device, seed: int) -> Dict[str, str]:
 
 
 class BenchmarkEngineMixin:
-    """Remove Anomalib's automatic checkpoint callback before Trainer creation.
-
-    The Anomalib Engine in this benchmark version adds ``ModelCheckpoint`` in
-    ``_setup_anomalib_callbacks()`` immediately before constructing Lightning's
-    Trainer. Lightning rejects that callback when ``enable_checkpointing=False``.
-    Removing it after Anomalib has assembled its callbacks keeps checkpoint I/O
-    out of the benchmark while preserving the normal Anomalib Engine training
-    path and its Timer/MaxSteps callbacks.
-    """
+    """Remove Anomalib's automatic checkpoint callback before Trainer creation."""
 
     def _setup_anomalib_callbacks(self) -> None:
         from lightning.pytorch.callbacks import ModelCheckpoint
@@ -422,10 +438,10 @@ class BenchmarkRunner:
 
         test_loader = datamodule.test_dataloader()
         first_batch = next(iter(test_loader))
-        if isinstance(first_batch, dict):
-            timing_batch = first_batch["image"][:TIMING_BATCH_SIZE]
-        else:
-            timing_batch = first_batch[0][:TIMING_BATCH_SIZE]
+        timing_images = _get_anomalib_batch_value(first_batch, "image")
+        if timing_images is None:
+            raise RuntimeError("Anomalib test loader did not provide an image batch.")
+        timing_batch = timing_images[:TIMING_BATCH_SIZE]
 
         def forward(batch):
             return model(batch)
@@ -436,16 +452,12 @@ class BenchmarkRunner:
         model.eval()
         with torch.inference_mode():
             for batch in test_loader:
-                if isinstance(batch, dict):
-                    images = batch["image"].to(self.device)
-                    labels = batch.get("label", batch.get("gt_label"))
-                    batch_masks = batch.get("mask", batch.get("gt_mask"))
-                else:
-                    images = batch[0].to(self.device)
-                    labels = batch[1]
-                    batch_masks = batch[2] if len(batch) > 2 else None
-                if labels is None or batch_masks is None:
-                    raise RuntimeError("Anomalib test loader did not provide labels/masks.")
+                images = _get_anomalib_batch_value(batch, "image")
+                labels = _get_anomalib_batch_value(batch, "label")
+                batch_masks = _get_anomalib_batch_value(batch, "mask")
+                if images is None or labels is None or batch_masks is None:
+                    raise RuntimeError("Anomalib test loader did not provide image/label/mask.")
+                images = images.to(self.device)
                 scores, score_maps = extract_anomalib_outputs(model(images))
                 image_labels.append(tensor_to_numpy(labels))
                 image_scores.append(tensor_to_numpy(scores))
