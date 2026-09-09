@@ -44,9 +44,8 @@ import time
 import warnings
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import psutil
@@ -73,21 +72,8 @@ LAYER_INDICES = [0]
 N_FEATURES = 50
 
 MVTec_CLASSES = [
-    "bottle",
-    "cable",
-    "capsule",
-    "carpet",
-    "grid",
-    "hazelnut",
-    "leather",
-    "metal_nut",
-    "pill",
-    "screw",
-    "tile",
-    "toothbrush",
-    "transistor",
-    "wood",
-    "zipper",
+    "bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather",
+    "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor", "wood", "zipper",
 ]
 
 
@@ -127,7 +113,6 @@ def sync(device: torch.device) -> None:
 
 
 def tensor_to_numpy(value: Any) -> np.ndarray:
-    """Convert torch/numpy/list output to a detached numpy array."""
     if isinstance(value, torch.Tensor):
         return value.detach().float().cpu().numpy()
     return np.asarray(value)
@@ -164,16 +149,10 @@ def extract_anomalib_outputs(output: Any) -> Tuple[torch.Tensor, torch.Tensor]:
             )
 
     score = score if isinstance(score, torch.Tensor) else torch.as_tensor(score)
-    anomaly_map = (
-        anomaly_map
-        if isinstance(anomaly_map, torch.Tensor)
-        else torch.as_tensor(anomaly_map)
-    )
+    anomaly_map = anomaly_map if isinstance(anomaly_map, torch.Tensor) else torch.as_tensor(anomaly_map)
 
-    # Anomalib can return maps as Bx1xHxW; AnomaVision uses BxHxW.
     if anomaly_map.ndim == 4 and anomaly_map.shape[1] == 1:
         anomaly_map = anomaly_map[:, 0]
-
     if score.ndim > 1:
         score = score.reshape(score.shape[0], -1).amax(dim=1)
 
@@ -185,10 +164,8 @@ def extract_anomavision_outputs(output: Any) -> Tuple[torch.Tensor, torch.Tensor
     if not isinstance(output, (tuple, list)) or len(output) < 2:
         raise TypeError(f"Unexpected AnomaVision output: {type(output)!r}")
     score, anomaly_map = output[0], output[1]
-    if not isinstance(score, torch.Tensor):
-        score = torch.as_tensor(score)
-    if not isinstance(anomaly_map, torch.Tensor):
-        anomaly_map = torch.as_tensor(anomaly_map)
+    score = score if isinstance(score, torch.Tensor) else torch.as_tensor(score)
+    anomaly_map = anomaly_map if isinstance(anomaly_map, torch.Tensor) else torch.as_tensor(anomaly_map)
     if anomaly_map.ndim == 4 and anomaly_map.shape[1] == 1:
         anomaly_map = anomaly_map[:, 0]
     if score.ndim > 1:
@@ -205,11 +182,11 @@ def compute_auroc(
     """Compute both AUROCs with exactly the same sklearn code for both models."""
     image_labels = np.asarray(image_labels).reshape(-1).astype(np.uint8)
     image_scores = np.asarray(image_scores).reshape(-1)
-
-    if np.unique(image_labels).size < 2:
-        image_auroc = float("nan")
-    else:
-        image_auroc = float(roc_auc_score(image_labels, image_scores))
+    image_auroc = (
+        float(roc_auc_score(image_labels, image_scores))
+        if np.unique(image_labels).size >= 2
+        else float("nan")
+    )
 
     masks = np.asarray(masks)
     anomaly_maps = np.asarray(anomaly_maps)
@@ -217,7 +194,6 @@ def compute_auroc(
         masks = masks[:, 0]
     if anomaly_maps.ndim == 4 and anomaly_maps.shape[1] == 1:
         anomaly_maps = anomaly_maps[:, 0]
-
     if masks.shape[-2:] != anomaly_maps.shape[-2:]:
         raise ValueError(
             "Prediction/ground-truth map size mismatch: "
@@ -226,11 +202,11 @@ def compute_auroc(
 
     pixel_labels = masks.reshape(-1).astype(np.uint8)
     pixel_scores = anomaly_maps.reshape(-1)
-    if np.unique(pixel_labels).size < 2:
-        pixel_auroc = float("nan")
-    else:
-        pixel_auroc = float(roc_auc_score(pixel_labels, pixel_scores))
-
+    pixel_auroc = (
+        float(roc_auc_score(pixel_labels, pixel_scores))
+        if np.unique(pixel_labels).size >= 2
+        else float("nan")
+    )
     return image_auroc, pixel_auroc
 
 
@@ -258,19 +234,12 @@ def environment(device: torch.device, seed: int) -> Dict[str, str]:
 class BenchmarkRunner:
     """Run a controlled AnomaVision/Anomalib PaDiM comparison."""
 
-    def __init__(
-        self,
-        dataset_path: str,
-        class_name: str,
-        device: str = "auto",
-        seed: int = SEED,
-    ) -> None:
+    def __init__(self, dataset_path: str, class_name: str, device: str = "auto", seed: int = SEED) -> None:
         self.dataset_path = Path(dataset_path)
         self.class_name = class_name
         self.device = self._setup_device(device)
         self.seed = int(seed)
         set_seed(self.seed)
-
         self.output_dir = Path("benchmark_results")
         self.output_dir.mkdir(exist_ok=True)
 
@@ -295,28 +264,12 @@ class BenchmarkRunner:
 
     def _build_anomavision_datasets(self):
         from anomavision import MVTecDataset
-
-        train = MVTecDataset(
-            self.dataset_path,
-            self.class_name,
-            is_train=True,
-            resize=IMAGE_SIZE,
-            crop_size=IMAGE_SIZE,
-            normalize=NORMALIZE,
-        )
-        test = MVTecDataset(
-            self.dataset_path,
-            self.class_name,
-            is_train=False,
-            resize=IMAGE_SIZE,
-            crop_size=IMAGE_SIZE,
-            normalize=NORMALIZE,
-        )
+        train = MVTecDataset(self.dataset_path, self.class_name, is_train=True, resize=IMAGE_SIZE, crop_size=IMAGE_SIZE, normalize=NORMALIZE)
+        test = MVTecDataset(self.dataset_path, self.class_name, is_train=False, resize=IMAGE_SIZE, crop_size=IMAGE_SIZE, normalize=NORMALIZE)
         return train, test
 
     def _build_anomalib_datamodule(self):
         from anomalib.data import MVTec
-
         kwargs = {
             "root": str(self.dataset_path),
             "category": self.class_name,
@@ -330,40 +283,29 @@ class BenchmarkRunner:
         if "normalization" in params:
             try:
                 from anomalib.data import NormalizationMethod
-
                 kwargs["normalization"] = NormalizationMethod.IMAGENET
             except (ImportError, AttributeError):
                 kwargs["normalization"] = "imagenet"
         elif "normalize" in params:
             kwargs["normalize"] = True
-
-        filtered = {k: v for k, v in kwargs.items() if k in params}
-        datamodule = MVTec(**filtered)
+        datamodule = MVTec(**{k: v for k, v in kwargs.items() if k in params})
         datamodule.setup()
         return datamodule
 
     @staticmethod
     def _state_dict_size_mb(model: torch.nn.Module, path: Path) -> float:
-        """Serialize only model parameters/buffers for an implementation-neutral size."""
+        """Compare serialized model parameters/buffers, not framework checkpoints."""
         torch.save(model.state_dict(), path)
         return path.stat().st_size / 1024**2
 
-    def _benchmark_latency(
-        self,
-        model: torch.nn.Module,
-        batch: torch.Tensor,
-        call_model,
-    ) -> Tuple[float, float, float, float]:
-        """Measure batch-1 latency and throughput with identical timing rules."""
+    def _benchmark_latency(self, model: torch.nn.Module, batch: torch.Tensor, call_model) -> Tuple[float, float, float, float]:
         model.eval()
-        batch = batch.to(self.device, non_blocking=False)
+        batch = batch.to(self.device)
         self._reset_memory()
-
         with torch.inference_mode():
             for _ in range(WARMUP_ITERS):
                 call_model(batch)
             sync(self.device)
-
             times = []
             for _ in range(TIMING_ITERS):
                 sync(self.device)
@@ -371,55 +313,31 @@ class BenchmarkRunner:
                 call_model(batch)
                 sync(self.device)
                 times.append(time.perf_counter() - start)
-
         times = np.asarray(times, dtype=np.float64)
-        mean_ms = float(times.mean() * 1000)
-        p95_ms = float(np.percentile(times, 95) * 1000)
-        fps = float(1.0 / times.mean())
-        memory = float(self._memory_now_mb())
-        return mean_ms, p95_ms, fps, memory
+        return (
+            float(times.mean() * 1000),
+            float(np.percentile(times, 95) * 1000),
+            float(1.0 / times.mean()),
+            float(self._memory_now_mb()),
+        )
 
     def benchmark_anomavision(self) -> ModelMetrics:
         print("\n" + "=" * 70)
         print("ANOMAVISION PaDiM")
         print("=" * 70)
-
         from anomavision import Padim
 
         set_seed(self.seed)
         train_dataset, test_dataset = self._build_anomavision_datasets()
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=BATCH_SIZE,
-            shuffle=False,
-            num_workers=0,
-            pin_memory=False,
-        )
-        test_loader = DataLoader(
-            test_dataset,
-            batch_size=BATCH_SIZE,
-            shuffle=False,
-            num_workers=0,
-            pin_memory=False,
-        )
+        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, pin_memory=False)
+        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, pin_memory=False)
 
-        metrics = ModelMetrics(
-            name="AnomaVision PaDiM",
-            device=str(self.device),
-            environment=environment(self.device, self.seed),
-        )
-
+        metrics = ModelMetrics(name="AnomaVision PaDiM", device=str(self.device), environment=environment(self.device, self.seed))
         print(f"Train: {len(train_dataset)} | Test: {len(test_dataset)}")
         print("Configuration: ResNet18 / layer1 / 50 features / 224x224 / ImageNet")
 
         self._reset_memory()
-        model = Padim(
-            backbone=BACKBONE,
-            device=self.device,
-            feat_dim=N_FEATURES,
-            layer_indices=LAYER_INDICES,
-        )
-
+        model = Padim(backbone=BACKBONE, device=self.device, feat_dim=N_FEATURES, layer_indices=LAYER_INDICES)
         start = time.perf_counter()
         model.fit(train_loader)
         sync(self.device)
@@ -429,31 +347,20 @@ class BenchmarkRunner:
         state_path = self.output_dir / f"anomavision_{self.class_name}_state_dict.pt"
         metrics.state_dict_size_mb = self._state_dict_size_mb(model, state_path)
 
-        # Use a real preprocessed test batch for both speed measurements.
         timing_batch = next(iter(test_loader))[0][:TIMING_BATCH_SIZE]
-        metrics.latency_ms, metrics.p95_latency_ms, metrics.throughput_fps, metrics.inference_memory_mb = (
-            self._benchmark_latency(model, timing_batch, model.predict)
-        )
+        metrics.latency_ms, metrics.p95_latency_ms, metrics.throughput_fps, metrics.inference_memory_mb = self._benchmark_latency(model, timing_batch, model.predict)
 
         image_labels, image_scores, masks, maps = [], [], [], []
         model.eval()
         with torch.inference_mode():
             for batch, _images, labels, batch_masks in test_loader:
-                scores, score_maps = extract_anomavision_outputs(
-                    model.predict(batch.to(self.device))
-                )
+                scores, score_maps = extract_anomavision_outputs(model.predict(batch.to(self.device)))
                 image_labels.append(tensor_to_numpy(labels))
                 image_scores.append(tensor_to_numpy(scores))
                 masks.append(tensor_to_numpy(batch_masks))
                 maps.append(tensor_to_numpy(score_maps))
 
-        metrics.image_auroc, metrics.pixel_auroc = compute_auroc(
-            np.concatenate(image_labels),
-            np.concatenate(image_scores),
-            np.concatenate(masks),
-            np.concatenate(maps),
-        )
-
+        metrics.image_auroc, metrics.pixel_auroc = compute_auroc(np.concatenate(image_labels), np.concatenate(image_scores), np.concatenate(masks), np.concatenate(maps))
         print_metrics(metrics)
         return metrics
 
@@ -461,17 +368,12 @@ class BenchmarkRunner:
         print("\n" + "=" * 70)
         print("ANOMALIB PaDiM")
         print("=" * 70)
-
         from anomalib.engine import Engine
         from anomalib.models import Padim as AnomalibPadim
 
         set_seed(self.seed)
         datamodule = self._build_anomalib_datamodule()
-        metrics = ModelMetrics(
-            name="Anomalib PaDiM",
-            device=str(self.device),
-            environment=environment(self.device, self.seed),
-        )
+        metrics = ModelMetrics(name="Anomalib PaDiM", device=str(self.device), environment=environment(self.device, self.seed))
 
         train_ds = datamodule.train_dataloader().dataset
         test_ds = datamodule.test_dataloader().dataset
@@ -479,25 +381,11 @@ class BenchmarkRunner:
         print("Configuration: ResNet18 / layer1 / 50 features / 224x224 / ImageNet")
 
         self._reset_memory()
-        model = AnomalibPadim(
-            backbone=BACKBONE,
-            layers=LAYERS,
-            pre_trained=True,
-            n_features=N_FEATURES,
-        )
-
+        model = AnomalibPadim(backbone=BACKBONE, layers=LAYERS, pre_trained=True, n_features=N_FEATURES)
         accelerator = "gpu" if self.device.type == "cuda" else "cpu"
-        engine = Engine(
-            max_epochs=1,
-            accelerator=accelerator,
-            devices=1,
-            logger=False,
-            enable_progress_bar=False,
-            enable_checkpointing=False,
-        )
+        engine = Engine(max_epochs=1, accelerator=accelerator, devices=1, logger=False, enable_progress_bar=False, enable_checkpointing=False)
 
-        # This is intentionally end-to-end Engine time, not an attempt to hide
-        # framework overhead. The report labels it accordingly.
+        # Intentionally end-to-end: includes Anomalib Engine/training-loop overhead.
         start = time.perf_counter()
         engine.fit(model=model, datamodule=datamodule)
         sync(self.device)
@@ -508,16 +396,16 @@ class BenchmarkRunner:
         metrics.state_dict_size_mb = self._state_dict_size_mb(model, state_path)
 
         test_loader = datamodule.test_dataloader()
-        timing_batch = next(iter(test_loader))["image"][:TIMING_BATCH_SIZE] if isinstance(
-            next(iter(test_loader)), dict
-        ) else next(iter(test_loader))[0][:TIMING_BATCH_SIZE]
+        first_batch = next(iter(test_loader))
+        if isinstance(first_batch, dict):
+            timing_batch = first_batch["image"][:TIMING_BATCH_SIZE]
+        else:
+            timing_batch = first_batch[0][:TIMING_BATCH_SIZE]
 
         def forward(batch):
             return model(batch)
 
-        metrics.latency_ms, metrics.p95_latency_ms, metrics.throughput_fps, metrics.inference_memory_mb = (
-            self._benchmark_latency(model, timing_batch, forward)
-        )
+        metrics.latency_ms, metrics.p95_latency_ms, metrics.throughput_fps, metrics.inference_memory_mb = self._benchmark_latency(model, timing_batch, forward)
 
         image_labels, image_scores, masks, maps = [], [], [], []
         model.eval()
@@ -532,8 +420,8 @@ class BenchmarkRunner:
                     labels = batch[1]
                     batch_masks = batch[2] if len(batch) > 2 else None
 
-                if batch_masks is None:
-                    raise RuntimeError("Anomalib test loader did not provide ground-truth masks.")
+                if labels is None or batch_masks is None:
+                    raise RuntimeError("Anomalib test loader did not provide labels/masks.")
 
                 scores, score_maps = extract_anomalib_outputs(model(images))
                 image_labels.append(tensor_to_numpy(labels))
@@ -541,18 +429,11 @@ class BenchmarkRunner:
                 masks.append(tensor_to_numpy(batch_masks))
                 maps.append(tensor_to_numpy(score_maps))
 
-        metrics.image_auroc, metrics.pixel_auroc = compute_auroc(
-            np.concatenate(image_labels),
-            np.concatenate(image_scores),
-            np.concatenate(masks),
-            np.concatenate(maps),
-        )
-
+        metrics.image_auroc, metrics.pixel_auroc = compute_auroc(np.concatenate(image_labels), np.concatenate(image_scores), np.concatenate(masks), np.concatenate(maps))
         print_metrics(metrics)
         return metrics
 
     def run(self) -> Dict[str, ModelMetrics]:
-        """Run both implementations under the same benchmark contract."""
         print("\n" + "=" * 70)
         print("FAIR PaDiM COMPARISON")
         print("=" * 70)
@@ -561,20 +442,16 @@ class BenchmarkRunner:
         print(f"Device  : {self.device}")
         print("Both models: ResNet18 / layer1 / 50 features / 224x224 / ImageNet")
 
-        # Run in a fixed order, resetting RNG before each implementation.
         anomavision = self.benchmark_anomavision()
         self._reset_memory()
         set_seed(self.seed)
         anomalib = self.benchmark_anomalib()
-
         results = {"anomavision": anomavision, "anomalib": anomalib}
         self.write_report(results)
         return results
 
     def write_report(self, results: Dict[str, ModelMetrics]) -> None:
-        av = results["anomavision"]
-        ab = results["anomalib"]
-
+        av, ab = results["anomavision"], results["anomalib"]
         rows = [
             ["Image AUROC", av.image_auroc, ab.image_auroc, "higher is better"],
             ["Pixel AUROC", av.pixel_auroc, ab.pixel_auroc, "higher is better"],
@@ -585,16 +462,10 @@ class BenchmarkRunner:
             ["State dict size (MB)", av.state_dict_size_mb, ab.state_dict_size_mb, "lower is better"],
             ["Measured memory (MB)", av.inference_memory_mb, ab.inference_memory_mb, "GPU peak allocated; CPU RSS"],
         ]
-
         table = [["Metric", "AnomaVision", "Anomalib", "Interpretation"]]
         for metric, left, right, note in rows:
-            table.append([
-                metric,
-                f"{left:.4f}" if "AUROC" in metric else f"{left:.2f}",
-                f"{right:.4f}" if "AUROC" in metric else f"{right:.2f}",
-                note,
-            ])
-
+            fmt = ".4f" if "AUROC" in metric else ".2f"
+            table.append([metric, format(left, fmt), format(right, fmt), note])
         print("\n" + tabulate(table, headers="firstrow", tablefmt="grid"))
 
         report = {
@@ -618,18 +489,12 @@ class BenchmarkRunner:
             },
             "results": {name: asdict(metrics) for name, metrics in results.items()},
         }
-
         json_path = self.output_dir / f"comparison_results_{self.class_name}.json"
-        json_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
-
         txt_path = self.output_dir / f"comparison_report_{self.class_name}.txt"
-        txt_path.write_text(tabulate(table, headers="firstrow", tablefmt="grid"), encoding="utf-8")
-
         csv_path = self.output_dir / f"comparison_{self.class_name}.csv"
-        pd.DataFrame(rows, columns=["metric", "anomavision", "anomalib", "interpretation"]).to_csv(
-            csv_path, index=False
-        )
-
+        json_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        txt_path.write_text(tabulate(table, headers="firstrow", tablefmt="grid"), encoding="utf-8")
+        pd.DataFrame(rows, columns=["metric", "anomavision", "anomalib", "interpretation"]).to_csv(csv_path, index=False)
         print(f"\nSaved: {json_path}")
         print(f"Saved: {txt_path}")
         print(f"Saved: {csv_path}")
@@ -647,49 +512,40 @@ def print_metrics(metrics: ModelMetrics) -> None:
 
 
 def generate_summary_report(all_results: Dict[str, Dict[str, ModelMetrics]]) -> None:
-    """Create a class-by-class CSV and concise aggregate summary."""
-    output_dir = Path("benchmark_results")
+    """Create class-by-class CSV and aggregate means without inventing a winner score."""
     rows = []
     for class_name, results in all_results.items():
         if not results:
             continue
-        av = results["anomavision"]
-        ab = results["anomalib"]
-        rows.append(
-            {
-                "class": class_name,
-                "anomavision_image_auroc": av.image_auroc,
-                "anomalib_image_auroc": ab.image_auroc,
-                "anomavision_pixel_auroc": av.pixel_auroc,
-                "anomalib_pixel_auroc": ab.pixel_auroc,
-                "anomavision_latency_ms": av.latency_ms,
-                "anomalib_latency_ms": ab.latency_ms,
-                "anomavision_fps": av.throughput_fps,
-                "anomalib_fps": ab.throughput_fps,
-                "anomavision_state_dict_mb": av.state_dict_size_mb,
-                "anomalib_state_dict_mb": ab.state_dict_size_mb,
-                "anomavision_training_s": av.training_time_s,
-                "anomalib_training_s": ab.training_time_s,
-            }
-        )
-
+        av, ab = results["anomavision"], results["anomalib"]
+        rows.append({
+            "class": class_name,
+            "anomavision_image_auroc": av.image_auroc,
+            "anomalib_image_auroc": ab.image_auroc,
+            "anomavision_pixel_auroc": av.pixel_auroc,
+            "anomalib_pixel_auroc": ab.pixel_auroc,
+            "anomavision_latency_ms": av.latency_ms,
+            "anomalib_latency_ms": ab.latency_ms,
+            "anomavision_fps": av.throughput_fps,
+            "anomalib_fps": ab.throughput_fps,
+            "anomavision_state_dict_mb": av.state_dict_size_mb,
+            "anomalib_state_dict_mb": ab.state_dict_size_mb,
+            "anomavision_training_s": av.training_time_s,
+            "anomalib_training_s": ab.training_time_s,
+        })
     if not rows:
         return
-
+    output_dir = Path("benchmark_results")
     df = pd.DataFrame(rows)
     df.to_csv(output_dir / "summary_all_classes.csv", index=False)
-
-    numeric = df.select_dtypes(include=[np.number])
     print("\n" + "=" * 70)
-    print("ALL-CLASS SUMMARY")
+    print("ALL-CLASS MEANS")
     print("=" * 70)
-    print(numeric.mean().to_string())
+    print(df.select_dtypes(include=[np.number]).mean().to_string())
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Fair AnomaVision vs Anomalib PaDiM benchmark"
-    )
+    parser = argparse.ArgumentParser(description="Fair AnomaVision vs Anomalib PaDiM benchmark")
     parser.add_argument("--dataset_path", required=True, help="Path to the MVTec AD root")
     parser.add_argument("--class_name", default="bottle", choices=MVTec_CLASSES)
     parser.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
@@ -702,18 +558,14 @@ def main() -> None:
         for class_name in MVTec_CLASSES:
             print(f"\n{'#' * 70}\n# {class_name}\n{'#' * 70}")
             try:
-                runner = BenchmarkRunner(
-                    args.dataset_path, class_name, args.device, args.seed
-                )
-                all_results[class_name] = runner.run()
+                all_results[class_name] = BenchmarkRunner(args.dataset_path, class_name, args.device, args.seed).run()
             except Exception as exc:
                 print(f"FAILED: {class_name}: {exc}")
                 all_results[class_name] = None
         generate_summary_report(all_results)
         return
 
-    runner = BenchmarkRunner(args.dataset_path, args.class_name, args.device, args.seed)
-    runner.run()
+    BenchmarkRunner(args.dataset_path, args.class_name, args.device, args.seed).run()
 
 
 if __name__ == "__main__":
