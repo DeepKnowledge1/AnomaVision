@@ -36,13 +36,6 @@ Anomalib source:
 
 Requirements:
     torch torchvision numpy pandas scikit-learn psutil tabulate lightning
-
-Examples:
-    python scripts/benchmarks/compare_with_anomalib.py \
-        --dataset_path /path/to/mvtec --class_name bottle
-
-    python scripts/benchmarks/compare_with_anomalib.py \
-        --dataset_path /path/to/mvtec --all_classes --device cuda
 """
 
 from __future__ import annotations
@@ -70,26 +63,13 @@ from torch.utils.data import DataLoader
 
 warnings.filterwarnings("ignore")
 
-
-# -----------------------------------------------------------------------------
-# Local Anomalib source
-# -----------------------------------------------------------------------------
-# Do not install Anomalib as a package just to run this benchmark. Prefer the
-# sibling source checkout so the comparison is against the exact code being
-# inspected/modified locally.
 ANOMAVISION_ROOT = Path(__file__).resolve().parents[2]
 ANOMALIB_ROOT = ANOMAVISION_ROOT.parent / "anomalib"
 
 
 def add_local_anomalib_to_path() -> Path:
-    """Add the sibling Anomalib source checkout to ``sys.path``.
-
-    Supports both the modern ``anomalib/src/anomalib`` layout and a flat
-    ``anomalib/anomalib`` layout. The returned path is the directory that
-    should be placed on ``sys.path``.
-    """
+    """Add the sibling Anomalib source checkout to ``sys.path``."""
     candidates = [ANOMALIB_ROOT / "src", ANOMALIB_ROOT]
-
     for candidate in candidates:
         package_dir = candidate / "anomalib"
         if package_dir.is_dir():
@@ -97,7 +77,6 @@ def add_local_anomalib_to_path() -> Path:
             if candidate_str not in sys.path:
                 sys.path.insert(0, candidate_str)
             return candidate.resolve()
-
     raise ModuleNotFoundError(
         "Local Anomalib clone was not found. Expected one of:\n"
         f"  {ANOMALIB_ROOT / 'src' / 'anomalib'}\n"
@@ -106,9 +85,6 @@ def add_local_anomalib_to_path() -> Path:
     )
 
 
-# -----------------------------------------------------------------------------
-# One benchmark contract. Do not change one side independently.
-# -----------------------------------------------------------------------------
 IMAGE_SIZE = (224, 224)
 NORMALIZE = True
 BATCH_SIZE = 8
@@ -147,7 +123,6 @@ class ModelMetrics:
 
 
 def set_seed(seed: int = SEED) -> None:
-    """Set all relevant RNGs used by the benchmark."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -172,7 +147,6 @@ def extract_anomalib_outputs(output: Any) -> Tuple[torch.Tensor, torch.Tensor]:
     """Extract image scores and anomaly maps across Anomalib API versions."""
     score = None
     anomaly_map = None
-
     for key in ("pred_score", "anomaly_score", "image_score"):
         if hasattr(output, key):
             score = getattr(output, key)
@@ -180,7 +154,6 @@ def extract_anomalib_outputs(output: Any) -> Tuple[torch.Tensor, torch.Tensor]:
         if isinstance(output, dict) and key in output:
             score = output[key]
             break
-
     for key in ("anomaly_map", "pred_mask", "score_map"):
         if hasattr(output, key):
             anomaly_map = getattr(output, key)
@@ -188,7 +161,6 @@ def extract_anomalib_outputs(output: Any) -> Tuple[torch.Tensor, torch.Tensor]:
         if isinstance(output, dict) and key in output:
             anomaly_map = output[key]
             break
-
     if score is None or anomaly_map is None:
         if isinstance(output, (tuple, list)) and len(output) >= 2:
             score, anomaly_map = output[0], output[1]
@@ -197,15 +169,12 @@ def extract_anomalib_outputs(output: Any) -> Tuple[torch.Tensor, torch.Tensor]:
                 "Could not extract Anomalib image score and anomaly map from "
                 f"output type {type(output)!r}."
             )
-
     score = score if isinstance(score, torch.Tensor) else torch.as_tensor(score)
     anomaly_map = anomaly_map if isinstance(anomaly_map, torch.Tensor) else torch.as_tensor(anomaly_map)
-
     if anomaly_map.ndim == 4 and anomaly_map.shape[1] == 1:
         anomaly_map = anomaly_map[:, 0]
     if score.ndim > 1:
         score = score.reshape(score.shape[0], -1).amax(dim=1)
-
     return score, anomaly_map
 
 
@@ -223,21 +192,11 @@ def extract_anomavision_outputs(output: Any) -> Tuple[torch.Tensor, torch.Tensor
     return score, anomaly_map
 
 
-def compute_auroc(
-    image_labels: np.ndarray,
-    image_scores: np.ndarray,
-    masks: np.ndarray,
-    anomaly_maps: np.ndarray,
-) -> Tuple[float, float]:
+def compute_auroc(image_labels: np.ndarray, image_scores: np.ndarray, masks: np.ndarray, anomaly_maps: np.ndarray) -> Tuple[float, float]:
     """Compute both AUROCs with exactly the same sklearn code for both models."""
     image_labels = np.asarray(image_labels).reshape(-1).astype(np.uint8)
     image_scores = np.asarray(image_scores).reshape(-1)
-    image_auroc = (
-        float(roc_auc_score(image_labels, image_scores))
-        if np.unique(image_labels).size >= 2
-        else float("nan")
-    )
-
+    image_auroc = float(roc_auc_score(image_labels, image_scores)) if np.unique(image_labels).size >= 2 else float("nan")
     masks = np.asarray(masks)
     anomaly_maps = np.asarray(anomaly_maps)
     if masks.ndim == 4 and masks.shape[1] == 1:
@@ -245,18 +204,10 @@ def compute_auroc(
     if anomaly_maps.ndim == 4 and anomaly_maps.shape[1] == 1:
         anomaly_maps = anomaly_maps[:, 0]
     if masks.shape[-2:] != anomaly_maps.shape[-2:]:
-        raise ValueError(
-            "Prediction/ground-truth map size mismatch: "
-            f"pred={anomaly_maps.shape}, gt={masks.shape}"
-        )
-
+        raise ValueError(f"Prediction/ground-truth map size mismatch: pred={anomaly_maps.shape}, gt={masks.shape}")
     pixel_labels = masks.reshape(-1).astype(np.uint8)
     pixel_scores = anomaly_maps.reshape(-1)
-    pixel_auroc = (
-        float(roc_auc_score(pixel_labels, pixel_scores))
-        if np.unique(pixel_labels).size >= 2
-        else float("nan")
-    )
+    pixel_auroc = float(roc_auc_score(pixel_labels, pixel_scores)) if np.unique(pixel_labels).size >= 2 else float("nan")
     return image_auroc, pixel_auroc
 
 
@@ -279,6 +230,28 @@ def environment(device: torch.device, seed: int) -> Dict[str, str]:
         "warmup_iters": str(WARMUP_ITERS),
         "timing_iters": str(TIMING_ITERS),
     }
+
+
+class BenchmarkEngineMixin:
+    """Remove Anomalib's automatic checkpoint callback before Trainer creation.
+
+    The Anomalib Engine in this benchmark version adds ``ModelCheckpoint`` in
+    ``_setup_anomalib_callbacks()`` immediately before constructing Lightning's
+    Trainer. Lightning rejects that callback when ``enable_checkpointing=False``.
+    Removing it after Anomalib has assembled its callbacks keeps checkpoint I/O
+    out of the benchmark while preserving the normal Anomalib Engine training
+    path and its Timer/MaxSteps callbacks.
+    """
+
+    def _setup_anomalib_callbacks(self) -> None:
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        super()._setup_anomalib_callbacks()
+        self._cache.args["callbacks"] = [
+            callback
+            for callback in self._cache.args["callbacks"]
+            if not isinstance(callback, ModelCheckpoint)
+        ]
 
 
 class BenchmarkRunner:
@@ -319,26 +292,19 @@ class BenchmarkRunner:
         return train, test
 
     def _build_anomalib_datamodule(self):
-        from anomalib.data import MVTec
+        """Build the MVTec AD datamodule from the local Anomalib checkout."""
+        from anomalib.data import MVTecAD
+
         kwargs = {
             "root": str(self.dataset_path),
             "category": self.class_name,
-            "image_size": IMAGE_SIZE,
             "train_batch_size": BATCH_SIZE,
             "eval_batch_size": BATCH_SIZE,
             "num_workers": 0,
-            "pin_memory": False,
+            "seed": self.seed,
         }
-        params = inspect.signature(MVTec).parameters
-        if "normalization" in params:
-            try:
-                from anomalib.data import NormalizationMethod
-                kwargs["normalization"] = NormalizationMethod.IMAGENET
-            except (ImportError, AttributeError):
-                kwargs["normalization"] = "imagenet"
-        elif "normalize" in params:
-            kwargs["normalize"] = True
-        datamodule = MVTec(**{k: v for k, v in kwargs.items() if k in params})
+        params = inspect.signature(MVTecAD).parameters
+        datamodule = MVTecAD(**{k: v for k, v in kwargs.items() if k in params})
         datamodule.setup()
         return datamodule
 
@@ -364,12 +330,7 @@ class BenchmarkRunner:
                 sync(self.device)
                 times.append(time.perf_counter() - start)
         times = np.asarray(times, dtype=np.float64)
-        return (
-            float(times.mean() * 1000),
-            float(np.percentile(times, 95) * 1000),
-            float(1.0 / times.mean()),
-            float(self._memory_now_mb()),
-        )
+        return float(times.mean() * 1000), float(np.percentile(times, 95) * 1000), float(1.0 / times.mean()), float(self._memory_now_mb())
 
     def benchmark_anomavision(self) -> ModelMetrics:
         print("\n" + "=" * 70)
@@ -381,7 +342,6 @@ class BenchmarkRunner:
         train_dataset, test_dataset = self._build_anomavision_datasets()
         train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, pin_memory=False)
         test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, pin_memory=False)
-
         metrics = ModelMetrics(name="AnomaVision PaDiM", device=str(self.device), environment=environment(self.device, self.seed))
         print(f"Train: {len(train_dataset)} | Test: {len(test_dataset)}")
         print("Configuration: ResNet18 / layer1 / 50 features / 224x224 / ImageNet")
@@ -393,10 +353,7 @@ class BenchmarkRunner:
         sync(self.device)
         metrics.training_time_s = time.perf_counter() - start
         metrics.training_memory_mb = self._memory_now_mb()
-
-        state_path = self.output_dir / f"anomavision_{self.class_name}_state_dict.pt"
-        metrics.state_dict_size_mb = self._state_dict_size_mb(model, state_path)
-
+        metrics.state_dict_size_mb = self._state_dict_size_mb(model, self.output_dir / f"anomavision_{self.class_name}_state_dict.pt")
         timing_batch = next(iter(test_loader))[0][:TIMING_BATCH_SIZE]
         metrics.latency_ms, metrics.p95_latency_ms, metrics.throughput_fps, metrics.inference_memory_mb = self._benchmark_latency(model, timing_batch, model.predict)
 
@@ -409,7 +366,6 @@ class BenchmarkRunner:
                 image_scores.append(tensor_to_numpy(scores))
                 masks.append(tensor_to_numpy(batch_masks))
                 maps.append(tensor_to_numpy(score_maps))
-
         metrics.image_auroc, metrics.pixel_auroc = compute_auroc(np.concatenate(image_labels), np.concatenate(image_scores), np.concatenate(masks), np.concatenate(maps))
         print_metrics(metrics)
         return metrics
@@ -418,8 +374,6 @@ class BenchmarkRunner:
         print("\n" + "=" * 70)
         print("ANOMALIB PaDiM")
         print("=" * 70)
-
-        # Use the sibling source checkout, not a pip-installed Anomalib.
         add_local_anomalib_to_path()
 
         try:
@@ -427,8 +381,7 @@ class BenchmarkRunner:
         except ImportError as exc:
             raise RuntimeError(
                 "The local Anomalib clone was found, but its Lightning runtime "
-                "dependency is missing. Install the dependency in this venv "
-                "with:\n\n"
+                "dependency is missing. Install it with:\n\n"
                 "    python -m pip install lightning\n\n"
                 "Do NOT install Anomalib from PyPI for this benchmark."
             ) from exc
@@ -439,7 +392,6 @@ class BenchmarkRunner:
         set_seed(self.seed)
         datamodule = self._build_anomalib_datamodule()
         metrics = ModelMetrics(name="Anomalib PaDiM", device=str(self.device), environment=environment(self.device, self.seed))
-
         train_ds = datamodule.train_dataloader().dataset
         test_ds = datamodule.test_dataloader().dataset
         print(f"Train: {len(train_ds)} | Test: {len(test_ds)}")
@@ -448,17 +400,25 @@ class BenchmarkRunner:
         self._reset_memory()
         model = AnomalibPadim(backbone=BACKBONE, layers=LAYERS, pre_trained=True, n_features=N_FEATURES)
         accelerator = "gpu" if self.device.type == "cuda" else "cpu"
-        engine = Engine(max_epochs=1, accelerator=accelerator, devices=1, logger=False, enable_progress_bar=False, enable_checkpointing=False)
+        BenchmarkEngine = type("BenchmarkEngine", (BenchmarkEngineMixin, Engine), {})
+        engine = BenchmarkEngine(
+            max_epochs=1,
+            accelerator=accelerator,
+            devices=1,
+            logger=False,
+            enable_progress_bar=False,
+            enable_checkpointing=False,
+        )
 
         # Intentionally end-to-end: includes Anomalib Engine/training-loop overhead.
+        # The checkpoint callback is stripped immediately before Lightning Trainer creation,
+        # so no checkpoint files or checkpoint I/O are included in the timing.
         start = time.perf_counter()
         engine.fit(model=model, datamodule=datamodule)
         sync(self.device)
         metrics.training_time_s = time.perf_counter() - start
         metrics.training_memory_mb = self._memory_now_mb()
-
-        state_path = self.output_dir / f"anomalib_{self.class_name}_state_dict.pt"
-        metrics.state_dict_size_mb = self._state_dict_size_mb(model, state_path)
+        metrics.state_dict_size_mb = self._state_dict_size_mb(model, self.output_dir / f"anomalib_{self.class_name}_state_dict.pt")
 
         test_loader = datamodule.test_dataloader()
         first_batch = next(iter(test_loader))
@@ -484,10 +444,8 @@ class BenchmarkRunner:
                     images = batch[0].to(self.device)
                     labels = batch[1]
                     batch_masks = batch[2] if len(batch) > 2 else None
-
                 if labels is None or batch_masks is None:
                     raise RuntimeError("Anomalib test loader did not provide labels/masks.")
-
                 scores, score_maps = extract_anomalib_outputs(model(images))
                 image_labels.append(tensor_to_numpy(labels))
                 image_scores.append(tensor_to_numpy(scores))
@@ -506,7 +464,6 @@ class BenchmarkRunner:
         print(f"Class   : {self.class_name}")
         print(f"Device  : {self.device}")
         print("Both models: ResNet18 / layer1 / 50 features / 224x224 / ImageNet")
-
         anomavision = self.benchmark_anomavision()
         self._reset_memory()
         set_seed(self.seed)
@@ -532,7 +489,6 @@ class BenchmarkRunner:
             fmt = ".4f" if "AUROC" in metric else ".2f"
             table.append([metric, format(left, fmt), format(right, fmt), note])
         print("\n" + tabulate(table, headers="firstrow", tablefmt="grid"))
-
         report = {
             "benchmark_contract": {
                 "dataset": "MVTec AD",
@@ -552,6 +508,7 @@ class BenchmarkRunner:
                 "training_time_definition": "end-to-end training including framework overhead",
                 "model_size_definition": "serialized model.state_dict() only",
                 "anomalib_source": str(ANOMALIB_ROOT.resolve()),
+                "checkpointing": "disabled; Anomalib ModelCheckpoint callback stripped before Trainer creation",
             },
             "results": {name: asdict(metrics) for name, metrics in results.items()},
         }
@@ -585,7 +542,6 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--all_classes", action="store_true", help="Run all 15 MVTec classes")
     args = parser.parse_args()
-
     if args.all_classes:
         for class_name in MVTec_CLASSES:
             print(f"\n\n{'#' * 80}\n# {class_name.upper()}\n{'#' * 80}")
