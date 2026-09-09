@@ -2,6 +2,8 @@
 
 Simple beginner guide for quantizing **AnomaVision PatchCore** with **Vitis AI 3.5** and generating an **XModel for KV260**.
 
+> The quantization script is located at `scripts/kv260/quantize_patchcore_kv260.py`.
+
 ## 1. Activate Vitis AI
 
 ```bash
@@ -63,10 +65,10 @@ You should see images such as:
 
 ## 5. Run INT8 calibration
 
-Run:
+Run from the repository root:
 
 ```bash
-python quantize_patchcore_kv260.py \
+python scripts/kv260/quantize_patchcore_kv260.py \
   --model distributions/patchcore/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_patchcore_kv260 \
@@ -87,7 +89,7 @@ Quant config exported.
 Run:
 
 ```bash
-python quantize_patchcore_kv260.py \
+python scripts/kv260/quantize_patchcore_kv260.py \
   --model distributions/patchcore/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_patchcore_kv260 \
