@@ -145,14 +145,15 @@ def tensor_to_numpy(value: Any) -> np.ndarray:
 
 def _get_anomalib_batch_value(batch: Any, name: str) -> Any:
     """Read fields from Anomalib dataclass batches with compatibility fallbacks."""
-    if hasattr(batch, name):
-        return getattr(batch, name)
-
     aliases = {
         "image": ("image",),
         "label": ("gt_label", "label"),
         "mask": ("gt_mask", "mask"),
     }
+
+    for key in aliases[name]:
+        if hasattr(batch, key):
+            return getattr(batch, key)
 
     if isinstance(batch, dict):
         for key in aliases[name]:
