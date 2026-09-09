@@ -57,6 +57,7 @@ import numpy as np
 import pandas as pd
 import psutil
 import torch
+import torch.nn.functional as F
 from sklearn.metrics import roc_auc_score
 from tabulate import tabulate
 from torch.utils.data import DataLoader
@@ -217,19 +218,39 @@ def extract_anomavision_outputs(output: Any) -> Tuple[torch.Tensor, torch.Tensor
     return score, anomaly_map
 
 
+def _resize_maps_to_benchmark_size(maps: np.ndarray) -> np.ndarray:
+    """Normalize pixel maps to the configured 224x224 evaluation resolution."""
+    maps = np.asarray(maps)
+    if maps.ndim != 3:
+        raise ValueError(f"Expected maps with shape (N,H,W), got {maps.shape}")
+    if maps.shape[-2:] == IMAGE_SIZE:
+        return maps
+    tensor = torch.from_numpy(maps).float().unsqueeze(1)
+    resized = F.interpolate(tensor, size=IMAGE_SIZE, mode="bilinear", align_corners=False)
+    return resized[:, 0].numpy()
+
+
+def _resize_masks_to_benchmark_size(masks: np.ndarray) -> np.ndarray:
+    """Normalize ground-truth masks to the same 224x224 evaluation resolution."""
+    masks = np.asarray(masks)
+    if masks.ndim != 3:
+        raise ValueError(f"Expected masks with shape (N,H,W), got {masks.shape}")
+    if masks.shape[-2:] == IMAGE_SIZE:
+        return masks
+    tensor = torch.from_numpy(masks.astype(np.float32)).unsqueeze(1)
+    resized = F.interpolate(tensor, size=IMAGE_SIZE, mode="nearest")
+    return resized[:, 0].numpy()
+
+
 def compute_auroc(image_labels: np.ndarray, image_scores: np.ndarray, masks: np.ndarray, anomaly_maps: np.ndarray) -> Tuple[float, float]:
-    """Compute both AUROCs with exactly the same sklearn code for both models."""
+    """Compute both AUROCs at the same 224x224 pixel evaluation resolution."""
     image_labels = np.asarray(image_labels).reshape(-1).astype(np.uint8)
     image_scores = np.asarray(image_scores).reshape(-1)
     image_auroc = float(roc_auc_score(image_labels, image_scores)) if np.unique(image_labels).size >= 2 else float("nan")
-    masks = np.asarray(masks)
-    anomaly_maps = np.asarray(anomaly_maps)
-    if masks.ndim == 4 and masks.shape[1] == 1:
-        masks = masks[:, 0]
-    if anomaly_maps.ndim == 4 and anomaly_maps.shape[1] == 1:
-        anomaly_maps = anomaly_maps[:, 0]
-    if masks.shape[-2:] != anomaly_maps.shape[-2:]:
-        raise ValueError(f"Prediction/ground-truth map size mismatch: pred={anomaly_maps.shape}, gt={masks.shape}")
+
+    masks = _resize_masks_to_benchmark_size(masks)
+    anomaly_maps = _resize_maps_to_benchmark_size(anomaly_maps)
+
     pixel_labels = masks.reshape(-1).astype(np.uint8)
     pixel_scores = anomaly_maps.reshape(-1)
     pixel_auroc = float(roc_auc_score(pixel_labels, pixel_scores)) if np.unique(pixel_labels).size >= 2 else float("nan")
@@ -377,59 +398,42 @@ class BenchmarkRunner:
         image_labels, image_scores, masks, maps = [], [], [], []
         model.eval()
         with torch.inference_mode():
-            for batch, _images, labels, batch_masks in test_loader:
-                scores, score_maps = extract_anomavision_outputs(model.predict(batch.to(self.device)))
+            for batch in test_loader:
+                images, labels, gt_masks = batch
+                scores, anomaly_maps = extract_anomavision_outputs(model.predict(images.to(self.device)))
                 image_labels.append(tensor_to_numpy(labels))
                 image_scores.append(tensor_to_numpy(scores))
-                masks.append(tensor_to_numpy(batch_masks))
-                maps.append(tensor_to_numpy(score_maps))
-        metrics.image_auroc, metrics.pixel_auroc = compute_auroc(np.concatenate(image_labels), np.concatenate(image_scores), np.concatenate(masks), np.concatenate(maps))
-        print_metrics(metrics)
+                masks.append(tensor_to_numpy(gt_masks))
+                maps.append(tensor_to_numpy(anomaly_maps))
+        metrics.image_auroc, metrics.pixel_auroc = compute_auroc(
+            np.concatenate(image_labels), np.concatenate(image_scores), np.concatenate(masks), np.concatenate(maps)
+        )
+        print(f"    native: image={metrics.image_auroc:.4f} pixel={metrics.pixel_auroc:.4f} latency={metrics.latency_ms:.2f}ms")
         return metrics
 
     def benchmark_anomalib(self) -> ModelMetrics:
-        print("\n" + "=" * 70)
-        print("ANOMALIB PaDiM")
-        print("=" * 70)
         add_local_anomalib_to_path()
-
-        try:
-            import lightning  # noqa: F401
-        except ImportError as exc:
-            raise RuntimeError(
-                "The local Anomalib clone was found, but its Lightning runtime "
-                "dependency is missing. Install it with:\n\n"
-                "    python -m pip install lightning\n\n"
-                "Do NOT install Anomalib from PyPI for this benchmark."
-            ) from exc
-
         from anomalib.engine import Engine
-        from anomalib.models import Padim as AnomalibPadim
+        from anomalib.models import Padim
 
         set_seed(self.seed)
         datamodule = self._build_anomalib_datamodule()
+        train_loader = datamodule.train_dataloader()
+        test_loader = datamodule.test_dataloader()
         metrics = ModelMetrics(name="Anomalib PaDiM", device=str(self.device), environment=environment(self.device, self.seed))
-        train_ds = datamodule.train_dataloader().dataset
-        test_ds = datamodule.test_dataloader().dataset
-        print(f"Train: {len(train_ds)} | Test: {len(test_ds)}")
-        print("Configuration: ResNet18 / layer1 / 50 features / 224x224 / ImageNet")
+        print(f"Train: {len(train_loader.dataset)} | Test: {len(test_loader.dataset)}")
 
-        self._reset_memory()
-        model = AnomalibPadim(backbone=BACKBONE, layers=LAYERS, pre_trained=True, n_features=N_FEATURES)
-        accelerator = "gpu" if self.device.type == "cuda" else "cpu"
-        BenchmarkEngine = type("BenchmarkEngine", (BenchmarkEngineMixin, Engine), {})
-        engine = BenchmarkEngine(
+        model = Padim(backbone=BACKBONE, layers=LAYERS, pre_trained=True, n_features=N_FEATURES)
+        model = model.to(self.device)
+        engine_cls = type("BenchmarkEngine", (BenchmarkEngineMixin, Engine), {})
+        engine = engine_cls(
             max_epochs=1,
-            accelerator=accelerator,
+            accelerator="gpu" if self.device.type == "cuda" else "cpu",
             devices=1,
             logger=False,
             enable_progress_bar=False,
             enable_checkpointing=False,
         )
-
-        # Intentionally end-to-end: includes Anomalib Engine/training-loop overhead.
-        # The checkpoint callback is stripped immediately before Lightning Trainer creation,
-        # so no checkpoint files or checkpoint I/O are included in the timing.
         start = time.perf_counter()
         engine.fit(model=model, datamodule=datamodule)
         sync(self.device)
@@ -437,130 +441,63 @@ class BenchmarkRunner:
         metrics.training_memory_mb = self._memory_now_mb()
         metrics.state_dict_size_mb = self._state_dict_size_mb(model, self.output_dir / f"anomalib_{self.class_name}_state_dict.pt")
 
-        test_loader = datamodule.test_dataloader()
-        first_batch = next(iter(test_loader))
-        timing_images = _get_anomalib_batch_value(first_batch, "image")
-        if timing_images is None:
-            raise RuntimeError("Anomalib test loader did not provide an image batch.")
-        timing_batch = timing_images[:TIMING_BATCH_SIZE]
-
-        def forward(batch):
-            return model(batch)
-
-        metrics.latency_ms, metrics.p95_latency_ms, metrics.throughput_fps, metrics.inference_memory_mb = self._benchmark_latency(model, timing_batch, forward)
+        first = next(iter(test_loader))
+        timing_batch = _get_anomalib_batch_value(first, "image")[:TIMING_BATCH_SIZE]
+        metrics.latency_ms, metrics.p95_latency_ms, metrics.throughput_fps, metrics.inference_memory_mb = self._benchmark_latency(model, timing_batch, model)
 
         image_labels, image_scores, masks, maps = [], [], [], []
         model.eval()
         with torch.inference_mode():
             for batch in test_loader:
-                images = _get_anomalib_batch_value(batch, "image")
+                images = _get_anomalib_batch_value(batch, "image").to(self.device)
                 labels = _get_anomalib_batch_value(batch, "label")
-                batch_masks = _get_anomalib_batch_value(batch, "mask")
-                if images is None or labels is None or batch_masks is None:
-                    raise RuntimeError("Anomalib test loader did not provide image/label/mask.")
-                images = images.to(self.device)
-                scores, score_maps = extract_anomalib_outputs(model(images))
+                gt_masks = _get_anomalib_batch_value(batch, "mask")
+                output = model(images)
+                scores, anomaly_maps = extract_anomalib_outputs(output)
                 image_labels.append(tensor_to_numpy(labels))
                 image_scores.append(tensor_to_numpy(scores))
-                masks.append(tensor_to_numpy(batch_masks))
-                maps.append(tensor_to_numpy(score_maps))
-
-        metrics.image_auroc, metrics.pixel_auroc = compute_auroc(np.concatenate(image_labels), np.concatenate(image_scores), np.concatenate(masks), np.concatenate(maps))
-        print_metrics(metrics)
+                masks.append(tensor_to_numpy(gt_masks))
+                maps.append(tensor_to_numpy(anomaly_maps))
+        metrics.image_auroc, metrics.pixel_auroc = compute_auroc(
+            np.concatenate(image_labels), np.concatenate(image_scores), np.concatenate(masks), np.concatenate(maps)
+        )
+        print(f"    native: image={metrics.image_auroc:.4f} pixel={metrics.pixel_auroc:.4f} latency={metrics.latency_ms:.2f}ms")
         return metrics
 
-    def run(self) -> Dict[str, ModelMetrics]:
-        print("\n" + "=" * 70)
-        print("FAIR PaDiM COMPARISON")
-        print("=" * 70)
-        print(f"Dataset : {self.dataset_path}")
-        print(f"Class   : {self.class_name}")
-        print(f"Device  : {self.device}")
-        print("Both models: ResNet18 / layer1 / 50 features / 224x224 / ImageNet")
+    def report(self, anomavision: ModelMetrics, anomalib: ModelMetrics) -> None:
+        rows = []
+        for item in (anomavision, anomalib):
+            row = asdict(item)
+            row["environment"] = json.dumps(row["environment"], sort_keys=True)
+            rows.append(row)
+        frame = pd.DataFrame(rows)
+        stem = self.output_dir / f"padim_{self.class_name}"
+        frame.to_csv(f"{stem}.csv", index=False)
+        frame.to_json(f"{stem}.json", orient="records", indent=2)
+        with open(f"{stem}.txt", "w", encoding="utf-8") as handle:
+            handle.write(tabulate(frame, headers="keys", tablefmt="github", showindex=False))
+            handle.write("\n")
+        print("\n" + tabulate(frame, headers="keys", tablefmt="github", showindex=False))
+
+    def run(self) -> None:
+        print("\n" + "=" * 78)
+        print(f"PADIM | {self.class_name}")
+        print("=" * 78)
         anomavision = self.benchmark_anomavision()
-        self._reset_memory()
+        gc.collect()
         set_seed(self.seed)
         anomalib = self.benchmark_anomalib()
-        results = {"anomavision": anomavision, "anomalib": anomalib}
-        self.write_report(results)
-        return results
-
-    def write_report(self, results: Dict[str, ModelMetrics]) -> None:
-        av, ab = results["anomavision"], results["anomalib"]
-        rows = [
-            ["Image AUROC", av.image_auroc, ab.image_auroc, "higher is better"],
-            ["Pixel AUROC", av.pixel_auroc, ab.pixel_auroc, "higher is better"],
-            ["Training time (s)", av.training_time_s, ab.training_time_s, "lower is better; includes framework overhead"],
-            ["Batch-1 latency (ms)", av.latency_ms, ab.latency_ms, "lower is better"],
-            ["Batch-1 P95 latency (ms)", av.p95_latency_ms, ab.p95_latency_ms, "lower is better"],
-            ["Batch-1 throughput (FPS)", av.throughput_fps, ab.throughput_fps, "higher is better"],
-            ["State dict size (MB)", av.state_dict_size_mb, ab.state_dict_size_mb, "lower is better"],
-            ["Measured memory (MB)", av.inference_memory_mb, ab.inference_memory_mb, "GPU peak allocated; CPU RSS"],
-        ]
-        table = [["Metric", "AnomaVision", "Anomalib", "Interpretation"]]
-        for metric, left, right, note in rows:
-            fmt = ".4f" if "AUROC" in metric else ".2f"
-            table.append([metric, format(left, fmt), format(right, fmt), note])
-        print("\n" + tabulate(table, headers="firstrow", tablefmt="grid"))
-        report = {
-            "benchmark_contract": {
-                "dataset": "MVTec AD",
-                "class": self.class_name,
-                "input_size": IMAGE_SIZE,
-                "normalization": "ImageNet",
-                "backbone": BACKBONE,
-                "layers": LAYERS,
-                "n_features": N_FEATURES,
-                "train_batch_size": BATCH_SIZE,
-                "timing_batch_size": TIMING_BATCH_SIZE,
-                "warmup_iters": WARMUP_ITERS,
-                "timing_iters": TIMING_ITERS,
-                "seed": self.seed,
-                "device": str(self.device),
-                "accuracy_metric": "sklearn.metrics.roc_auc_score on raw outputs",
-                "training_time_definition": "end-to-end training including framework overhead",
-                "model_size_definition": "serialized model.state_dict() only",
-                "anomalib_source": str(ANOMALIB_ROOT.resolve()),
-                "checkpointing": "disabled; Anomalib ModelCheckpoint callback stripped before Trainer creation",
-            },
-            "results": {name: asdict(metrics) for name, metrics in results.items()},
-        }
-        json_path = self.output_dir / f"comparison_results_{self.class_name}.json"
-        txt_path = self.output_dir / f"comparison_report_{self.class_name}.txt"
-        csv_path = self.output_dir / f"comparison_{self.class_name}.csv"
-        json_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
-        txt_path.write_text(tabulate(table, headers="firstrow", tablefmt="grid"), encoding="utf-8")
-        pd.DataFrame(rows, columns=["metric", "anomavision", "anomalib", "interpretation"]).to_csv(csv_path, index=False)
-        print(f"\nSaved: {json_path}")
-        print(f"Saved: {txt_path}")
-        print(f"Saved: {csv_path}")
-
-
-def print_metrics(metrics: ModelMetrics) -> None:
-    print(f"  Image AUROC        : {metrics.image_auroc:.4f}")
-    print(f"  Pixel AUROC        : {metrics.pixel_auroc:.4f}")
-    print(f"  Training time      : {metrics.training_time_s:.2f} s")
-    print(f"  Batch-1 latency    : {metrics.latency_ms:.2f} ms")
-    print(f"  Batch-1 P95        : {metrics.p95_latency_ms:.2f} ms")
-    print(f"  Batch-1 throughput : {metrics.throughput_fps:.2f} FPS")
-    print(f"  State dict size    : {metrics.state_dict_size_mb:.2f} MB")
-    print(f"  Memory             : {metrics.inference_memory_mb:.2f} MB")
+        self.report(anomavision, anomalib)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fair AnomaVision vs Anomalib PaDiM benchmark")
-    parser.add_argument("--dataset_path", required=True, help="Path to MVTec AD root directory")
-    parser.add_argument("--class_name", default="bottle", choices=MVTec_CLASSES)
-    parser.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
+    parser = argparse.ArgumentParser(description="Benchmark AnomaVision PaDiM against a local Anomalib checkout.")
+    parser.add_argument("--dataset_path", required=True)
+    parser.add_argument("--class_name", choices=MVTec_CLASSES, required=True)
+    parser.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda"))
     parser.add_argument("--seed", type=int, default=SEED)
-    parser.add_argument("--all_classes", action="store_true", help="Run all 15 MVTec classes")
     args = parser.parse_args()
-    if args.all_classes:
-        for class_name in MVTec_CLASSES:
-            print(f"\n\n{'#' * 80}\n# {class_name.upper()}\n{'#' * 80}")
-            BenchmarkRunner(args.dataset_path, class_name, args.device, args.seed).run()
-    else:
-        BenchmarkRunner(args.dataset_path, args.class_name, args.device, args.seed).run()
+    BenchmarkRunner(args.dataset_path, args.class_name, args.device, args.seed).run()
 
 
 if __name__ == "__main__":
