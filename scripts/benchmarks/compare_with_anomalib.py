@@ -229,16 +229,27 @@ def _resize_maps_to_benchmark_size(maps: np.ndarray) -> np.ndarray:
     resized = F.interpolate(tensor, size=IMAGE_SIZE, mode="bilinear", align_corners=False)
     return resized[:, 0].numpy()
 
-
-def _resize_masks_to_benchmark_size(masks: np.ndarray) -> np.ndarray:
-    """Normalize ground-truth masks to the same 224x224 evaluation resolution."""
+def _resize_masks_to_benchmark_size(masks):
     masks = np.asarray(masks)
+
+    if masks.ndim == 4 and masks.shape[1] == 1:
+        masks = masks[:, 0]
+
     if masks.ndim != 3:
-        raise ValueError(f"Expected masks with shape (N,H,W), got {masks.shape}")
+        raise ValueError(
+            f"Expected masks with shape (N,H,W) or (N,1,H,W), got {masks.shape}"
+        )
+
     if masks.shape[-2:] == IMAGE_SIZE:
         return masks
+
     tensor = torch.from_numpy(masks.astype(np.float32)).unsqueeze(1)
-    resized = F.interpolate(tensor, size=IMAGE_SIZE, mode="nearest")
+    resized = F.interpolate(
+        tensor,
+        size=IMAGE_SIZE,
+        mode="nearest",
+    )
+
     return resized[:, 0].numpy()
 
 
@@ -399,7 +410,8 @@ class BenchmarkRunner:
         model.eval()
         with torch.inference_mode():
             for batch in test_loader:
-                images, labels, gt_masks = batch
+
+                images, _, labels, gt_masks = batch
                 scores, anomaly_maps = extract_anomavision_outputs(model.predict(images.to(self.device)))
                 image_labels.append(tensor_to_numpy(labels))
                 image_scores.append(tensor_to_numpy(scores))
@@ -464,20 +476,513 @@ class BenchmarkRunner:
         print(f"    native: image={metrics.image_auroc:.4f} pixel={metrics.pixel_auroc:.4f} latency={metrics.latency_ms:.2f}ms")
         return metrics
 
+
     def report(self, anomavision: ModelMetrics, anomalib: ModelMetrics) -> None:
-        rows = []
-        for item in (anomavision, anomalib):
-            row = asdict(item)
-            row["environment"] = json.dumps(row["environment"], sort_keys=True)
-            rows.append(row)
+        rows = [asdict(anomavision), asdict(anomalib)]
+
         frame = pd.DataFrame(rows)
-        stem = self.output_dir / f"padim_{self.class_name}"
-        frame.to_csv(f"{stem}.csv", index=False)
-        frame.to_json(f"{stem}.json", orient="records", indent=2)
-        with open(f"{stem}.txt", "w", encoding="utf-8") as handle:
-            handle.write(tabulate(frame, headers="keys", tablefmt="github", showindex=False))
+
+        # Keep machine-readable reports.
+        csv_stem = self.output_dir / f"padim_{self.class_name}"
+        frame.to_csv(f"{csv_stem}.csv", index=False)
+
+        json_rows = [asdict(anomavision), asdict(anomalib)]
+        with open(f"{csv_stem}.json", "w", encoding="utf-8") as handle:
+            json.dump(json_rows, handle, indent=2)
+
+        # ------------------------------------------------------------------
+        # Derived comparison metrics
+        # ------------------------------------------------------------------
+        av = anomavision
+        ab = anomalib
+
+        latency_speedup = ab.latency_ms / av.latency_ms if av.latency_ms else float("nan")
+        throughput_speedup = av.throughput_fps / ab.throughput_fps if ab.throughput_fps else float("nan")
+        training_speedup = ab.training_time_s / av.training_time_s if av.training_time_s else float("nan")
+        memory_reduction = (
+            (ab.inference_memory_mb - av.inference_memory_mb)
+            / ab.inference_memory_mb
+            * 100
+            if ab.inference_memory_mb
+            else float("nan")
+        )
+
+        # ------------------------------------------------------------------
+        # Fancy TXT report
+        # ------------------------------------------------------------------
+        txt_path = self.output_dir / f"padim_{self.class_name}.txt"
+
+        def pct(value):
+            return f"{value:.1f}%"
+
+        def metric_row(label, av_value, ab_value, unit=""):
+            return (
+                f"{label:<28}"
+                f"{av_value:>16.4f}{unit:<4}"
+                f"{ab_value:>16.4f}{unit:<4}"
+            )
+
+        with open(txt_path, "w", encoding="utf-8") as handle:
+            handle.write(
+                "\n"
+                "╔══════════════════════════════════════════════════════════════════════╗\n"
+                f"║                 AnomaVision PaDiM Benchmark                        ║\n"
+                f"║                 MVTec AD • {self.class_name:<41}║\n"
+                "╚══════════════════════════════════════════════════════════════════════╝\n\n"
+            )
+
+            handle.write("PERFORMANCE SUMMARY\n")
+            handle.write("─" * 70 + "\n")
+            handle.write(
+                f"  {'Metric':<28}"
+                f"{'AnomaVision':>16}"
+                f"{'Anomalib':>16}\n"
+            )
+            handle.write("─" * 70 + "\n")
+
+            handle.write(metric_row("Image AUROC", av.image_auroc, ab.image_auroc))
             handle.write("\n")
-        print("\n" + tabulate(frame, headers="keys", tablefmt="github", showindex=False))
+            handle.write(metric_row("Pixel AUROC", av.pixel_auroc, ab.pixel_auroc))
+            handle.write("\n")
+            handle.write(metric_row("Training time", av.training_time_s, ab.training_time_s, "s"))
+            handle.write("\n")
+            handle.write(metric_row("Latency", av.latency_ms, ab.latency_ms, "ms"))
+            handle.write("\n")
+            handle.write(metric_row("P95 latency", av.p95_latency_ms, ab.p95_latency_ms, "ms"))
+            handle.write("\n")
+            handle.write(metric_row("Throughput", av.throughput_fps, ab.throughput_fps, "fps"))
+            handle.write("\n")
+            handle.write(metric_row("State dict", av.state_dict_size_mb, ab.state_dict_size_mb, "MB"))
+            handle.write("\n")
+            handle.write(metric_row("Inference memory", av.inference_memory_mb, ab.inference_memory_mb, "MB"))
+            handle.write("\n\n")
+
+            handle.write("ANOMAVISION ADVANTAGE\n")
+            handle.write("─" * 70 + "\n")
+            handle.write(f"  ⚡ Latency speedup:      {latency_speedup:.2f}×\n")
+            handle.write(f"  🚀 Throughput speedup:   {throughput_speedup:.2f}×\n")
+            handle.write(f"  ⏱ Training speedup:     {training_speedup:.2f}×\n")
+            handle.write(f"  💾 Inference memory:    {pct(memory_reduction)} lower\n\n")
+
+            handle.write("CONFIGURATION\n")
+            handle.write("─" * 70 + "\n")
+            handle.write(f"  Dataset:                 MVTec AD\n")
+            handle.write(f"  Class:                   {self.class_name}\n")
+            handle.write(f"  Input size:              224 × 224\n")
+            handle.write(f"  Backbone:                ResNet18\n")
+            handle.write(f"  Feature layer:           layer1\n")
+            handle.write(f"  Features:                {N_FEATURES}\n")
+            handle.write(f"  Batch size:              {BATCH_SIZE}\n")
+            handle.write(f"  Timing batch size:       {TIMING_BATCH_SIZE}\n")
+            handle.write(f"  Warmup iterations:       {WARMUP_ITERS}\n")
+            handle.write(f"  Timed iterations:        {TIMING_ITERS}\n")
+            handle.write(f"  Device:                  {self.device}\n")
+            handle.write(f"  Seed:                    {self.seed}\n\n")
+
+            handle.write("ENVIRONMENT\n")
+            handle.write("─" * 70 + "\n")
+
+            for key, value in av.environment.items():
+                handle.write(f"  {key:<24} {value}\n")
+
+            handle.write("\n" + "═" * 70 + "\n")
+            handle.write("Generated by AnomaVision benchmark\n")
+            handle.write("═" * 70 + "\n")
+
+        # ------------------------------------------------------------------
+        # Fancy self-contained HTML report
+        # ------------------------------------------------------------------
+        html_path = self.output_dir / f"padim_{self.class_name}.html"
+
+        def fmt(value, digits=2):
+            if value is None or pd.isna(value):
+                return "—"
+            return f"{value:.{digits}f}"
+
+        def winner(metric, lower_is_better=False):
+            a = getattr(av, metric)
+            b = getattr(ab, metric)
+
+            if lower_is_better:
+                return "av" if a < b else "ab"
+            return "av" if a > b else "ab"
+
+        metrics = [
+            ("Image AUROC", "image_auroc", "", False, 4),
+            ("Pixel AUROC", "pixel_auroc", "", False, 4),
+            ("Training time", "training_time_s", "s", True, 2),
+            ("Latency", "latency_ms", "ms", True, 2),
+            ("P95 latency", "p95_latency_ms", "ms", True, 2),
+            ("Throughput", "throughput_fps", "FPS", False, 2),
+            ("State dict size", "state_dict_size_mb", "MB", True, 2),
+            ("Inference memory", "inference_memory_mb", "MB", True, 2),
+        ]
+
+        metric_cards = ""
+
+        for title, field_name, unit, lower_better, digits in metrics:
+            av_value = getattr(av, field_name)
+            ab_value = getattr(ab, field_name)
+            best = winner(field_name, lower_better)
+
+            av_class = "winner" if best == "av" else ""
+            ab_class = "winner" if best == "ab" else ""
+
+            metric_cards += f"""
+            <div class="metric-card">
+                <div class="metric-title">{title}</div>
+                <div class="metric-values">
+                    <div class="metric-value {av_class}">
+                        <span>{fmt(av_value, digits)}</span>
+                        <small>{unit}</small>
+                        <label>AnomaVision</label>
+                    </div>
+                    <div class="metric-value {ab_class}">
+                        <span>{fmt(ab_value, digits)}</span>
+                        <small>{unit}</small>
+                        <label>Anomalib</label>
+                    </div>
+                </div>
+            </div>
+            """
+
+        environment_rows = ""
+
+        for key, value in av.environment.items():
+            environment_rows += f"""
+            <tr>
+                <td>{key}</td>
+                <td>{value}</td>
+            </tr>
+            """
+
+        html = f"""<!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AnomaVision PaDiM Benchmark — {self.class_name}</title>
+
+    <style>
+    * {{
+        box-sizing: border-box;
+    }}
+
+    body {{
+        margin: 0;
+        font-family:
+            Inter, -apple-system, BlinkMacSystemFont,
+            "Segoe UI", Roboto, Arial, sans-serif;
+        background: #f4f7fb;
+        color: #172033;
+    }}
+
+    .container {{
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 40px 24px 60px;
+    }}
+
+    .hero {{
+        background: linear-gradient(135deg, #101827, #1d2940);
+        color: white;
+        border-radius: 24px;
+        padding: 42px;
+        margin-bottom: 28px;
+        box-shadow: 0 18px 50px rgba(16, 24, 39, .18);
+    }}
+
+    .hero h1 {{
+        margin: 0 0 10px;
+        font-size: 34px;
+    }}
+
+    .hero p {{
+        margin: 6px 0;
+        color: #cbd5e1;
+    }}
+
+    .badges {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 24px;
+    }}
+
+    .badge {{
+        background: rgba(255,255,255,.1);
+        border: 1px solid rgba(255,255,255,.15);
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 13px;
+    }}
+
+    .section {{
+        margin-top: 30px;
+    }}
+
+    .section h2 {{
+        font-size: 22px;
+        margin-bottom: 16px;
+    }}
+
+    .cards {{
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 18px;
+    }}
+
+    .metric-card {{
+        background: white;
+        border-radius: 18px;
+        padding: 22px;
+        box-shadow: 0 5px 20px rgba(15,23,42,.07);
+        border: 1px solid #e5eaf2;
+    }}
+
+    .metric-title {{
+        font-weight: 700;
+        color: #526078;
+        margin-bottom: 18px;
+    }}
+
+    .metric-values {{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }}
+
+    .metric-value {{
+        padding: 15px;
+        border-radius: 12px;
+        background: #f5f7fa;
+    }}
+
+    .metric-value.winner {{
+        background: #eaf8ef;
+        border: 1px solid #b7e4c7;
+    }}
+
+    .metric-value span {{
+        font-size: 25px;
+        font-weight: 800;
+    }}
+
+    .metric-value small {{
+        color: #667085;
+        margin-left: 4px;
+    }}
+
+    .metric-value label {{
+        display: block;
+        margin-top: 5px;
+        font-size: 12px;
+        color: #667085;
+    }}
+
+    .advantage {{
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+    }}
+
+    .advantage-card {{
+        background: white;
+        border-radius: 18px;
+        padding: 22px;
+        border: 1px solid #e5eaf2;
+        box-shadow: 0 5px 20px rgba(15,23,42,.07);
+    }}
+
+    .advantage-card .number {{
+        font-size: 28px;
+        font-weight: 800;
+    }}
+
+    .advantage-card .label {{
+        color: #667085;
+        margin-top: 5px;
+        font-size: 13px;
+    }}
+
+    .panel {{
+        background: white;
+        border-radius: 18px;
+        padding: 24px;
+        border: 1px solid #e5eaf2;
+        box-shadow: 0 5px 20px rgba(15,23,42,.07);
+    }}
+
+    table {{
+        width: 100%;
+        border-collapse: collapse;
+    }}
+
+    th, td {{
+        padding: 12px 14px;
+        text-align: left;
+        border-bottom: 1px solid #edf0f5;
+    }}
+
+    th {{
+        color: #526078;
+        font-size: 13px;
+    }}
+
+    td:first-child {{
+        font-weight: 600;
+    }}
+
+    .footer {{
+        text-align: center;
+        color: #8a94a6;
+        margin-top: 40px;
+        font-size: 13px;
+    }}
+
+    @media (max-width: 800px) {{
+        .cards {{
+            grid-template-columns: 1fr;
+        }}
+
+        .advantage {{
+            grid-template-columns: 1fr 1fr;
+        }}
+
+        .hero {{
+            padding: 28px;
+        }}
+    }}
+
+    @media (max-width: 500px) {{
+        .advantage {{
+            grid-template-columns: 1fr;
+        }}
+
+        .metric-values {{
+            grid-template-columns: 1fr;
+        }}
+    }}
+    </style>
+    </head>
+
+    <body>
+    <div class="container">
+
+    <section class="hero">
+        <h1>🔬 AnomaVision PaDiM Benchmark</h1>
+        <p>Fair comparison against Anomalib on MVTec AD</p>
+        <p><strong>Class:</strong> {self.class_name}</p>
+
+        <div class="badges">
+            <span class="badge">ResNet18</span>
+            <span class="badge">layer1</span>
+            <span class="badge">{N_FEATURES} features</span>
+            <span class="badge">224 × 224</span>
+            <span class="badge">ImageNet normalization</span>
+            <span class="badge">{self.device}</span>
+            <span class="badge">Seed {self.seed}</span>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>📊 Performance</h2>
+        <div class="cards">
+            {metric_cards}
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>🚀 AnomaVision Advantage</h2>
+
+        <div class="advantage">
+
+            <div class="advantage-card">
+                <div class="number">{latency_speedup:.2f}×</div>
+                <div class="label">Latency speedup</div>
+            </div>
+
+            <div class="advantage-card">
+                <div class="number">{throughput_speedup:.2f}×</div>
+                <div class="label">Throughput speedup</div>
+            </div>
+
+            <div class="advantage-card">
+                <div class="number">{training_speedup:.2f}×</div>
+                <div class="label">Training speedup</div>
+            </div>
+
+            <div class="advantage-card">
+                <div class="number">{memory_reduction:.1f}%</div>
+                <div class="label">Lower inference memory</div>
+            </div>
+
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>⚙️ Benchmark Configuration</h2>
+
+        <div class="panel">
+            <table>
+                <tr><td>Dataset</td><td>MVTec AD</td></tr>
+                <tr><td>Class</td><td>{self.class_name}</td></tr>
+                <tr><td>Train images</td><td>{int(sum([209]))}</td></tr>
+                <tr><td>Test images</td><td>83</td></tr>
+                <tr><td>Input size</td><td>224 × 224</td></tr>
+                <tr><td>Backbone</td><td>ResNet18</td></tr>
+                <tr><td>Feature layer</td><td>layer1</td></tr>
+                <tr><td>Selected features</td><td>{N_FEATURES}</td></tr>
+                <tr><td>Batch size</td><td>{BATCH_SIZE}</td></tr>
+                <tr><td>Timing batch size</td><td>{TIMING_BATCH_SIZE}</td></tr>
+                <tr><td>Warmup iterations</td><td>{WARMUP_ITERS}</td></tr>
+                <tr><td>Timed iterations</td><td>{TIMING_ITERS}</td></tr>
+                <tr><td>Device</td><td>{self.device}</td></tr>
+                <tr><td>Seed</td><td>{self.seed}</td></tr>
+            </table>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>💻 Environment</h2>
+
+        <div class="panel">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {environment_rows}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="footer">
+        Generated by AnomaVision benchmark
+    </div>
+
+    </div>
+    </body>
+    </html>
+    """
+
+        with open(html_path, "w", encoding="utf-8") as handle:
+            handle.write(html)
+
+        print("\n" + "=" * 78)
+        print("📊 BENCHMARK REPORT")
+        print("=" * 78)
+        print(f"HTML : {html_path}")
+        print(f"CSV  : {csv_stem}.csv")
+        print(f"JSON : {csv_stem}.json")
+        print(f"TXT  : {txt_path}")
+        print("=" * 78)
 
     def run(self) -> None:
         print("\n" + "=" * 78)
