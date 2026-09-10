@@ -29,6 +29,25 @@ warnings.filterwarnings("ignore")
 ANOMAVISION_ROOT = Path(__file__).resolve().parents[2]
 ANOMALIB_ROOT = ANOMAVISION_ROOT.parent / "anomalib"
 
+def add_local_anomalib_to_path() -> Path:
+    """Add the sibling Anomalib source checkout to sys.path."""
+    candidates = [ANOMALIB_ROOT / "src", ANOMALIB_ROOT]
+
+    for candidate in candidates:
+        package_dir = candidate / "anomalib"
+        if package_dir.is_dir():
+            candidate_str = str(candidate.resolve())
+            if candidate_str not in sys.path:
+                sys.path.insert(0, candidate_str)
+            return candidate.resolve()
+
+    raise ModuleNotFoundError(
+        "Local Anomalib clone was not found. Expected one of:\n"
+        f"  {ANOMALIB_ROOT / 'src' / 'anomalib'}\n"
+        f"  {ANOMALIB_ROOT / 'anomalib'}\n"
+        "The benchmark intentionally does not install Anomalib from PyPI."
+    )
+
 IMAGE_SIZE = (224, 224)
 NORMALIZE = True
 BATCH_SIZE = 8
@@ -380,7 +399,7 @@ class BenchmarkRunner:
         rows = [asdict(item) for item in results]
         frame = pd.DataFrame(rows)
         frame["environment"] = frame["environment"].apply(lambda value: json.dumps(value, sort_keys=True))
-        stem = self.output_dir / f"benchmark_{self.class_name}"
+        stem = self.output_dir /  f"benchmark_{self.algorithm}" / f"benchmark_{self.class_name}"
         frame.to_csv(f"{stem}.csv", index=False)
         with open(f"{stem}.json", "w", encoding="utf-8") as handle:
             json.dump(rows, handle, indent=2)
