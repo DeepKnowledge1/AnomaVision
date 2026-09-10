@@ -6,8 +6,6 @@ The workflow is intended for a Linux environment with the Vitis AI tools availab
 
 ## 1. Workflow
 
-The deployment flow is:
-
 ```text
 AnomaVision PyTorch model
         ↓
@@ -61,9 +59,11 @@ ls
 The KV260 quantization scripts are:
 
 ```text
-quantize_padim_kv260.py
-quantize_patchcore_kv260.py
+scripts/kv260/quantize_padim_kv260.py
+scripts/kv260/quantize_patchcore_kv260.py
 ```
+
+Run them from the repository root with the paths shown below.
 
 ## 4. Prepare calibration images
 
@@ -103,10 +103,10 @@ compiled_padim_kv260
 
 ## 6. Run PaDiM INT8 calibration
 
-Run the calibration phase:
+Run the calibration phase from the repository root:
 
 ```bash
-python quantize_padim_kv260.py \
+python scripts/kv260/quantize_padim_kv260.py \
   --model distributions/padim/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_padim_kv260 \
@@ -126,7 +126,7 @@ find compiled_padim_kv260 -maxdepth 2 -type f
 Run the script in test mode:
 
 ```bash
-python quantize_padim_kv260.py \
+python scripts/kv260/quantize_padim_kv260.py \
   --model distributions/padim/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_padim_kv260 \
@@ -194,7 +194,7 @@ Calibration images are the same normal training images:
 ## 11. Run PatchCore INT8 calibration
 
 ```bash
-python quantize_patchcore_kv260.py \
+python scripts/kv260/quantize_patchcore_kv260.py \
   --model distributions/patchcore/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_patchcore_kv260 \
@@ -212,7 +212,7 @@ find compiled_patchcore_kv260 -maxdepth 2 -type f
 Run test mode:
 
 ```bash
-python quantize_patchcore_kv260.py \
+python scripts/kv260/quantize_patchcore_kv260.py \
   --model distributions/patchcore/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_patchcore_kv260 \
@@ -315,14 +315,14 @@ A successfully generated and compiled XModel does **not by itself prove end-to-e
 
 ```bash
 # Calibration
-python quantize_padim_kv260.py \
+python scripts/kv260/quantize_padim_kv260.py \
   --model distributions/padim/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_padim_kv260 \
   --quant_mode calib
 
 # XModel generation
-python quantize_padim_kv260.py \
+python scripts/kv260/quantize_padim_kv260.py \
   --model distributions/padim/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_padim_kv260 \
@@ -340,14 +340,14 @@ vai_c_xir \
 
 ```bash
 # Calibration
-python quantize_patchcore_kv260.py \
+python scripts/kv260/quantize_patchcore_kv260.py \
   --model distributions/patchcore/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_patchcore_kv260 \
   --quant_mode calib
 
 # XModel generation
-python quantize_patchcore_kv260.py \
+python scripts/kv260/quantize_patchcore_kv260.py \
   --model distributions/patchcore/bottle/anomav_exp/model.pt \
   --calibration-dir /workspace/dataset/bottle/train/good \
   --output-dir compiled_patchcore_kv260 \
