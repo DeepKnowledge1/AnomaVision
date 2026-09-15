@@ -48,7 +48,7 @@ class ProductionDriftMonitor:
         window_size: Maximum number of recent production samples retained.
         min_samples: Minimum current samples before drift is evaluated.
         threshold: PSI threshold passed to :class:`DriftMonitor`.
-        evaluation_interval: Evaluate every N accepted samples once ready.
+        evaluation_interval: Evaluate every N newly accepted samples once ready.
     """
 
     def __init__(
@@ -73,6 +73,7 @@ class ProductionDriftMonitor:
         self.evaluation_interval = int(evaluation_interval)
         self._window: deque[np.ndarray] = deque(maxlen=self.window_size)
         self._samples_seen = 0
+        self._next_evaluation_sample = self.min_samples
         self._last_report: Optional[DriftReport] = None
         self._lock = Lock()
 
@@ -85,8 +86,10 @@ class ProductionDriftMonitor:
         """Add one batch of inference embeddings and optionally evaluate drift.
 
         ``embeddings`` may be ``(N, D)`` or a higher-dimensional feature tensor.
-        Higher-dimensional tensors are flattened per sample and mean-pooled over
-        non-feature dimensions when necessary.
+        Higher-dimensional tensors are flattened per sample.
+
+        Evaluation is based on total accepted samples rather than batch boundaries,
+        so a batch of any size cannot accidentally skip an evaluation point.
         """
         values = np.asarray(embeddings, dtype=np.float64)
         if values.ndim < 2:
@@ -108,10 +111,13 @@ class ProductionDriftMonitor:
 
             if len(self._window) < self.min_samples:
                 return None
-            if self._samples_seen % self.evaluation_interval != 0:
+
+            if self._samples_seen < self._next_evaluation_sample:
                 return self._last_report
 
             self._last_report = self._monitor.compare(np.asarray(self._window))
+            while self._next_evaluation_sample <= self._samples_seen:
+                self._next_evaluation_sample += self.evaluation_interval
             return self._last_report
 
     def status(self) -> ProductionDriftStatus:
@@ -139,6 +145,7 @@ class ProductionDriftMonitor:
         with self._lock:
             self._window.clear()
             self._samples_seen = 0
+            self._next_evaluation_sample = self.min_samples
             self._last_report = None
 
     def save_status(self, path: str | Path) -> None:
