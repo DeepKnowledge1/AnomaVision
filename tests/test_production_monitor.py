@@ -1,0 +1,51 @@
+import numpy as np
+
+from anomavision.production_monitor import ProductionDriftMonitor
+
+
+def test_monitor_warms_up_then_evaluates():
+    rng = np.random.default_rng(42)
+    reference = rng.normal(0, 1, size=(200, 4))
+    monitor = ProductionDriftMonitor(
+        reference,
+        window_size=50,
+        min_samples=10,
+        evaluation_interval=10,
+    )
+
+    assert monitor.update(rng.normal(0, 1, size=(5, 4))) is None
+    report = monitor.update(rng.normal(0, 1, size=(5, 4)))
+
+    assert report is not None
+    assert report.status == "stable"
+    assert monitor.status().ready is True
+
+
+def test_monitor_detects_shift_and_bounds_window():
+    rng = np.random.default_rng(7)
+    reference = rng.normal(0, 1, size=(300, 3))
+    monitor = ProductionDriftMonitor(
+        reference,
+        window_size=20,
+        min_samples=10,
+        evaluation_interval=10,
+        threshold=0.20,
+    )
+
+    report = monitor.update(rng.normal(4, 1, size=(30, 3)))
+
+    assert report is not None
+    assert report.status == "drift"
+    assert monitor.status().window_fill == 20
+    assert monitor.status().samples_seen == 30
+
+
+def test_monitor_reset():
+    rng = np.random.default_rng(1)
+    monitor = ProductionDriftMonitor(rng.normal(size=(50, 2)), min_samples=5, window_size=10)
+    monitor.update(rng.normal(size=(5, 2)))
+    monitor.reset()
+    status = monitor.status()
+    assert status.samples_seen == 0
+    assert status.window_fill == 0
+    assert status.status == "warming_up"
