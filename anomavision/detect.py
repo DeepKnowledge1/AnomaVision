@@ -45,42 +45,28 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         add_help=add_help,
     )
 
-    # Config file
     parser.add_argument(
         "--config", type=str, default=None, help="Path to config.yml/.json"
     )
-
-    # Dataset parameters
     parser.add_argument(
-        "--img_path",
-        default=None,
-        type=str,
+        "--img_path", default=None, type=str,
         help="Path to the dataset folder containing test images.",
     )
 
-    # Model parameters
     parser.add_argument(
-        "--model_data_path",
-        type=str,
-        default="./distributions",
+        "--model_data_path", type=str, default="./distributions",
         help="Directory containing model files.",
     )
     parser.add_argument(
-        "--algorithm",
-        type=str,
-        default=None,
+        "--algorithm", type=str, default=None,
         help="Algorithm name (e.g., padim, patchcore).",
     )
     parser.add_argument(
-        "--model",
-        type=str,
-        default=None,
+        "--model", type=str, default=None,
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
-        "--device",
-        type=str,
-        default=None,
+        "--device", type=str, default=None,
         choices=["auto", "cpu", "cuda"],
         help="Device to run inference on (auto will choose cuda if available)",
     )
@@ -88,81 +74,89 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         "--batch_size", type=int, default=None, help="Batch size for inference"
     )
     parser.add_argument(
-        "--thresh",
-        type=float,
-        default=None,
+        "--thresh", type=float, default=None,
         help="Threshold for anomaly classification",
     )
 
-    # Data loading parameters
     parser.add_argument(
-        "--num_workers",
-        type=int,
-        default=1,
+        "--num_workers", type=int, default=1,
         help="Number of worker processes for data loading.",
     )
     parser.add_argument(
-        "--pin_memory",
-        action="store_true",
+        "--pin_memory", action="store_true",
         help="Use pinned memory for faster GPU transfers.",
     )
 
-    # Visualization parameters
     parser.add_argument(
-        "--enable_visualization",
-        action="store_true",
-        default=None,
+        "--enable_visualization", action="store_true", default=None,
         help="Enable visualization of results.",
     )
     parser.add_argument(
-        "--save_visualizations",
-        action="store_true",
-        default=None,
+        "--save_visualizations", action="store_true", default=None,
         help="Save visualization images to disk.",
     )
     parser.add_argument(
-        "--viz_output_dir",
-        type=str,
-        default=None,
+        "--viz_output_dir", type=str, default=None,
         help="Directory to save visualization images.",
     )
     parser.add_argument(
-        "--run_name",
-        default=None,
-        help="experiment name for this inference run",
+        "--run_name", default=None, help="experiment name for this inference run",
     )
     parser.add_argument(
-        "--overwrite",
-        action="store_true",
+        "--overwrite", action="store_true",
         help="overwrite existing run directory without auto-incrementing",
     )
     parser.add_argument(
-        "--viz_alpha", type=float, default=None, help="Alpha value for heatmap overlay."
+        "--viz_alpha", type=float, default=None,
+        help="Alpha value for heatmap overlay.",
     )
     parser.add_argument(
-        "--viz_padding",
-        type=int,
-        default=None,
+        "--viz_padding", type=int, default=None,
         help="Padding for boundary visualization.",
     )
     parser.add_argument(
-        "--viz_color",
-        type=str,
-        default=None,
+        "--viz_color", type=str, default=None,
         help='RGB color for highlighting (comma-separated, e.g., "128,0,128").',
     )
 
-    # Logging parameters
+    # Production drift monitoring
     parser.add_argument(
-        "--log_level",
-        type=str,
-        default="INFO",
+        "--enable-drift-monitoring", dest="enable_drift_monitoring",
+        action="store_true", default=None,
+        help="Enable rolling production data-drift monitoring.",
+    )
+    parser.add_argument(
+        "--drift-reference", type=str, default=None,
+        help="Reference embeddings (.npy/.npz) for drift monitoring.",
+    )
+    parser.add_argument(
+        "--drift-window", type=int, default=None,
+        help="Maximum number of production embeddings kept in the rolling window (default: 500).",
+    )
+    parser.add_argument(
+        "--drift-min-samples", type=int, default=None,
+        help="Minimum production samples before drift evaluation (default: 100).",
+    )
+    parser.add_argument(
+        "--drift-threshold", type=float, default=None,
+        help="PSI threshold for drift alerts (default: 0.20).",
+    )
+    parser.add_argument(
+        "--drift-evaluation-interval", type=int, default=None,
+        help="Evaluate drift every N new samples (default: 25).",
+    )
+    parser.add_argument(
+        "--drift-output", type=str, default=None,
+        help="JSON path for the live drift status (default: ./drift/drift_status.json).",
+    )
+
+    parser.add_argument(
+        "--log_level", type=str, default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Logging level.",
     )
     parser.add_argument(
-        "--detailed_timing",
-        action="store_true",
+        "--detailed_timing", action="store_true",
         help="Enable detailed timing measurements.",
     )
 
@@ -170,53 +164,35 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
 
 
 def run_inference(args):
-    """
-    Executes the inference pipeline.
-
-    Args:
-        args: Namespace object containing configuration.
-
-    Returns:
-        metrics (dict): Performance and timing metrics.
-        results (dict): Dictionary containing keys ['scores', 'classifications', 'images']
-                        (Only populated for offline mode to prevent OOM in streaming).
-    """
+    """Execute the inference pipeline and optionally monitor production drift."""
     if args.config is not None:
         cfg = load_config(str(args.config))
     else:
-        # Fallback to model directory config
         potential_paths = []
         if args.model_data_path:
-            base_path = Path(args.model_data_path)
-            potential_paths.append(base_path / "config.yml")
-
+            potential_paths.append(Path(args.model_data_path) / "config.yml")
         cfg = {}
         for path in potential_paths:
             if path.exists():
                 cfg = load_config(str(path))
                 break
-
         if not cfg:
             cfg = {}
 
-    # Merge config with CLI args
     config = edict(merge_config(args, cfg))
     config.thresh = resolve_threshold(config)
     algorithm_name = str(config.get("algorithm", "")).lower()
 
-    # Setup logging
     setup_logging(enabled=True, log_level=config.log_level, log_to_file=True)
     logger = get_logger("anomavision.detect")
 
     stream_mode = config.get("stream_mode", False)
     logger.info(f"Streaming mode: {stream_mode}")
 
-    # Parse visualization color
     try:
         viz_color = (
             tuple(map(int, config.viz_color.split(",")))
-            if config.viz_color
-            else (128, 0, 128)
+            if config.viz_color else (128, 0, 128)
         )
         if len(viz_color) != 3:
             raise ValueError
@@ -226,25 +202,58 @@ def run_inference(args):
         )
         viz_color = (128, 0, 128)
 
-    # Parse image processing arguments
     resize = _shape(config.resize)
     crop_size = _shape(config.crop_size)
     normalize = config.get("normalize", True)
-
     logger.info(
         "Image processing: resize=%s, crop=%s, norm=%s", resize, crop_size, normalize
     )
 
-    # Validation
     if not config.get("img_path") and not stream_mode:
         raise ValueError(
             "img_path is required (via --img_path or config) when stream_mode is False"
         )
-
     if not config.get("model"):
         raise ValueError("model is required (via --model or config)")
 
-    # Profilers
+    drift_runtime = None
+    drift_output = None
+    if config.get("enable_drift_monitoring", False):
+        from anomavision.drift import load_embeddings
+        from anomavision.drift_runtime import InferenceDriftRuntime
+        from anomavision.production_monitor import ProductionDriftMonitor
+
+        drift_reference = config.get("drift_reference")
+        if not drift_reference:
+            raise ValueError(
+                "--drift-reference is required when --enable-drift-monitoring is enabled"
+            )
+        if not Path(drift_reference).exists():
+            raise FileNotFoundError(f"Drift reference file not found: {drift_reference}")
+
+        reference_embeddings = load_embeddings(drift_reference)
+        monitor = ProductionDriftMonitor(
+            reference_embeddings,
+            window_size=int(config.get("drift_window", 500) or 500),
+            min_samples=int(config.get("drift_min_samples", 100) or 100),
+            threshold=float(config.get("drift_threshold", 0.20) or 0.20),
+            evaluation_interval=int(
+                config.get("drift_evaluation_interval", 25) or 25
+            ),
+        )
+        drift_runtime = InferenceDriftRuntime(monitor, None)
+        drift_output = Path(
+            config.get("drift_output", "./drift/drift_status.json")
+            or "./drift/drift_status.json"
+        )
+        logger.info(
+            "Production drift monitoring enabled: reference=%s window=%d min_samples=%d threshold=%.3f",
+            drift_reference,
+            monitor.window_size,
+            monitor.min_samples,
+            monitor.threshold,
+        )
+
     profilers = {
         "setup": Profiler(),
         "model_loading": Profiler(),
@@ -257,13 +266,10 @@ def run_inference(args):
     results_accumulator = {
         "scores": [],
         "classifications": [],
-        # We only store images/maps if needed for downstream tasks to avoid memory issues
         "images": [] if not stream_mode else None,
     }
-
     total_start_time = time.time()
 
-    # --- Setup Phase ---
     with profilers["setup"]:
         if not stream_mode:
             DATASET_PATH = os.path.realpath(config.img_path)
@@ -272,15 +278,12 @@ def run_inference(args):
             DATASET_PATH = None
             src = config.get("stream_source", {})
             logger.info(f"Streaming source type: {src.get('type', 'unknown')}")
-
         MODEL_DATA_PATH = os.path.realpath(config.model_data_path)
         device_str = determine_device(config.device)
         logger.info(f"Device: {device_str}")
-
         if device_str == "cuda" and torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True
 
-    # --- Model Loading Phase ---
     with profilers["model_loading"]:
         model_path = os.path.join(
             MODEL_DATA_PATH,
@@ -290,19 +293,18 @@ def run_inference(args):
             config.model,
         )
         logger.info(f"Loading model: {model_path}")
-
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
-
         try:
             model = ModelWrapper(model_path, device_str)
             model_type = ModelType.from_extension(model_path)
             logger.info(f"Model loaded: {model_type.value.upper()}")
+            if drift_runtime is not None:
+                drift_runtime.model = model
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise
 
-    # --- Viz Directory Setup ---
     RESULTS_PATH = None
     if config.get("save_visualizations", False):
         run_name = config.run_name
@@ -318,7 +320,6 @@ def run_inference(args):
         )
         logger.info(f"Visualization output: {RESULTS_PATH}")
 
-    # --- Data Loading Phase ---
     with profilers["data_loading"]:
         try:
             if not stream_mode:
@@ -353,20 +354,16 @@ def run_inference(args):
                 num_workers=num_workers,
                 pin_memory=pin_memory,
             )
-
-            # Log dataset stats
             try:
                 total_images = len(test_dataset)
                 logger.info(f"Total images: {total_images}")
             except TypeError:
                 total_images = None
                 logger.info("Streaming mode (infinite/unknown length)")
-
         except Exception as e:
             logger.error(f"Failed to create dataloader: {e}")
             raise
 
-    # --- Warm-up ---
     try:
         first = next(iter(test_dataloader))
         first_batch = first[0]
@@ -380,7 +377,6 @@ def run_inference(args):
     except Exception as e:
         logger.warning(f"Warm-up skipped: {e}")
 
-    # --- Inference Loop ---
     batch_count = 0
     image_counter = 0
 
@@ -393,7 +389,6 @@ def run_inference(args):
                 batch = batch.half()
             batch = batch.to(device_str)
 
-            # 1. Inference
             with profilers["inference"]:
                 try:
                     image_scores, score_maps = model.predict(batch)
@@ -401,14 +396,39 @@ def run_inference(args):
                     logger.error(f"Inference failed batch {batch_idx}: {e}")
                     continue
 
-            # 2. Post-processing
+            # Production drift monitoring runs on the same inference batches.
+            if drift_runtime is not None:
+                try:
+                    drift_result = drift_runtime.update(batch)
+                    drift_runtime.monitor.save_status(drift_output)
+                    if drift_result is not None:
+                        status = drift_result["status"]
+                        if status == "drift":
+                            logger.warning(
+                                "DRIFT ALERT batch=%d score=%.4f psi=%.4f warnings=%s",
+                                batch_idx,
+                                drift_result["drift_score"],
+                                drift_result["psi"],
+                                ",".join(drift_result["warnings"]),
+                            )
+                        else:
+                            logger.info(
+                                "Drift status batch=%d: stable (score=%.4f, psi=%.4f)",
+                                batch_idx,
+                                drift_result["drift_score"],
+                                drift_result["psi"],
+                            )
+                except Exception as e:
+                    # Drift monitoring must never stop anomaly inference.
+                    logger.warning(
+                        "Drift monitoring skipped for batch %d: %s", batch_idx, e
+                    )
+
             with profilers["postprocessing"]:
                 try:
                     score_maps = adaptive_gaussian_blur(
                         score_maps, kernel_size=33, sigma=4
                     )
-
-                    # Classify
                     if config.thresh is not None:
                         is_anomaly = anomavision.classification(
                             image_scores, config.thresh
@@ -427,49 +447,38 @@ def run_inference(args):
                             else np.zeros_like(score_maps)
                         )
 
-                    # Accumulate Results (Offline only)
                     if not stream_mode:
                         results_accumulator["scores"].extend(image_scores.tolist())
                         results_accumulator["classifications"].extend(
                             is_anomaly.tolist()
                         )
                         results_accumulator["images"].extend(images)
-
                 except Exception as e:
                     logger.error(f"Postprocessing failed batch {batch_idx}: {e}")
                     continue
 
-            # 3. Visualization
             if config.enable_visualization:
                 with profilers["visualization"]:
                     try:
-
-                        boundary_images = (
-                            anomavision.visualization.framed_boundary_images(
-                                images,
-                                localization_masks,
-                                is_anomaly,
-                                padding=config.get("viz_padding", 40),
-                            )
+                        boundary_images = anomavision.visualization.framed_boundary_images(
+                            images,
+                            localization_masks,
+                            is_anomaly,
+                            padding=config.get("viz_padding", 40),
                         )
-
                         heatmap_images = anomavision.visualization.heatmap_images(
                             images,
                             score_maps,
                             masks=localization_masks,
                             alpha=config.get("viz_alpha", 0.5),
                         )
-                        highlighted_images = (
-                            anomavision.visualization.highlighted_images(
-                                [images[i] for i in range(len(images))],
-                                localization_masks,
-                                color=viz_color,
-                            )
+                        highlighted_images = anomavision.visualization.highlighted_images(
+                            [images[i] for i in range(len(images))],
+                            localization_masks,
+                            color=viz_color,
                         )
 
-                        # Save/Show
                         for img_id in range(len(images)):
-                            # Only save if explicitly requested
                             if config.save_visualizations and RESULTS_PATH:
                                 try:
                                     fig, axs = plt.subplots(1, 4, figsize=(16, 8))
@@ -477,23 +486,18 @@ def run_inference(args):
                                         f"Result - Batch {batch_idx} Img {img_id}",
                                         fontsize=14,
                                     )
-
                                     axs[0].imshow(images[img_id])
                                     axs[0].set_title("Original")
                                     axs[0].axis("off")
-
                                     axs[1].imshow(boundary_images[img_id])
                                     axs[1].set_title("Boundary")
                                     axs[1].axis("off")
-
                                     axs[2].imshow(heatmap_images[img_id])
                                     axs[2].set_title("Heatmap")
                                     axs[2].axis("off")
-
                                     axs[3].imshow(highlighted_images[img_id])
                                     axs[3].set_title("Highlighted")
                                     axs[3].axis("off")
-
                                     save_path = os.path.join(
                                         RESULTS_PATH,
                                         f"batch_{batch_idx}_img_{img_id}.png",
@@ -502,55 +506,40 @@ def run_inference(args):
                                     plt.close(fig)
                                 except Exception as e:
                                     logger.warning(f"Viz save failed: {e}")
-
                     except Exception as e:
                         logger.error(f"Visualization failed batch {batch_idx}: {e}")
-
     finally:
+        if drift_runtime is not None and drift_output is not None:
+            try:
+                drift_runtime.monitor.save_status(drift_output)
+                logger.info(f"Drift status saved to {drift_output}")
+            except Exception as e:
+                logger.warning(f"Failed to save final drift status: {e}")
         logger.info("Closing model...")
         model.close()
         if stream_mode:
-            # Clean up stream source
             try:
                 test_dataset.close()
             except Exception:
-
                 pass
 
-    # --- Metrics & Summary ---
     total_pipeline_time = time.time() - total_start_time
-
-    # Calculate FPS
     final_count = total_images if (not stream_mode and total_images) else image_counter
     fps = profilers["inference"].get_fps(final_count)
     avg_ms = profilers["inference"].get_avg_time_ms(batch_count)
 
-    # 1. TIMING SUMMARY
     logger.info("=" * 60)
     logger.info("ANOMAVISION PERFORMANCE SUMMARY")
     logger.info("=" * 60)
-    logger.info(
-        f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms"
-    )
-    logger.info(
-        f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms"
-    )
+    logger.info(f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms")
+    logger.info(f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms")
     logger.info(f"Total pipeline time:       {total_pipeline_time * 1000:.2f} ms")
     logger.info("=" * 60)
 
-    # 2. INFERENCE PERFORMANCE
     logger.info("=" * 60)
     logger.info("ANOMAVISION INFERENCE PERFORMANCE")
     logger.info("=" * 60)
@@ -558,7 +547,6 @@ def run_inference(args):
         logger.info(f"Pure inference FPS:        {fps:.2f} images/sec")
     if avg_ms > 0:
         logger.info(f"Average inference time:    {avg_ms:.2f} ms/batch")
-
     if batch_count > 0:
         batch_size = config.get("batch_size", 1) or 1
         throughput = fps * (final_count / batch_count) if batch_count else 0
@@ -573,7 +561,6 @@ def run_inference(args):
         "total_time_s": total_pipeline_time,
         "total_images": final_count,
     }
-
     return metrics, results_accumulator
 
 
@@ -581,12 +568,7 @@ def main(args=None):
     try:
         if args is None:
             args = create_parser().parse_args()
-
         metrics, results = run_inference(args)
-
-        # If running as script, maybe we want to print summary or save results to file?
-        # For now, logging handles the output.
-
         exit(0)
     except KeyboardInterrupt:
         logger = get_logger("anomavision.detect")
