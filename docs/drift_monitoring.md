@@ -26,6 +26,29 @@ anomavision drift \
 
 The report contains PSI, mean shift, standard-deviation shift, cosine shift, a combined drift score, and actionable warnings. The default PSI threshold is `0.20`.
 
+## Detect-time monitoring
+
+Drift monitoring can now run directly inside the normal `detect` pipeline:
+
+```bash
+python detect.py \
+  --algorithm patchcore \
+  --model_data_path ./distributions \
+  --model model.pth \
+  --img_path ./production_images \
+  --enable-drift-monitoring \
+  --drift-reference ./reference.npy \
+  --drift-window 500 \
+  --drift-min-samples 100 \
+  --drift-threshold 0.20 \
+  --drift-evaluation-interval 25 \
+  --drift-output ./drift/drift_status.json
+```
+
+The existing anomaly scores and visualizations continue to run normally. Drift monitoring is best-effort: an embedding/monitoring failure is logged as a warning and does not stop anomaly detection.
+
+The JSON status is updated during the run and saved again when detection finishes. Once the rolling window is ready, the console reports `stable` or emits a `DRIFT ALERT` with PSI, drift score, and warnings.
+
 ## Rolling production monitoring
 
 For long-running camera processes, use `ProductionDriftMonitor`. It keeps a bounded rolling window and does not retain the complete production history in memory.
@@ -50,7 +73,7 @@ if result and result["status"] == "drift":
     print("DRIFT ALERT", result)
 ```
 
-The runtime extracts the same model representation used by PatchCore when `_extract()` is available, pools patch embeddings per image, and feeds them to the rolling monitor. This avoids monitoring raw RGB pixels and avoids a second backbone pass for PatchCore.
+The runtime extracts the same model representation used by PatchCore when `_extract()` is available, pools patch embeddings per image, and feeds them to the rolling monitor. Current detect-time integration performs embedding extraction after anomaly inference; optimized single-pass feature reuse can be added later for deployments where the extra feature-extraction cost matters.
 
 ### Lifecycle
 
