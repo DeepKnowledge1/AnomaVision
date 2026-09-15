@@ -9,11 +9,7 @@ from ..common.mahalanobis import MahalanobisDistance
 
 
 class PadimLite(torch.nn.Module):
-    """
-    Minimal runtime module for PaDiM that reconstructs the backbone on load
-    and uses stored Gaussian stats (mean, cov_inv). Provides .predict(x)
-    with the same outputs as your full model.
-    """
+    """Minimal runtime module for PaDiM inference and drift embeddings."""
 
     def __init__(
         self,
@@ -61,12 +57,7 @@ class PadimLite(torch.nn.Module):
 
     @torch.no_grad()
     def _extract(self, batch: torch.Tensor):
-        """Extract the PaDiM patch representation used for anomaly scoring.
-
-        The same representation is consumed by ``predict`` and by production
-        drift monitoring, so drift measurements describe the model's actual
-        inference features rather than a separate feature space.
-        """
+        """Extract the PaDiM patch representation used for anomaly scoring."""
         batch = batch.to(self.device, non_blocking=True)
         if self.use_fp16 and self.device.type == "cuda":
             batch = batch.half()
@@ -134,7 +125,7 @@ class PadimLite(torch.nn.Module):
 def build_padim_from_stats(
     stats: Dict[str, Any], device: str = "cpu", force_precision: Optional[str] = None
 ) -> PadimLite:
-    """Build PadimLite model from saved statistics dictionary with device-aware precision."""
+    """Build PadimLite from a saved PaDiM statistics dictionary."""
     return PadimLite(
         backbone=stats["backbone"],
         layer_indices=stats["layer_indices"],
@@ -144,3 +135,13 @@ def build_padim_from_stats(
         device=device,
         force_precision=force_precision,
     )
+
+
+def load_padim_lite(
+    stats_path: str, device: str = "cpu", force_precision: Optional[str] = None
+) -> PadimLite:
+    """Load PadDiM runtime statistics and construct a PadimLite model."""
+    from .padim import Padim
+
+    stats = Padim.load_statistics(stats_path, device=device, force_fp32=None)
+    return build_padim_from_stats(stats, device=device, force_precision=force_precision)
