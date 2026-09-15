@@ -4,11 +4,12 @@ AnomaVision - Unified Command-Line Interface
 A single entry point for all anomaly detection operations.
 
 Usage:
-    anomavision train [args...]      # Train a new model
-    anomavision export [args...]     # Export model to different formats
-    anomavision detect [args...]     # Run inference on images
-    anomavision eval [args...]       # Evaluate model performance
-    anomavision drift [args...]      # Monitor embedding distribution drift
+    anomavision train [args...]           # Train a new model
+    anomavision export [args...]          # Export model to different formats
+    anomavision detect [args...]          # Run inference on images
+    anomavision eval [args...]            # Evaluate model performance
+    anomavision drift [args...]           # Compare embedding distributions
+    anomavision drift-reference [args...] # Generate trusted reference embeddings
 """
 
 import argparse
@@ -27,6 +28,7 @@ Examples:
   %(prog)s detect --model model.onnx --img_path ./test --enable_visualization
   %(prog)s eval --model model.pt --class_name bottle --dataset_path /data
   %(prog)s drift --reference reference.npy --current production.npy --output drift.json
+  %(prog)s drift-reference --config config.yml --img_path ./train/good --output ./drift/reference_embeddings.npy
 
 For detailed help on each command:
   %(prog)s train --help
@@ -34,6 +36,7 @@ For detailed help on each command:
   %(prog)s detect --help
   %(prog)s eval --help
   %(prog)s drift --help
+  %(prog)s drift-reference --help
         """,
     )
 
@@ -58,6 +61,7 @@ For detailed help on each command:
     _add_eval_parser(subparsers)
     _add_autopilot_parser(subparsers)
     _add_drift_parser(subparsers)
+    _add_drift_reference_parser(subparsers)
     return parser
 
 
@@ -104,9 +108,19 @@ def _add_autopilot_parser(subparsers) -> None:
 def _add_drift_parser(subparsers) -> None:
     from anomavision.drift_cli import create_parser as _cp
     subparsers.add_parser(
-        "drift", help="Monitor embedding distribution drift", parents=[_cp(add_help=False)],
+        "drift", help="Compare embedding distributions for drift", parents=[_cp(add_help=False)],
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     ).set_defaults(func=_dispatch_drift)
+
+
+def _add_drift_reference_parser(subparsers) -> None:
+    from anomavision.drift_reference import create_parser as _cp
+    subparsers.add_parser(
+        "drift-reference",
+        help="Generate trusted reference embeddings for production drift monitoring",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_drift_reference)
 
 
 def _dispatch_train(args: argparse.Namespace) -> None:
@@ -137,6 +151,11 @@ def _dispatch_autopilot(args: argparse.Namespace) -> None:
 def _dispatch_drift(args: argparse.Namespace) -> None:
     from anomavision import drift_cli
     drift_cli.main(args)
+
+
+def _dispatch_drift_reference(args: argparse.Namespace) -> None:
+    from anomavision import drift_reference
+    drift_reference.main(args)
 
 
 def main() -> None:
