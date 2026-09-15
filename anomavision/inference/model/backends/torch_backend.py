@@ -91,6 +91,35 @@ class TorchBackend(InferenceBackend):
             scores, maps = self.model.predict(batch)
         return scores.detach().cpu().numpy(), maps.detach().cpu().numpy()
 
+    def extract_drift_embeddings(self, batch: Batch):
+        """Extract one fixed-size representation per input image.
+
+        This uses the same internal feature extractor as the anomaly model. Patch
+        embeddings are mean-pooled so the drift monitor receives a stable
+        ``(batch, features)`` matrix.
+        """
+        extractor = getattr(self.model, "_extract", None)
+        if extractor is None:
+            raise NotImplementedError(
+                f"{self.model.__class__.__name__} does not expose _extract(); "
+                "drift monitoring is unavailable for this PyTorch model."
+            )
+
+        if not isinstance(batch, torch.Tensor):
+            batch = torch.as_tensor(batch, dtype=torch.float32)
+        batch = batch.to(self.device, non_blocking=True)
+        with torch.inference_mode(), self._autocast():
+            extracted = extractor(batch)
+
+        embeddings = extracted[0] if isinstance(extracted, tuple) else extracted
+        if embeddings.ndim < 2:
+            raise ValueError(
+                "Model drift representation must have at least two dimensions."
+            )
+        if embeddings.ndim > 2:
+            embeddings = embeddings.reshape(embeddings.shape[0], -1, embeddings.shape[-1]).mean(dim=1)
+        return embeddings.detach().float().cpu().numpy()
+
     def close(self) -> None:
         self.model = None
 
