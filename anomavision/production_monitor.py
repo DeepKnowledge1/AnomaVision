@@ -82,6 +82,11 @@ class ProductionDriftMonitor:
         """Return the immutable reference representation used for monitoring."""
         return self._monitor.reference
 
+    @property
+    def threshold(self) -> float:
+        """Return the configured drift threshold."""
+        return self._monitor.threshold
+
     def update(self, embeddings: np.ndarray) -> Optional[DriftReport]:
         """Add one batch of inference embeddings and optionally evaluate drift.
 
