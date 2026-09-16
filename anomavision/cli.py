@@ -10,6 +10,12 @@ Usage:
     anomavision eval [args...]            # Evaluate model performance
     anomavision drift [args...]           # Compare embedding distributions
     anomavision drift-reference [args...] # Generate trusted reference embeddings
+
+Examples:
+    anomavision train --config config.yml
+    anomavision export --config config.yml --model model.pt --format onnx
+    anomavision detect --config config.yml --model model.onnx --img_path ./test_images
+    anomavision eval --config config.yml --model model.pt --class_name bottle
 """
 
 import argparse
