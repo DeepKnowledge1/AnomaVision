@@ -102,7 +102,10 @@ class AnodetDataset(Dataset):
         # Load image
         image = Image.open(self.image_paths[idx]).convert("RGB")
         batch = self.image_transforms(image)
-        image = np.array(image)
+        # Make the NumPy image writable/independent of the PIL backing buffer.
+        # Without this copy, DataLoader workers can fail while collating batches
+        # with: "Trying to resize storage that is not resizable".
+        image = np.array(image, copy=True)
         # image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
         # Load mask if mask_directory_path argument is given
