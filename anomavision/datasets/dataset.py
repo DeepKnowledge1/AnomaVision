@@ -25,6 +25,17 @@ def allowed_file(filename):
     ]
 
 
+def collate_anodet_batch(batch):
+    """Collate AnodetDataset samples without PyTorch's shared-storage path."""
+    batches, images, classifications, masks = zip(*batch)
+    return (
+        torch.stack(list(batches), dim=0),
+        torch.stack(list(images), dim=0),
+        torch.as_tensor(classifications),
+        torch.stack(list(masks), dim=0),
+    )
+
+
 class AnodetDataset(Dataset):
 
     def __init__(
@@ -52,7 +63,6 @@ class AnodetDataset(Dataset):
             std: Standard deviation values for normalization.
         """
 
-        # Use provided transforms or create new ones with configurable parameters
         if image_transforms is not None:
             self.image_transforms = image_transforms
         else:
@@ -71,7 +81,6 @@ class AnodetDataset(Dataset):
                 resize=resize, crop_size=crop_size
             )
 
-        # Load image paths
         self.image_directory_path = image_directory_path
         self.image_paths = []
         for file in os.listdir(self.image_directory_path):
@@ -81,7 +90,6 @@ class AnodetDataset(Dataset):
                     os.path.join(self.image_directory_path, filename)
                 )
 
-        # Load mask paths if mask_directory_path argument is given
         self.mask_directory_path = mask_directory_path
         self.mask_paths = []
         if self.mask_directory_path is not None:
@@ -99,16 +107,11 @@ class AnodetDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        # Load image
         image = Image.open(self.image_paths[idx]).convert("RGB")
         batch = self.image_transforms(image)
-        # Return a regular torch tensor rather than a NumPy-backed tensor.
-        # PyTorch DataLoader workers may fail when collating NumPy-backed
-        # arrays because their storage is not resizable.
         image = torch.from_numpy(np.array(image, copy=True)).clone()
         # image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
-        # Load mask if mask_directory_path argument is given
         if self.mask_directory_path is not None:
             mask = Image.open(self.mask_paths[idx])
             mask = self.mask_transforms(mask)
