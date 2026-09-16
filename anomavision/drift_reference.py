@@ -37,6 +37,23 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     return parser
 
 
+def _collate_reference_batch(samples):
+    """Batch transformed inputs while keeping original images as a list.
+
+    AnodetDataset also returns the original PIL image as a tensor. Those images
+    intentionally keep their native resolution, so stacking them with the
+    default PyTorch collate function fails when reference images differ in size.
+    Only the transformed model inputs need to be stacked for embedding.
+    """
+    batches, images, classifications, masks = zip(*samples)
+    return (
+        torch.stack(list(batches), dim=0),
+        list(images),
+        torch.as_tensor(classifications),
+        torch.stack(list(masks), dim=0),
+    )
+
+
 def main(args: argparse.Namespace) -> None:
     cfg = load_config(str(args.config)) if args.config else {}
     config = edict(merge_config(args, cfg))
@@ -90,6 +107,7 @@ def main(args: argparse.Namespace) -> None:
         batch_size=int(config.get("batch_size", 2) or 2),
         num_workers=int(args.num_workers),
         pin_memory=False,
+        collate_fn=_collate_reference_batch,
     )
 
     model = ModelWrapper(str(model_path), device)
