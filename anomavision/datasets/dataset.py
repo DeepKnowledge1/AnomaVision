@@ -109,8 +109,19 @@ class AnodetDataset(Dataset):
 
         image = Image.open(self.image_paths[idx]).convert("RGB")
         batch = self.image_transforms(image)
-        image = torch.from_numpy(np.array(image, copy=True)).clone()
-        # image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+
+        # Keep the visualization image tensor batchable. Input images can have
+        # different native resolutions, while the inference transform produces
+        # a fixed-size model input. Matching the visualization tensor to that
+        # size prevents PyTorch's default DataLoader collation from attempting
+        # to stack incompatible HxWx3 tensors.
+        image_array = np.array(image, copy=True)
+        image_array = cv.resize(
+            image_array,
+            (batch.shape[2], batch.shape[1]),
+            interpolation=cv.INTER_AREA,
+        )
+        image = torch.from_numpy(image_array).clone()
 
         if self.mask_directory_path is not None:
             mask = Image.open(self.mask_paths[idx])
