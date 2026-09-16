@@ -102,10 +102,10 @@ class AnodetDataset(Dataset):
         # Load image
         image = Image.open(self.image_paths[idx]).convert("RGB")
         batch = self.image_transforms(image)
-        # Make the NumPy image writable/independent of the PIL backing buffer.
-        # Without this copy, DataLoader workers can fail while collating batches
-        # with: "Trying to resize storage that is not resizable".
-        image = np.array(image, copy=True)
+        # Return a regular torch tensor rather than a NumPy-backed tensor.
+        # PyTorch DataLoader workers may fail when collating NumPy-backed
+        # arrays because their storage is not resizable.
+        image = torch.from_numpy(np.array(image, copy=True)).clone()
         # image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
         # Load mask if mask_directory_path argument is given
