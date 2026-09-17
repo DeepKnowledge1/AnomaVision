@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from PIL import Image
 
 from anomavision.drift_reference import _collate_reference_batch
 
@@ -33,18 +32,23 @@ def test_reference_collate_does_not_modify_images():
         np.testing.assert_array_equal(actual, expected)
 
 
-def test_reference_embeddings_are_valid_for_production_monitor():
+def test_saved_reference_is_compatible_with_production_monitor(tmp_path):
+    from anomavision.drift import load_embeddings
     from anomavision.production_monitor import ProductionDriftMonitor
 
     rng = np.random.default_rng(123)
     reference = rng.normal(size=(50, 16)).astype(np.float32)
-    production = reference[:10].copy()
+    reference_path = tmp_path / "reference_embeddings.npy"
+    np.save(reference_path, reference)
 
+    loaded_reference = load_embeddings(reference_path)
+    production = reference[:10].copy()
     monitor = ProductionDriftMonitor(
-        reference, window_size=20, min_samples=10, evaluation_interval=10
+        loaded_reference, window_size=20, min_samples=10, evaluation_interval=10
     )
     report = monitor.update(production)
 
+    assert loaded_reference.shape == reference.shape
     assert report is not None
     assert report.feature_dimensions == reference.shape[1]
     assert report.reference_samples == reference.shape[0]
