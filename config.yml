@@ -76,7 +76,7 @@ viz_color: "128,0,128"                     # RGB color used for anomaly overlays
 # =========================
 # Inference (detect)
 # =========================
-img_path: "D:/01-DATA/cat_dog/Cat"         # Input image or directory for detection
+img_path: "D:\\01-DATA\\VisA_pytorch\\candle\\train\\good"         # Input image or directory for detection
 thresh: null                               # Generic legacy threshold fallback
 thresh_padim: 13.0                         # Fixed PaDiM anomaly threshold
 thresh_patchcore: 0.25                     # Fixed PatchCore anomaly threshold
@@ -90,18 +90,18 @@ overwrite: false                           # Overwrite an existing output direct
 # =========================
 # Generate the trusted baseline once with:
 # anomavision drift-reference --config config.yml --img_path <healthy-images>
-enable_drift_monitoring: true             # Enable rolling production data-drift monitoring during inference
+enable_drift_monitoring: true              # Enable rolling production data-drift monitoring during inference
 drift_reference: "./drift/reference_embeddings.npy" # Reference embeddings generated from known healthy data
 drift_window: 500                          # Number of recent production samples kept in the rolling window
 drift_min_samples: 100                     # Minimum production samples required before drift is evaluated
 drift_threshold: 0.20                      # Combined drift-score threshold that triggers a drift alert
 drift_evaluation_interval: 25              # Evaluate drift after each additional N production samples
-drift_output: "./drift/drift_status.json" # JSON file containing the latest production drift status
+drift_output: "./drift/drift_status.json"  # JSON file containing the latest production drift status
 
 # =========================
 # Evaluation (eval)
 # =========================
-memory_efficient: true                      # Reduce memory usage during evaluation
+memory_efficient: true                     # Reduce memory usage during evaluation
 
 # =========================
 # Export (export)
@@ -109,7 +109,7 @@ memory_efficient: true                      # Reduce memory usage during evaluat
 format: "all"                              # Export format: onnx | tensorrt | torchscript | openvino | all
 opset: 18                                  # ONNX operator-set version
 precision: "auto"                          # Export precision: auto | fp16 | fp32
-tensorrt_precision: "fp16"                # TensorRT precision: fp32 | fp16 | int8
+tensorrt_precision: "fp16"                 # TensorRT precision: fp32 | fp16 | int8
 dynamic_batch: true                        # Allow variable batch size in exported models
 static_batch: false                        # Force a fixed batch size when true
 min_batch: 1                               # Minimum TensorRT dynamic batch size
@@ -130,11 +130,11 @@ int8: false                                # Legacy INT8 compatibility option
 # =========================
 stream_mode: false                         # Enable real-time streaming mode
 stream_source:
-  type: "webcam"                          # Source type: webcam | video | mqtt | tcp
+  type: "webcam"                           # Source type: webcam | video | mqtt | tcp
   camera_id: 0                             # Webcam device index
   video_path: "path/to/video.mp4"          # Video file path
   loop: false                              # Restart video when it reaches the end
-  broker: "localhost"                     # MQTT broker hostname/IP
+  broker: "localhost"                      # MQTT broker hostname/IP
   port: 1883                               # MQTT broker port
   topic: "camera/frames"                   # MQTT topic containing frames
   client_id: null                          # Optional MQTT client ID
@@ -142,7 +142,7 @@ stream_source:
   qos: 0                                   # MQTT quality of service: 0 | 1 | 2
   max_queue_size: 10                       # Maximum buffered streaming frames
   read_timeout: 1.0                        # Streaming read timeout in seconds
-  host: "192.168.1.100"                   # TCP server hostname/IP
+  host: "192.168.1.100"                    # TCP server hostname/IP
   recv_timeout: 1.0                        # TCP receive timeout in seconds
   header_size: 4                           # TCP message length-header size in bytes
   max_message_size: 10485760               # Maximum TCP message size in bytes
