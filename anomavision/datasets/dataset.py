@@ -26,11 +26,11 @@ def allowed_file(filename):
 
 
 def collate_anodet_batch(batch):
-    """Collate AnodetDataset samples without PyTorch's shared-storage path."""
+    """Collate transformed model inputs while preserving native images."""
     batches, images, classifications, masks = zip(*batch)
     return (
         torch.stack(list(batches), dim=0),
-        torch.stack(list(images), dim=0),
+        list(images),
         torch.as_tensor(classifications),
         torch.stack(list(masks), dim=0),
     )
@@ -63,6 +63,7 @@ class AnodetDataset(Dataset):
             std: Standard deviation values for normalization.
         """
 
+        # Use provided transforms or create new ones with configurable parameters
         if image_transforms is not None:
             self.image_transforms = image_transforms
         else:
@@ -81,6 +82,7 @@ class AnodetDataset(Dataset):
                 resize=resize, crop_size=crop_size
             )
 
+        # Load image paths
         self.image_directory_path = image_directory_path
         self.image_paths = []
         for file in os.listdir(self.image_directory_path):
@@ -90,6 +92,7 @@ class AnodetDataset(Dataset):
                     os.path.join(self.image_directory_path, filename)
                 )
 
+        # Load mask paths if mask_directory_path argument is given
         self.mask_directory_path = mask_directory_path
         self.mask_paths = []
         if self.mask_directory_path is not None:
@@ -107,22 +110,13 @@ class AnodetDataset(Dataset):
 
     def __getitem__(self, idx):
 
+        # Load image
         image = Image.open(self.image_paths[idx]).convert("RGB")
         batch = self.image_transforms(image)
+        image = np.array(image)
+        # image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
-        # Keep the visualization image tensor batchable. Input images can have
-        # different native resolutions, while the inference transform produces
-        # a fixed-size model input. Matching the visualization tensor to that
-        # size prevents PyTorch's default DataLoader collation from attempting
-        # to stack incompatible HxWx3 tensors.
-        image_array = np.array(image, copy=True)
-        image_array = cv.resize(
-            image_array,
-            (batch.shape[2], batch.shape[1]),
-            interpolation=cv.INTER_AREA,
-        )
-        image = torch.from_numpy(image_array).clone()
-
+        # Load mask if mask_directory_path argument is given
         if self.mask_directory_path is not None:
             mask = Image.open(self.mask_paths[idx])
             mask = self.mask_transforms(mask)
