@@ -66,7 +66,8 @@ class _LimitedDataset(Dataset):
         return self.dataset[index]
 
 
-def main(args: argparse.Namespace) -> None:
+def main(args: argparse.Namespace | None = None) -> None:
+    args = args or create_parser().parse_args()
     cfg = load_config(str(args.config)) if args.config else {}
     config = edict(merge_config(args, cfg))
 
@@ -168,3 +169,7 @@ def main(args: argparse.Namespace) -> None:
     print(f"Reference samples:   {reference.shape[0]}")
     print(f"Embedding dimension: {reference.shape[1]}")
     print(f"Output:              {output}")
+
+
+if __name__ == "__main__":
+    main()
