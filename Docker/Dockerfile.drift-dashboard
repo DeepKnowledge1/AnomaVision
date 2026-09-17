@@ -2,19 +2,22 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "gradio>=6.3.0"
+RUN pip install --no-cache-dir "gradio>=6.3.0" pyyaml
 
+COPY anomavision/drift_dashboard.py ./anomavision/drift_dashboard.py
+COPY anomavision/config.py ./anomavision/config.py
 COPY apps/ui/drift_dashboard.py ./apps/ui/drift_dashboard.py
 
-EXPOSE 7861
+EXPOSE 7860
 
 CMD ["python", "apps/ui/drift_dashboard.py"]
 
 # Build:
 # docker build -f Docker/Dockerfile.drift-dashboard -t anomavision-drift-dashboard .
 #
-# Run with the monitor status directory mounted:
-# docker run --rm -p 7861:7861 \
-#   -v "${PWD}/monitoring:/app/monitoring" \
-#   -e ANOMAVISION_DRIFT_STATUS_FILE=/app/monitoring/drift_status.json \
+# Run with the monitor status directory and source config mounted:
+# docker run --rm -p 7860:7860 \
+#   -v "${PWD}/drift:/app/drift" \
+#   -v "${PWD}/config.yml:/app/config.yml:ro" \
+#   -e ANOMAVISION_DRIFT_STATUS_FILE=/app/drift/drift_status.json \
 #   anomavision-drift-dashboard
