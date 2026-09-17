@@ -2,52 +2,17 @@
 
 ## Overview
 
-Anomaly detection models are usually trained and validated on a known population of images. Production data can change after deployment while the inference service continues to run normally.
+AnomaVision can monitor whether production images have changed relative to a trusted reference population while leaving the existing anomaly detection path unchanged.
 
-Examples include:
+Data drift can be caused by a new camera or lens, different illumination, camera position or focus changes, a new product variant, manufacturing-process changes, image acquisition or preprocessing changes, environmental changes, or a production population that differs from the approved reference population.
 
-- a new camera or lens
-- different illumination
-- camera position or focus changes
-- a new product variant
-- changes in the manufacturing process
-- changes in image acquisition or preprocessing
-- seasonal or environmental changes
-- a production population that differs from the reference population
-
-These changes are called **data drift** when the distribution of production inputs or their model representations changes relative to a trusted reference population.
-
-AnomaVision monitors this change without replacing or modifying the anomaly detector.
-
-> **Important:** data drift is an early-warning signal. Drift does not automatically mean that an image is defective or that model accuracy has degraded. It tells the team that the production population should be investigated.
+> **Important:** data drift is an early-warning signal. It does not by itself mean that an image is defective or that model accuracy has degraded. It means that the production population should be investigated.
 
 ---
 
-## What problem does this solve?
+## Architecture
 
-A production anomaly system can look healthy from an infrastructure perspective:
-
-```text
-Model is running       ✓
-Images are arriving    ✓
-Predictions are returned ✓
-No exceptions          ✓
-```
-
-while the input population has changed:
-
-```text
-Training / reference data
-          │
-          │  distribution changes
-          ▼
-Production data ───────────────► model still returns predictions
-                                  but the operating conditions changed
-```
-
-Without drift monitoring, this type of change can remain invisible until a user notices a quality problem.
-
-AnomaVision adds a second observation path:
+Drift monitoring is an additive observer around the existing anomaly detector:
 
 ```text
                          ┌──────────────► Anomaly detection
@@ -59,92 +24,237 @@ Production image ────────┤
                                                    │
                                                    ▼
                                             Production health
+                                                   │
+                                                   ▼
+                                          Live customer dashboard
 ```
 
-The two paths are intentionally separated.
+For supported PyTorch models, the representation captured during normal inference can be reused by the drift observer, avoiding an unnecessary second backbone pass where possible.
 
----
-
-## Design principles
-
-### 1. Additive observer
-
-Drift monitoring observes the representation used by the production pipeline. It does not replace the anomaly detector.
-
-### 2. Preserve existing algorithms
-
-PatchCore, PaDiM, and EfficientAD remain responsible for anomaly detection. Enabling drift monitoring does not intentionally change their scoring or localization logic.
-
-### 3. Preserve hardware paths
-
-The monitoring feature is designed so existing Hailo, KV260/XModel, ONNX, TensorRT, OpenVINO, and other inference paths can continue independently. If a backend cannot provide a monitoring representation, drift monitoring must fail safely rather than stop anomaly inference.
-
-### 4. Reuse representations when possible
-
-For supported PyTorch models, the representation captured during normal inference can be reused by the drift observer. This avoids unnecessarily running a second backbone inference pass.
-
-### 5. Bounded memory
-
-Production embeddings are stored in a bounded rolling window. The monitor does not accumulate production data indefinitely in memory.
-
-### 6. Operator-first presentation
-
-The dashboard presents a simple operational message first. Technical metrics are available as secondary details for engineers and researchers.
+Existing PatchCore, PaDiM, EfficientAD, Hailo, KV260/XModel, ONNX, TensorRT, and OpenVINO inference paths are not replaced by drift monitoring.
 
 ---
 
 # End-to-end workflow
 
-## Step 1 — Create a trusted reference
+There are two main steps:
 
-A reference population describes what the system considers normal production behavior.
+1. Generate a trusted `.npy` reference embedding file.
+2. Start normal detection with drift monitoring enabled.
 
-The reference should be:
+```text
+Trusted normal images
+        │
+        ▼
+Generate reference_embeddings.npy
+        │
+        ▼
+Run normal AnomaVision detection
+        │
+        ├────────► anomaly results
+        │
+        └────────► drift monitoring
+                         │
+                         ▼
+                  drift_status.json
+                         │
+                         ▼
+                Live customer dashboard
+```
 
-- representative of the approved operating conditions
-- predominantly normal/good data
-- collected from a trusted period
-- processed using the same model representation as production
-- large enough to represent normal variation
+---
 
-Generate the reference embeddings with:
+# 1. Generate the reference `.npy` file
+
+The `.npy` file is the **trusted reference population** used by the production drift monitor.
+
+It is not a copy of the input images. It contains the model representations extracted from trusted normal images.
+
+```text
+Trusted normal images
+        │
+        ▼
+     model.pt
+        │
+        ▼
+model representation
+        │
+        ▼
+reference_embeddings.npy
+```
+
+## What images should be used?
+
+Use normal/good images representing the production conditions that you want to approve as the baseline.
+
+For an MVTec/VisA-style dataset, a typical source is:
+
+```text
+D:\01-DATA\VisA_pytorch\candle\train\good
+```
+
+or:
+
+```text
+./dataset/candle/train/good
+```
+
+The reference should come from a trusted operating condition. For example, if the camera, lighting, product, and preprocessing were known to be correct during a validation period, that population is a suitable candidate.
+
+Avoid creating the reference from a population that is already known to contain an unwanted production change.
+
+---
+
+## Model data required by reference generation
+
+The reference builder needs the same model information used by the anomaly detector.
+
+Typical trained-model structure:
+
+```text
+<model_data_path>/
+└── <algorithm>/
+    └── <class_name>/
+        └── <run_name>/
+            └── model.pt
+```
+
+For example:
+
+```text
+./distributions/
+└── patchcore/
+    └── bottle/
+        └── anomav_exp/
+            └── model.pt
+```
+
+Use the algorithm, class name, run name, model path, and model-data path corresponding to the trained model that will run in production.
+
+---
+
+## Generate the `.npy` reference
+
+Use `drift_reference`:
 
 ```bash
 python -m anomavision.drift_reference \
+  --config config.yml \
   --img_path ./dataset/bottle/train/good \
+  --model model.pt \
   --model_data_path ./distributions \
   --algorithm patchcore \
   --class_name bottle \
   --run_name anomav_exp \
-  --model model.pt \
   --device cpu \
   --batch_size 8 \
   --max_samples 500 \
   --output ./drift/reference_embeddings.npy
 ```
 
-The reference builder runs normal model inference and extracts the representation used for drift monitoring. It writes:
+### Windows PowerShell
 
-```text
-./drift/reference_embeddings.npy
-./drift/reference_embeddings.npy.json
+```powershell
+python -m anomavision.drift_reference `
+  --config config.yml `
+  --img_path "D:\01-DATA\VisA_pytorch\candle\train\good" `
+  --model "model.pt" `
+  --model_data_path ".\distributions" `
+  --algorithm patchcore `
+  --class_name candle `
+  --run_name anomav_exp `
+  --device cpu `
+  --batch_size 8 `
+  --max_samples 500 `
+  --output ".\drift\reference_embeddings.npy"
 ```
 
-The JSON sidecar contains metadata about the generated reference.
+Adjust the paths and model identifiers to match your trained model.
 
-### Reference data recommendations
+### What happens during generation?
 
-Do not create the reference from data that is already known to represent an abnormal operating condition.
+The reference builder:
 
-For example, if a factory camera was correctly aligned for January production, use that trusted population as the reference. If February production contains a known camera replacement and you use February as the reference, the monitor will no longer treat the camera change as drift.
+1. Loads the configured image dataset.
+2. Selects up to `--max_samples` trusted images.
+3. Runs the normal model inference path.
+4. Extracts the representation used for drift monitoring.
+5. Validates that the resulting embeddings are finite and compatible.
+6. Saves the embedding matrix to the requested `.npy` path.
+7. Writes a JSON metadata sidecar.
 
-The reference should represent the operating state that the team has approved as the baseline.
+This means the reference is generated using the same model representation that production monitoring expects.
 
 ---
 
-# Step 2 — Start production inference and monitoring
+## Output files
 
-The normal detection command can enable monitoring with two additional arguments:
+After successful generation:
+
+```text
+AnomaVision/
+├── drift/
+│   ├── reference_embeddings.npy
+│   └── reference_embeddings.npy.json
+```
+
+The important file is:
+
+```text
+reference_embeddings.npy
+```
+
+The JSON sidecar stores metadata associated with reference generation.
+
+You can verify the `.npy` file with Python:
+
+```python
+import numpy as np
+
+x = np.load("./drift/reference_embeddings.npy")
+print("shape:", x.shape)
+print("dtype:", x.dtype)
+print("finite:", np.isfinite(x).all())
+```
+
+A valid reference is expected to be a two-dimensional finite numeric matrix:
+
+```text
+(number_of_reference_samples, feature_dimensions)
+```
+
+For example:
+
+```text
+(500, 1024)
+```
+
+The exact feature dimension depends on the selected model and representation.
+
+Do not manually edit the `.npy` file.
+
+---
+
+# 2. Run production detection with drift monitoring
+
+Once the reference exists, start the normal detection command and add:
+
+```text
+--enable-drift-monitoring
+--drift-reference <path-to-reference.npy>
+```
+
+### Linux/macOS
+
+```bash
+python -m anomavision.cli detect \
+  --config config.yml \
+  --model model.pt \
+  --enable-drift-monitoring \
+  --drift-reference ./drift/reference_embeddings.npy
+```
+
+### Windows PowerShell
 
 ```powershell
 python -m anomavision.cli detect `
@@ -154,7 +264,15 @@ python -m anomavision.cli detect `
   --drift-reference ".\drift\reference_embeddings.npy"
 ```
 
-When monitoring is enabled, the CLI starts the live production dashboard automatically.
+This is the normal AnomaVision detection command with the drift observer enabled.
+
+The existing anomaly detection pipeline continues to process production images.
+
+---
+
+# 3. Live customer dashboard
+
+When drift monitoring is enabled, the CLI automatically starts the live production health dashboard.
 
 Open:
 
@@ -162,23 +280,65 @@ Open:
 http://127.0.0.1:7860
 ```
 
-The anomaly detection process continues normally.
+The dashboard refreshes automatically while the monitoring process is running.
 
-The dashboard is a separate read-only process. A dashboard startup problem must not stop the anomaly detection pipeline.
+The dashboard is designed for operators and non-technical users. The primary interface does not require knowledge of embeddings, PSI, or statistical terminology.
+
+It shows:
+
+- **Production status** — collecting data, stable, or data change detected.
+- **Images checked** — production samples observed.
+- **Recent window** — current rolling monitoring window.
+- **Change level** — normalized drift score presented as a percentage.
+- **Recent production images** — visual context for investigating changes.
+- **What changed?** — plain-language interpretation.
+- **What should I do?** — practical investigation steps.
+- **Technical details** — underlying metrics for engineers and researchers.
+
+The dashboard is read-only and must not become a dependency of anomaly inference.
 
 ---
 
-# Step 3 — Rolling production monitoring
+# 4. How the `.npy` is used in production
+
+The reference file is loaded as the baseline. Production embeddings are collected from the normal inference path and compared with the reference.
+
+```text
+reference_embeddings.npy
+          │
+          │ trusted baseline
+          ▼
+     DriftMonitor
+          ▲
+          │ current rolling window
+          │
+Production images
+          │
+          ▼
+     ModelWrapper
+          │
+          ├────────► anomaly score / localization
+          │
+          └────────► drift representation
+```
+
+For supported PyTorch paths, the representation generated during normal prediction can be reused rather than running the backbone twice.
+
+The production window is bounded, so embeddings are not accumulated indefinitely.
+
+---
+
+# 5. Rolling monitoring window
 
 The production monitor maintains a rolling window.
 
-Example configuration:
+Example:
 
 ```text
-Window size             500 samples
-Minimum samples         100 samples
-Evaluation interval      25 new samples
-PSI threshold            0.20
+Window size              500 samples
+Minimum samples          100 samples
+Evaluation interval       25 samples
+PSI threshold              0.20
 ```
 
 Conceptually:
@@ -195,17 +355,15 @@ Production stream
 
 Only the most recent `window_size` embeddings are retained.
 
-This makes the monitor suitable for long-running production workloads without allowing the monitoring window to grow indefinitely.
+This makes the monitor suitable for long-running production workloads without unbounded memory growth.
 
 ---
 
-# Monitoring states
-
-The dashboard simplifies the underlying monitor state into operator-friendly messages.
+# 6. Monitoring states
 
 ## Collecting data
 
-The monitor has not collected enough production samples to make a reliable comparison.
+The monitor has not collected enough production samples for the configured comparison.
 
 Example:
 
@@ -215,11 +373,11 @@ COLLECTING DATA
 We are learning what normal production data looks like.
 ```
 
-This is not an error.
+This is a normal startup state, not a model failure.
 
 ## Production looks stable
 
-The current production window is sufficiently populated and the measured drift is below the configured alert condition.
+The monitor has enough samples and the measured PSI is below the configured drift threshold.
 
 Example:
 
@@ -231,7 +389,7 @@ Recent production data is consistent with the approved normal pattern.
 
 ## Data change detected
 
-The monitor has detected a distribution change according to the configured drift criteria.
+The monitor has enough samples and the measured PSI has reached or exceeded the configured threshold.
 
 Example:
 
@@ -241,119 +399,47 @@ DATA CHANGE DETECTED
 Recent production images look different from the approved normal pattern.
 ```
 
-This should trigger investigation rather than an automatic model replacement.
+This should trigger investigation rather than automatic model replacement.
 
 ## Monitoring unavailable
 
-The dashboard cannot currently obtain a valid monitoring status.
+The dashboard cannot obtain a valid monitoring status.
 
-This is different from `stable`.
-
-A system should not interpret “no monitoring data” as “production is healthy.”
+This is different from `stable`. “No monitoring data” must not be interpreted as “production is healthy.”
 
 ---
 
-# Dashboard
+# 7. Dashboard and recent images
 
-The dashboard is designed for a production operator who may not know machine learning terminology.
+The dashboard is intentionally operator-first.
 
-## Main status
+The **Recent production images** area shows source images from the configured production image directory when available.
 
-The first thing the operator sees is the current production condition.
-
-Examples:
-
-```text
-PRODUCTION LOOKS STABLE
-```
-
-or:
-
-```text
-DATA CHANGE DETECTED
-```
-
-The message explains what the status means in ordinary language.
-
-## Images checked
-
-Shows how many production samples have been observed.
-
-Example:
-
-```text
-900
-production images seen
-```
-
-## Recent window
-
-Shows how much of the configured monitoring window is currently populated.
-
-Example:
-
-```text
-500 / 500
-100% of the monitoring window
-```
-
-## Change level
-
-The normalized drift score is presented as a percentage to make the signal easier to understand.
-
-For example:
-
-```text
-79%
-```
-
-means the current monitor score is approximately 0.79 on the monitor's normalized scale.
-
-It is **not** an accuracy percentage and should not be interpreted as “79% of images are bad.”
-
-## Recent production images
-
-The dashboard can display source images from the configured production image directory. These images provide the most useful context when a drift alert occurs.
-
-The operator can visually investigate questions such as:
+These images help answer:
 
 - Did the lighting change?
 - Did the camera move?
 - Is a new product variant being inspected?
-- Are images now cropped differently?
+- Are images cropped differently?
 - Did the production environment change?
 
-This visual context is intentionally placed near the drift status.
+When an external image directory is used, such as:
+
+```text
+D:\01-DATA\VisA_pytorch\candle\train\good
+```
+
+the dashboard launch configuration allows Gradio to serve that directory. The original dataset is not modified merely to display samples.
 
 ---
 
-# What changed?
+# 8. What should the operator do?
 
-The dashboard translates the technical monitoring signals into three simple concepts.
-
-### Overall change
-
-The normalized drift score summarizes the measured distribution change.
-
-### Typical appearance
-
-Mean shift indicates how much the typical representation has moved relative to the reference.
-
-### Variation
-
-Standard-deviation shift indicates whether the spread of the production representation has changed.
-
-These are monitoring signals, not defect classifications.
-
----
-
-# What should the operator do?
-
-When drift is detected, the recommended workflow is:
+When drift is detected:
 
 ### 1. Look at recent images
 
-Start with the actual production data.
+Start with the actual production data shown by the dashboard.
 
 ### 2. Identify the operational change
 
@@ -365,7 +451,7 @@ Use available labels, quality inspections, human review, or other appropriate pr
 
 ### 4. Decide whether the change is expected
 
-An expected production change may simply require a new approved reference population.
+An expected production change may require a new approved reference population.
 
 An unexpected change may require investigation before changing the model or reference.
 
@@ -375,49 +461,43 @@ Do not automatically replace the model or reference solely because drift was det
 
 ---
 
-# Technical metrics
+# 9. Technical metrics
 
 Advanced users can inspect the underlying metrics.
 
 ## PSI
 
-Population Stability Index (PSI) measures how the reference and production distributions differ across bins derived from the reference population.
+Population Stability Index measures how the reference and production distributions differ across bins derived from the reference population.
 
-In this implementation, PSI is calculated from reference-derived quantile bins with smoothing and explicit handling of values outside the reference range.
+The implementation uses reference-derived quantile bins, smoothing, and handling of values outside the reference range.
 
-The configured PSI threshold determines the `drift` state.
+The configured PSI threshold determines the explicit `stable` / `drift` state.
 
-A threshold of:
+For example:
 
 ```text
-0.20
+threshold = 0.20
 ```
 
-means that the configured monitor reports drift when the calculated PSI reaches or exceeds that threshold.
+means the monitor reports `drift` when PSI is at least `0.20`.
 
 PSI is a monitoring statistic, not a probability that the model is wrong.
 
 ## Mean shift
 
-Mean shift measures relative movement of the feature mean between the reference and current production populations.
-
-Higher values indicate a larger change in the typical representation.
+Measures relative movement of the feature mean between the reference and current production populations.
 
 ## Standard-deviation shift
 
-Standard-deviation shift measures relative changes in feature spread.
-
-A high value can indicate that production inputs have become more or less variable.
+Measures relative changes in feature spread.
 
 ## Cosine shift
 
-Cosine shift measures a change in embedding direction.
-
-It can reveal directional changes even when magnitude-based statistics are less informative.
+Measures change in embedding direction.
 
 ## Normalized drift score
 
-The current implementation combines the normalized PSI, mean shift, and standard-deviation shift into a bounded score:
+The dashboard's overall change level combines normalized PSI, mean shift, and standard-deviation shift:
 
 ```text
 score = min(
@@ -430,7 +510,7 @@ score = min(
 
 The score is bounded to `[0, 1]`.
 
-The score is intended for dashboard presentation and overall signal strength. The configured `threshold` is applied to PSI for the explicit `stable` / `drift` status.
+The explicit `stable` / `drift` state is based on the configured PSI threshold.
 
 Therefore:
 
@@ -442,9 +522,15 @@ Drift score != probability of failure
 
 ---
 
-# Example status
+# 10. Machine-readable status
 
-The monitor can write a machine-readable status similar to:
+By default the monitor writes:
+
+```text
+./drift/drift_status.json
+```
+
+Example:
 
 ```json
 {
@@ -465,31 +551,13 @@ The monitor can write a machine-readable status similar to:
 }
 ```
 
-The customer dashboard does not expose this raw JSON as the primary interface. Instead, it turns the result into an operator-facing status and provides the technical values under **Technical details**.
+The dashboard reads this monitoring state and refreshes automatically.
+
+The same JSON can be consumed by another application, API, alerting service, or deployment platform.
 
 ---
 
-# Status file
-
-By default the live status is written to:
-
-```text
-./drift/drift_status.json
-```
-
-You can change it with:
-
-```bash
---drift-output ./drift/drift_status.json
-```
-
-The status file can also be consumed by another application, service, API, alerting system, or deployment platform.
-
-The dashboard reads this same status file and refreshes automatically.
-
----
-
-# Complete CLI reference
+# 11. Complete CLI example
 
 ```bash
 anomavision detect \
@@ -509,7 +577,7 @@ anomavision detect \
 | Option | Purpose | Default |
 |---|---|---:|
 | `--enable-drift-monitoring` | Enable production monitoring | disabled |
-| `--drift-reference` | Reference `.npy` / `.npz` embeddings | required when enabled |
+| `--drift-reference` | Trusted `.npy` / `.npz` embeddings | required when enabled |
 | `--drift-window` | Maximum production embeddings retained | 500 |
 | `--drift-min-samples` | Minimum samples before evaluation | 100 |
 | `--drift-threshold` | PSI threshold for `drift` | 0.20 |
@@ -518,7 +586,7 @@ anomavision detect \
 
 ---
 
-# Reference generation CLI
+# 12. Reference generation options
 
 ```bash
 python -m anomavision.drift_reference \
@@ -535,20 +603,49 @@ python -m anomavision.drift_reference \
   --output ./drift/reference_embeddings.npy
 ```
 
-Important reference-generation inputs are:
+Important inputs:
 
-- `img_path`: trusted normal images
-- `model`: model filename
-- `algorithm`: anomaly algorithm
-- `class_name`: model class
-- `run_name`: trained model run
-- `device`: CPU or CUDA
-- `max_samples`: maximum reference samples
-- `output`: reference embedding file
+| Option | Meaning |
+|---|---|
+| `--config` | AnomaVision configuration file |
+| `--img_path` | Trusted normal/reference images |
+| `--model` | Model filename |
+| `--model_data_path` | Directory containing model artifacts |
+| `--algorithm` | Anomaly algorithm, such as PatchCore |
+| `--class_name` | Model/dataset class |
+| `--run_name` | Trained model run name |
+| `--device` | `cpu` or `cuda` |
+| `--batch_size` | Reference extraction batch size |
+| `--max_samples` | Maximum reference samples |
+| `--output` | Destination `.npy` file |
 
 ---
 
-# Integration with existing inference
+# 13. Compatibility requirements
+
+The reference and production path must use compatible representations.
+
+They should use the same:
+
+- model
+- representation
+- feature dimensions
+- preprocessing assumptions
+- algorithm/model configuration
+
+If the reference has shape:
+
+```text
+(500, 1024)
+```
+
+production drift embeddings must have feature dimension `1024`.
+
+A feature-dimension mismatch must be reported explicitly rather than silently accepted.
+
+---
+
+# 14. Integration with existing inference
 
 The production path is intentionally structured as:
 
@@ -580,39 +677,41 @@ DataLoader / stream
 
 The drift observer is isolated from the anomaly result path.
 
-If drift processing raises an exception, the production inference loop catches the monitoring error and continues anomaly inference.
+If drift processing fails, anomaly inference should continue.
 
-This property is important for industrial deployment: monitoring should not become a new single point of failure for the detector.
+This is important for industrial deployment: monitoring should not become a new single point of failure for the detector.
 
 ---
 
-# Backend behavior
+# 15. Backend behavior
 
 ## PyTorch
 
-PyTorch models can expose the representation needed for drift monitoring. For supported models, the backend caches the representation generated during normal prediction and the monitoring runtime reuses it.
+For supported PyTorch models, the backend can cache the representation generated during normal prediction so the monitoring runtime can reuse it.
 
-This avoids an unnecessary second model/backbone pass where possible.
+## Other backends
 
-## Other model formats
+The existing model wrapper supports multiple inference backends. Drift monitoring depends on a backend exposing a suitable representation.
 
-The existing model wrapper supports multiple backends. Drift monitoring depends on a backend being able to provide a suitable representation.
+If a backend cannot provide one, monitoring should fail safely without changing normal anomaly inference.
 
-If a backend does not expose one, the monitoring layer should report the limitation without changing normal anomaly inference.
+## Hailo / KV260
 
-This is intentional: the drift feature must not force unsupported behavior into hardware or optimized inference backends.
+Drift monitoring does not replace or modify the existing Hailo or KV260/XModel inference path.
+
+The monitoring feature is an observer rather than a new hardware inference backend.
 
 ---
 
-# Performance considerations
+# 16. Performance considerations
 
-The main production cost of drift monitoring is the comparison of the reference population with the bounded current window.
+The main monitoring cost is comparing the reference population with the bounded current window.
 
-For supported PyTorch paths, the most expensive representation extraction is reused from normal inference where possible.
+For supported PyTorch paths, representation extraction can be reused from normal inference where possible.
 
-The rolling window also limits memory consumption.
+The rolling window limits memory usage.
 
-For industrial deployment, monitor:
+For production deployment, monitor:
 
 - inference latency
 - throughput
@@ -620,11 +719,67 @@ For industrial deployment, monitor:
 - evaluation frequency
 - rolling-window size
 
-The monitoring evaluation interval can be increased when drift checks do not need to run after every small batch.
+The evaluation interval can be increased when drift checks do not need to run after every small batch.
 
 ---
 
-# Troubleshooting
+# 17. Re-create the reference
+
+A new reference can be generated when the organization intentionally approves a new normal operating population.
+
+For example:
+
+```text
+Old approved population
+        │
+        ▼
+reference_v1.npy
+
+Production changes intentionally
+        │
+        ▼
+New approved normal population
+        │
+        ▼
+reference_v2.npy
+```
+
+Do not continuously replace the reference with the latest production data without an approval process. Otherwise, a gradual production problem can become part of the baseline and become harder to detect.
+
+---
+
+# 18. Troubleshooting
+
+## The `.npy` file is not created
+
+Check:
+
+1. The reference image directory exists.
+2. The directory contains supported images.
+3. The model path is correct.
+4. `--algorithm`, `--class_name`, and `--run_name` match the trained model.
+5. The model-data directory contains the required artifacts.
+6. The output directory can be created.
+
+PowerShell example:
+
+```powershell
+Test-Path ".\drift"
+Test-Path ".\drift\reference_embeddings.npy"
+Test-Path ".\distributions"
+```
+
+## Reference and production dimensions do not match
+
+Inspect the reference:
+
+```python
+import numpy as np
+x = np.load("./drift/reference_embeddings.npy")
+print(x.shape)
+```
+
+Then verify that the production representation has the same feature dimension.
 
 ## Dashboard says `MONITORING UNAVAILABLE`
 
@@ -634,104 +789,151 @@ Check:
 ./drift/drift_status.json
 ```
 
-and verify that the detection process has drift monitoring enabled.
+and make sure the dashboard uses the same status path as the detection process.
 
-The default dashboard refresh interval is a few seconds.
+## Dashboard does not show images
 
-## Dashboard says `COLLECTING DATA`
+The dashboard needs access to the configured production image directory. If the directory is outside the project directory, it must be included in the Gradio allowed paths used by the dashboard.
 
-This normally means fewer than `--drift-min-samples` production samples have been observed.
-
-Wait until enough samples have entered the rolling window.
-
-## No production images appear
-
-The dashboard reads the configured image source. Verify that `img_path` in `config.yml` points to an existing image directory, or set the dashboard image path explicitly with:
+For example:
 
 ```text
-ANOMAVISION_DRIFT_IMAGE_PATH
+D:\01-DATA\VisA_pytorch\candle\train\good
 ```
 
-When images are stored outside the application directory, the dashboard registers the source directory with Gradio as an allowed path.
+The source dataset should remain untouched.
 
-## Drift monitoring does not stop inference
+## Dashboard starts but detection should continue
 
-This is intentional. Monitoring failures are isolated from the anomaly inference path.
-
-Inspect the application log for the monitoring warning.
-
-## Drift is detected after a known production change
-
-This is expected if the reference represents the previous approved operating condition.
-
-The correct next step is investigation and deliberate reference management, not automatic suppression of the alert.
-
-## PSI is much larger than 1
-
-That is possible. PSI itself is not bounded to `[0, 1]` in this implementation.
-
-The dashboard therefore presents PSI as a technical metric and uses the bounded normalized drift score for its simple percentage visualization.
+The dashboard is launched as a separate process. A dashboard startup problem should not prevent normal anomaly detection.
 
 ---
 
-# Operational guidance
+# 19. Complete Windows example
 
-A good production monitoring strategy separates three questions:
+Assume:
 
-### Question 1 — Did the input population change?
+```text
+Dataset:
+D:\01-DATA\VisA_pytorch\candle\train\good
 
-**Data drift monitoring** answers this.
+Model:
+model.pt
 
-### Question 2 — Did the model's predictions change in a problematic way?
+Reference:
+.\drift\reference_embeddings.npy
+```
 
-**Anomaly results and production quality monitoring** answer this.
+### Step 1 — Generate the reference
 
-### Question 3 — What should we change?
+```powershell
+python -m anomavision.drift_reference `
+  --config config.yml `
+  --img_path "D:\01-DATA\VisA_pytorch\candle\train\good" `
+  --model "model.pt" `
+  --model_data_path ".\distributions" `
+  --algorithm patchcore `
+  --class_name candle `
+  --run_name anomav_exp `
+  --device cpu `
+  --batch_size 8 `
+  --max_samples 500 `
+  --output ".\drift\reference_embeddings.npy"
+```
 
-This requires human/engineering investigation using production context.
+Verify:
 
-These questions should not be collapsed into one metric.
+```powershell
+Test-Path ".\drift\reference_embeddings.npy"
+```
+
+Expected:
+
+```text
+True
+```
+
+### Step 2 — Start detection and monitoring
+
+```powershell
+python -m anomavision.cli detect `
+  --config config.yml `
+  --model "model.pt" `
+  --enable-drift-monitoring `
+  --drift-reference ".\drift\reference_embeddings.npy"
+```
+
+### Step 3 — Open the dashboard
+
+```text
+http://127.0.0.1:7860
+```
+
+### Step 4 — Watch the production status
+
+The dashboard starts with:
+
+```text
+COLLECTING DATA
+```
+
+After enough samples are collected, it changes to either:
+
+```text
+PRODUCTION LOOKS STABLE
+```
+
+or:
+
+```text
+DATA CHANGE DETECTED
+```
+
+Recent production images are shown alongside the status when the configured image directory is accessible.
 
 ---
 
-# Research and industrial use
+# 20. Operational recommendations
 
-The monitoring architecture can support further extensions without changing the anomaly detector, including:
+For production deployments:
 
-- historical drift timelines
-- per-class drift monitoring
-- per-camera drift monitoring
-- production quality correlation
-- alerting and webhooks
-- email/Slack/Teams notifications
-- drift snapshots
-- reference-version management
-- automated report generation
-- model-version comparison
-- production segmentation by shift or line
-
-These should remain separate monitoring capabilities layered around the detector.
+1. Generate the reference from trusted normal data.
+2. Store the reference as a versioned artifact.
+3. Record the model and preprocessing configuration associated with it.
+4. Deploy anomaly detection normally.
+5. Enable drift monitoring as an observer.
+6. Keep a bounded production window.
+7. Review recent images when drift is detected.
+8. Correlate drift with actual quality measurements where available.
+9. Establish a controlled process for approving a new reference.
+10. Do not treat drift alone as proof of model degradation.
 
 ---
 
 # Summary
 
-AnomaVision's production data-drift feature provides a second layer of observability around anomaly detection:
+The `.npy` reference is the trusted baseline. Production embeddings are collected from the normal inference pipeline and compared against that baseline in a bounded rolling window.
+
+The practical workflow is:
 
 ```text
-              ANOMALY DETECTION
-                     │
-                     │ Is this image unusual?
-                     ▼
-                 Prediction
-
-                     +
-
-                DATA DRIFT
-                     │
-                     │ Has production changed?
-                     ▼
-              Production health
+1. Trusted normal images
+          │
+          ▼
+2. Generate reference_embeddings.npy
+          │
+          ▼
+3. Start AnomaVision detect
+          │
+          ├────────► anomaly detection continues normally
+          │
+          └────────► drift monitoring
+                           │
+                           ▼
+                    drift_status.json
+                           │
+                           ▼
+                  live customer dashboard
 ```
 
-The goal is not to replace anomaly detection with a drift metric. The goal is to detect changes in the production population early, provide the operator with the actual images needed to investigate them, and preserve the existing anomaly detection and deployment paths.
+The dashboard provides the operator with the production status and recent images, while the technical metrics remain available for engineers and researchers.
