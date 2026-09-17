@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader, Dataset
 
 import anomavision
 from anomavision.config import _shape, load_config
+from anomavision.drift_runtime import input_drift_features
 from anomavision.general import determine_device
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.utils import merge_config
@@ -126,9 +127,16 @@ def main(args: argparse.Namespace | None = None) -> None:
             # Run the normal inference path first. Backends such as PatchCore
             # can then reuse the exact representation captured by prediction.
             model.predict(inference_batch)
-            values = np.asarray(
-                model.extract_drift_embeddings(inference_batch), dtype=np.float32
-            )
+            try:
+                values = np.asarray(
+                    model.extract_drift_embeddings(inference_batch), dtype=np.float32
+                )
+            except NotImplementedError:
+                # Hailo/KV260/portable backends may not expose internal model
+                # features. Use the same deterministic input representation as
+                # production monitoring instead of changing the detector.
+                values = input_drift_features(inference_batch).astype(np.float32)
+
             if values.ndim != 2:
                 raise ValueError(f"Expected 2D embeddings, got shape {values.shape}")
             if not np.isfinite(values).all():
@@ -158,6 +166,7 @@ def main(args: argparse.Namespace | None = None) -> None:
         "algorithm": str(config.algorithm),
         "class_name": str(config.class_name),
         "run_name": str(config.run_name),
+        "representation": "model_embeddings",
     }
     output.with_suffix(output.suffix + ".json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
