@@ -2,7 +2,7 @@
 
 
 <p align="center">
-  <img src="docs/images/Production_Data_Drift.png" width="50%" alt="Production_Data_Drift"/>
+  <img src="images/Production_Data_Drift.png" width="50%" alt="Production Data Drift"/>
 </p>
 
 ## Overview
