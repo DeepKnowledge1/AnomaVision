@@ -10,12 +10,6 @@ Usage:
     anomavision eval [args...]            # Evaluate model performance
     anomavision drift [args...]           # Compare embedding distributions
     anomavision drift-reference [args...] # Generate trusted reference embeddings
-
-Examples:
-    anomavision train --config config.yml
-    anomavision export --config config.yml --model model.pt --format onnx
-    anomavision detect --config config.yml --model model.onnx --img_path ./test_images
-    anomavision eval --config config.yml --model model.pt --class_name bottle
 """
 
 import argparse
@@ -141,6 +135,21 @@ def _dispatch_export(args: argparse.Namespace) -> None:
 
 def _dispatch_detect(args: argparse.Namespace) -> None:
     from anomavision import detect
+
+    if getattr(args, "enable_drift_monitoring", False):
+        try:
+            import os
+            from anomavision.drift_dashboard import launch
+
+            status_file = getattr(args, "drift_output", None) or "./drift/drift_status.json"
+            if getattr(args, "config", None):
+                os.environ["ANOMAVISION_DRIFT_CONFIG"] = str(args.config)
+            os.environ["ANOMAVISION_DRIFT_STATUS_FILE"] = str(status_file)
+            launch(status_file=status_file, port=int(os.getenv("ANOMAVISION_DRIFT_DASHBOARD_PORT", "7860")))
+        except Exception as exc:
+            # Monitoring UI must never stop anomaly inference.
+            print(f"[AnomaVision] Live drift dashboard could not start: {exc}")
+
     detect.main(args)
 
 
