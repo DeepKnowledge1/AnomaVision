@@ -160,9 +160,7 @@ class DriftMonitor:
             cur_pct = (cur_hist + smoothing) / (
                 cur_hist.sum() + smoothing * len(cur_hist)
             )
-            total += float(
-                np.sum((cur_pct - ref_pct) * np.log(cur_pct / ref_pct))
-            )
+            total += float(np.sum((cur_pct - ref_pct) * np.log(cur_pct / ref_pct)))
             used += 1
 
         return total / used if used else 0.0

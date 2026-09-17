@@ -39,7 +39,11 @@ def test_monitor_detects_shift_and_bounds_window():
     rng = np.random.default_rng(7)
     reference = rng.normal(0, 1, size=(300, 3))
     monitor = ProductionDriftMonitor(
-        reference, window_size=20, min_samples=10, evaluation_interval=10, threshold=0.20
+        reference,
+        window_size=20,
+        min_samples=10,
+        evaluation_interval=10,
+        threshold=0.20,
     )
     report = monitor.update(rng.normal(4, 1, size=(30, 3)))
     assert report is not None
@@ -99,14 +103,18 @@ def test_runtime_falls_back_to_input_statistics_without_model_embeddings():
         reference, window_size=10, min_samples=5, evaluation_interval=5
     )
     runtime = InferenceDriftRuntime(monitor, NoEmbeddingModel())
-    result = runtime.update(batch[:5] if batch.shape[0] >= 5 else np.tile(batch, (3, 1, 1, 1)))
+    result = runtime.update(
+        batch[:5] if batch.shape[0] >= 5 else np.tile(batch, (3, 1, 1, 1))
+    )
     assert result is not None
     assert result["feature_dimensions"] == 15
 
 
 def test_runtime_rejects_models_without_feature_extractor():
     rng = np.random.default_rng(3)
-    monitor = ProductionDriftMonitor(rng.normal(size=(20, 2)), min_samples=2, window_size=5)
+    monitor = ProductionDriftMonitor(
+        rng.normal(size=(20, 2)), min_samples=2, window_size=5
+    )
     runtime = InferenceDriftRuntime(monitor, object())
     with pytest.raises(ValueError, match="image batch"):
         runtime.update(np.zeros((2, 2)))

@@ -45,7 +45,7 @@ inference_benchmark:
   enabled: true                            # Set true to run model benchmarks
   warmup_runs: 10                          # Warm-up predictions excluded from timing
   test_runs: 50                            # Timed predictions per algorithm
-  batch_size: 2                            # Batch size used by the benchmark
+  batch_size: 1                            # Batch size used by the benchmark
   max_inference_ms:                        # Maximum allowed pure inference time per batch
     padim: 100.0
     patchcore: 100.0
@@ -66,8 +66,8 @@ detailed_timing: false                     # Enable detailed timing information
 # =========================
 # Visualization (detect/eval)
 # =========================
-enable_visualization: true                 # Enable anomaly visualization
-save_visualizations: true                  # Save generated visualizations to disk
+enable_visualization: false                 # Enable anomaly visualization
+save_visualizations: false                  # Save generated visualizations to disk
 viz_output_dir: "./visualizations/"        # Directory for visualization output
 viz_alpha: 0.5                             # Heatmap overlay transparency
 viz_padding: 40                            # Extra visualization border/padding
@@ -92,8 +92,8 @@ overwrite: false                           # Overwrite an existing output direct
 # anomavision drift-reference --config config.yml --img_path <healthy-images>
 enable_drift_monitoring: true              # Enable rolling production data-drift monitoring during inference
 drift_reference: "./drift/reference_embeddings.npy" # Reference embeddings generated from known healthy data
-drift_window: 500                          # Number of recent production samples kept in the rolling window
-drift_min_samples: 100                     # Minimum production samples required before drift is evaluated
+drift_window: 50                          # Number of recent production samples kept in the rolling window
+drift_min_samples: 5                     # Minimum production samples required before drift is evaluated
 drift_threshold: 0.20                      # Combined drift-score threshold that triggers a drift alert
 drift_evaluation_interval: 25              # Evaluate drift after each additional N production samples
 drift_output: "./drift/drift_status.json"  # JSON file containing the latest production drift status

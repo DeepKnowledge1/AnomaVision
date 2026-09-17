@@ -12,10 +12,16 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         description="Compare reference and production embeddings for data drift.",
         add_help=add_help,
     )
-    parser.add_argument("--reference", required=True, help="Reference embeddings (.npy/.npz).")
-    parser.add_argument("--current", required=True, help="Current production window (.npy/.npz).")
+    parser.add_argument(
+        "--reference", required=True, help="Reference embeddings (.npy/.npz)."
+    )
+    parser.add_argument(
+        "--current", required=True, help="Current production window (.npy/.npz)."
+    )
     parser.add_argument("--output", help="Optional JSON report path.")
-    parser.add_argument("--bins", type=int, default=20, help="Number of histogram bins per feature.")
+    parser.add_argument(
+        "--bins", type=int, default=20, help="Number of histogram bins per feature."
+    )
     parser.add_argument(
         "--threshold",
         type=float,

@@ -112,7 +112,9 @@ class Padim(torch.nn.Module):
         if self.embeddings_extractor is not None:
             self.embeddings_extractor.to_device(device)
 
-    def fit(self, dataloader: torch.utils.data.DataLoader, extractions: int = 1) -> None:
+    def fit(
+        self, dataloader: torch.utils.data.DataLoader, extractions: int = 1
+    ) -> None:
         """Fit the PaDiM model to normal training data."""
         embedding_vectors = None
         for _ in range(extractions):

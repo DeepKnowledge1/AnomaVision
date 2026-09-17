@@ -28,6 +28,7 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
     if model_type == ModelType.ONNX:
         logger.info("Loading ONNX backend...")
         from .backends.onnx_backend import OnnxBackend
+
         logger.debug("Selected ONNX backend for %s", model_path)
         backend = OnnxBackend(model_path, device)
         logger.info("ONNX backend created successfully")
@@ -36,6 +37,7 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
     if model_type == ModelType.TORCHSCRIPT:
         logger.info("Loading TorchScript backend...")
         from .backends.torchscript_backend import TorchScriptBackend
+
         logger.debug("Selected TorchScript backend for %s", model_path)
         backend = TorchScriptBackend(model_path, device)
         logger.info("TorchScript backend created successfully")
@@ -43,26 +45,31 @@ def make_backend(model_path: str, device: str) -> InferenceBackend:
 
     if model_type == ModelType.PYTORCH:
         from .backends.torch_backend import TorchBackend
+
         logger.debug("Selected PyTorch backend for %s", model_path)
         return TorchBackend(model_path, device)
 
     if model_type == ModelType.TENSORRT:
         from .backends.tensorrt_backend import TensorRTBackend
+
         logger.debug("Selected TensorRT backend for %s", model_path)
         return TensorRTBackend(model_path, device)
 
     if model_type == ModelType.HEF:
         from .backends.hailo_backend import HailoBackend
+
         logger.debug("Selected Hailo-8 backend for %s", model_path)
         return HailoBackend(model_path, device)
     if model_type == ModelType.XMODEL:
         from .backends.k260_backend import KV260Backend
+
         logger.debug("Selected KV260/K26 Vitis AI backend for %s", model_path)
         return KV260Backend(model_path, device)
 
     if model_type == ModelType.OPENVINO:
         logger.info("Loading OpenVINO backend...")
         from .backends.openvino_backend import OpenVinoBackend
+
         logger.debug("Selected OpenVINO backend for %s", model_path)
         backend = OpenVinoBackend(model_path, device)
         logger.info("OpenVINO backend created successfully")

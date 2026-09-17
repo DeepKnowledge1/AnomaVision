@@ -29,18 +29,36 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         description="Generate reference embeddings for production drift monitoring.",
         add_help=add_help,
     )
-    parser.add_argument("--config", type=str, default=None, help="Path to config.yml/.json")
-    parser.add_argument("--img_path", type=str, default=None, help="Healthy/reference image directory")
+    parser.add_argument(
+        "--config", type=str, default=None, help="Path to config.yml/.json"
+    )
+    parser.add_argument(
+        "--img_path", type=str, default=None, help="Healthy/reference image directory"
+    )
     parser.add_argument("--model", type=str, default=None, help="Model file override")
-    parser.add_argument("--model_data_path", type=str, default=None, help="Model directory override")
-    parser.add_argument("--algorithm", type=str, default=None, help="Algorithm override")
-    parser.add_argument("--class_name", type=str, default=None, help="Dataset class override")
-    parser.add_argument("--run_name", type=str, default=None, help="Training run name override")
-    parser.add_argument("--device", type=str, default=None, choices=["auto", "cpu", "cuda"])
+    parser.add_argument(
+        "--model_data_path", type=str, default=None, help="Model directory override"
+    )
+    parser.add_argument(
+        "--algorithm", type=str, default=None, help="Algorithm override"
+    )
+    parser.add_argument(
+        "--class_name", type=str, default=None, help="Dataset class override"
+    )
+    parser.add_argument(
+        "--run_name", type=str, default=None, help="Training run name override"
+    )
+    parser.add_argument(
+        "--device", type=str, default=None, choices=["auto", "cpu", "cuda"]
+    )
     parser.add_argument("--batch_size", type=int, default=None)
     parser.add_argument("--num_workers", type=int, default=0)
-    parser.add_argument("--max_samples", type=int, default=500, help="Maximum reference images to embed")
-    parser.add_argument("--output", type=str, default="./drift/reference_embeddings.npy")
+    parser.add_argument(
+        "--max_samples", type=int, default=500, help="Maximum reference images to embed"
+    )
+    parser.add_argument(
+        "--output", type=str, default="./drift/reference_embeddings.npy"
+    )
     return parser
 
 

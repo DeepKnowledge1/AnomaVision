@@ -1,5 +1,20 @@
 #!/usr/bin/env python
-"""AnomaVision unified command-line interface."""
+"""
+AnomaVision - Unified Command-Line Interface
+A single entry point for all anomaly detection operations.
+
+Usage:
+    anomavision train [args...]      # Train a new model
+    anomavision export [args...]     # Export model to different formats
+    anomavision detect [args...]     # Run inference on images
+    anomavision eval [args...]       # Evaluate model performance
+
+Examples:
+    anomavision train --config config.yml
+    anomavision export --config config.yml --model model.pt --format onnx
+    anomavision detect --config config.yml --model model.onnx --img_path ./test_images
+    anomavision eval --config config.yml --model model.pt --class_name bottle
+"""
 
 import argparse
 import os
@@ -15,12 +30,15 @@ def create_parser() -> argparse.ArgumentParser:
     )
     try:
         from anomavision import __version__
+
         version_str = f"AnomaVision {__version__}"
     except ImportError:
         version_str = "AnomaVision"
     parser.add_argument("--version", action="version", version=version_str)
     subparsers = parser.add_subparsers(
-        title="commands", dest="command", required=True,
+        title="commands",
+        dest="command",
+        required=True,
     )
     _add_train_parser(subparsers)
     _add_export_parser(subparsers)
@@ -34,46 +52,83 @@ def create_parser() -> argparse.ArgumentParser:
 
 def _add_train_parser(subparsers) -> None:
     from anomavision.train import create_parser as _cp
-    subparsers.add_parser("train", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_train)
+
+    subparsers.add_parser(
+        "train",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_train)
 
 
 def _add_export_parser(subparsers) -> None:
     from anomavision.export import create_parser as _cp
-    subparsers.add_parser("export", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_export)
+
+    subparsers.add_parser(
+        "export",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_export)
 
 
 def _add_detect_parser(subparsers) -> None:
     from anomavision.detect import create_parser as _cp
-    subparsers.add_parser("detect", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_detect)
+
+    subparsers.add_parser(
+        "detect",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_detect)
 
 
 def _add_eval_parser(subparsers) -> None:
     from anomavision.eval import create_parser as _cp
-    subparsers.add_parser("eval", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_eval)
+
+    subparsers.add_parser(
+        "eval",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_eval)
 
 
 def _add_autopilot_parser(subparsers) -> None:
     from anomavision.autopilot import create_parser as _cp
-    subparsers.add_parser("autopilot", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_autopilot)
+
+    subparsers.add_parser(
+        "autopilot",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_autopilot)
 
 
 def _add_drift_parser(subparsers) -> None:
     from anomavision.drift_cli import create_parser as _cp
-    subparsers.add_parser("drift", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_drift)
+
+    subparsers.add_parser(
+        "drift",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_drift)
 
 
 def _add_drift_reference_parser(subparsers) -> None:
     from anomavision.drift_reference import create_parser as _cp
-    subparsers.add_parser("drift-reference", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_drift_reference)
+
+    subparsers.add_parser(
+        "drift-reference",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_drift_reference)
 
 
 def _dispatch_train(args: argparse.Namespace) -> None:
     from anomavision import train
+
     train.main(args)
 
 
 def _dispatch_export(args: argparse.Namespace) -> None:
     from anomavision import export
+
     export.main(args)
 
 
@@ -82,7 +137,9 @@ def _dispatch_detect(args: argparse.Namespace) -> None:
 
     if getattr(args, "enable_drift_monitoring", False):
         try:
-            status_file = getattr(args, "drift_output", None) or "./drift/drift_status.json"
+            status_file = (
+                getattr(args, "drift_output", None) or "./drift/drift_status.json"
+            )
             env = os.environ.copy()
             env["ANOMAVISION_DRIFT_STATUS_FILE"] = str(status_file)
             if getattr(args, "config", None):
@@ -109,21 +166,25 @@ def _dispatch_detect(args: argparse.Namespace) -> None:
 
 def _dispatch_eval(args: argparse.Namespace) -> None:
     from anomavision import eval as eval_module
+
     eval_module.main(args)
 
 
 def _dispatch_autopilot(args: argparse.Namespace) -> None:
     from anomavision import autopilot
+
     autopilot.main(args)
 
 
 def _dispatch_drift(args: argparse.Namespace) -> None:
     from anomavision import drift_cli
+
     drift_cli.main(args)
 
 
 def _dispatch_drift_reference(args: argparse.Namespace) -> None:
     from anomavision import drift_reference
+
     drift_reference.main(args)
 
 

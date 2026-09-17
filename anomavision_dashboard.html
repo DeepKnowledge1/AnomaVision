@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AnomaVision · Production Health</title>
+  <style>
+    :root {
+      --ink: #17213a; --muted: #74819a; --line: #e7ebf2; --surface: #fff;
+      --page: #f4f7fb; --purple: #6357dd; --purple-soft: #eeecff;
+      --green: #159b63; --green-soft: #e4f8ed; --amber: #bd760b;
+      --amber-soft: #fff2d9; --red: #d13b5a; --red-soft: #ffe7ec;
+      --blue: #397fc8; --shadow: 0 12px 30px rgba(31, 52, 94, .08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--page); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .app { max-width: 1240px; margin: auto; padding: 28px 26px 52px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 26px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; color: white; font-size: 22px; font-weight: 900; background: linear-gradient(135deg, #5b4fdb, #9b86ff); box-shadow: 0 9px 20px rgba(99, 87, 221, .25); }
+    .brand strong { display: block; font-size: 17px; letter-spacing: -.02em; }
+    .brand small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .live { display: inline-flex; align-items: center; gap: 7px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 999px; background: white; color: var(--muted); font-size: 11px; font-weight: 750; }
+    .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+    .button { border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); padding: 9px 13px; font-size: 12px; font-weight: 750; box-shadow: 0 3px 10px rgba(31, 52, 94, .04); }
+    .button:hover { border-color: #b8b2f4; color: var(--purple); }
+    .hero { display: flex; align-items: center; justify-content: space-between; gap: 32px; min-height: 282px; padding: 42px 50px; border-radius: 28px; color: white; position: relative; overflow: hidden; box-shadow: var(--shadow); }
+    .hero::after { content: ""; position: absolute; width: 360px; height: 360px; right: 70px; top: -175px; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; box-shadow: 0 0 0 38px rgba(255,255,255,.08), 0 0 0 76px rgba(255,255,255,.04); }
+    .hero.good { background: linear-gradient(120deg, #087b4a, #22b975); }
+    .hero.danger { background: linear-gradient(120deg, #b82f4d, #ee5b76); }
+    .hero.warming { background: linear-gradient(120deg, #b96f10, #e8a430); }
+    .hero.neutral { background: linear-gradient(120deg, #526078, #8390a5); }
+    .hero-copy { z-index: 1; max-width: 740px; }
+    .eyebrow { display: flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 850; letter-spacing: .15em; opacity: .9; text-transform: uppercase; }
+    .status-icon { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: rgba(255,255,255,.2); font-size: 16px; letter-spacing: 0; }
+    h1 { margin: 16px 0 9px; color: white; font-size: clamp(31px, 5vw, 56px); line-height: .98; letter-spacing: -.06em; }
+    .hero-copy > p { margin: 0; max-width: 650px; color: rgba(255,255,255,.92); font-size: 17px; line-height: 1.45; }
+    .next { display: flex; flex-direction: column; gap: 4px; max-width: 650px; margin-top: 24px; padding: 13px 16px; border-radius: 12px; background: rgba(0,0,0,.2); color: white; font-size: 13px; line-height: 1.4; }
+    .next b { font-size: 12px; }
+    .score-wrap { z-index: 1; min-width: 190px; text-align: center; }
+    .score { font-size: 88px; font-weight: 900; line-height: .84; letter-spacing: -.08em; text-shadow: 0 4px 15px rgba(0,0,0,.15); }
+    .score small { font-size: 35px; letter-spacing: -.04em; }
+    .score-label { margin-top: 15px; color: rgba(255,255,255,.82); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .legend { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; padding: 16px 4px 11px; color: #59657d; font-size: 12px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 7px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; }.dot.green { background: #20b875; }.dot.amber { background: #e4a02e; }.dot.red { background: #e55772; }
+    .legend-note { margin-left: auto; color: #8b96a9; font-size: 11px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; margin-bottom: 14px; }
+    .stat, .card { border: 1px solid var(--line); border-radius: 17px; background: white; box-shadow: 0 5px 15px rgba(31, 52, 94, .045); }
+    .stat { display: flex; align-items: center; gap: 12px; min-height: 88px; padding: 15px 17px; }
+    .stat-icon { display: grid; place-items: center; flex: 0 0 35px; width: 35px; height: 35px; border-radius: 11px; font-size: 18px; font-weight: 900; }.stat-icon.purple { color: var(--purple); background: var(--purple-soft); }.stat-icon.blue { color: var(--blue); background: #e7f2ff; }.stat-icon.green { color: var(--green); background: var(--green-soft); }.stat-icon.amber { color: var(--amber); background: var(--amber-soft); }.stat-icon.red { color: var(--red); background: var(--red-soft); }
+    .stat b { display: block; color: var(--ink); font-size: 22px; line-height: 1.05; }.stat small { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+    .grid { display: grid; grid-template-columns: 1.45fr .85fr; gap: 14px; margin-top: 14px; }
+    .card { padding: 22px; }
+    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+    .card-head h2 { margin: 0; font-size: 18px; letter-spacing: -.025em; }.card-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .tabs { display: flex; gap: 5px; padding: 3px; border-radius: 9px; background: #f2f4f8; }.tab { border: 0; border-radius: 7px; padding: 6px 9px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 750; }.tab.active { background: white; color: var(--purple); box-shadow: 0 2px 6px rgba(31,52,94,.1); }
+    .chart-box { position: relative; height: 245px; }.chart-box canvas { width: 100%; height: 100%; }
+    .chart-empty { display: grid; place-items: center; height: 100%; border: 1px dashed #d6dce7; border-radius: 12px; color: var(--muted); font-size: 12px; text-align: center; }
+    .ring-area { display: flex; align-items: center; justify-content: center; min-height: 245px; position: relative; }.ring-canvas { width: 190px; height: 190px; }.ring-label { position: absolute; text-align: center; }.ring-label b { display: block; font-size: 33px; }.ring-label small { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+    .checklist { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; margin-top: 4px; }.check { padding: 16px; border: 1px solid #e8ebf1; border-radius: 13px; background: #fbfcfe; }.check span { color: var(--purple); font-size: 10px; font-weight: 900; }.check b { display: block; margin-top: 9px; font-size: 13px; }.check small { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .warning { margin-top: 15px; padding: 10px 12px; border-radius: 10px; color: #8b601c; background: var(--amber-soft); font-size: 11px; }
+    .gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }.gallery figure { overflow: hidden; margin: 0; border: 1px solid var(--line); border-radius: 12px; background: #f8fafc; }.gallery img { display: block; width: 100%; aspect-ratio: 1.3; object-fit: cover; }.gallery figcaption { overflow: hidden; padding: 8px 9px; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.gallery-empty { grid-column: 1 / -1; padding: 30px 10px; border: 1px dashed #d5dce7; border-radius: 12px; color: var(--muted); font-size: 12px; text-align: center; }
+    details { margin-top: 14px; border: 1px solid #cfd6e4; border-radius: 15px; background: white; box-shadow: 0 5px 15px rgba(31, 52, 94, .045); }.advanced summary { cursor: pointer; list-style: none; padding: 16px 18px; color: var(--ink); font-size: 13px; font-weight: 800; }.advanced summary::-webkit-details-marker { display: none; }.advanced summary::before { content: '＋'; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 9px; border-radius: 7px; color: white; background: var(--purple); font-size: 16px; line-height: 1; }.advanced[open] summary::before { content: '−'; }.advanced summary:hover { color: var(--purple); background: #fafaff; border-radius: 15px; }.tech { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); }.tech div { padding: 15px 18px; border-right: 1px solid var(--line); }.tech span, .tech small { display: block; color: var(--muted); font-size: 10px; }.tech b { display: block; margin: 6px 0; font-size: 15px; }
+    .footer { padding-top: 22px; color: #9aa4b6; font-size: 10px; line-height: 1.5; text-align: center; }.file-input { display: none; }
+    @media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, 1fr); }.grid { grid-template-columns: 1fr; }.hero { padding: 35px 30px; }.gallery { grid-template-columns: repeat(4, 1fr); } }
+    @media (max-width: 600px) { .app { padding: 18px 12px 35px; }.topbar { align-items: flex-start; flex-direction: column; }.top-actions { width: 100%; justify-content: space-between; }.hero { flex-direction: column; align-items: flex-start; padding: 29px 23px; }.score-wrap { align-self: center; }.stat-grid { grid-template-columns: 1fr; }.legend-note { display: none; }.card { padding: 18px; }.card-head { flex-direction: column; }.checklist { grid-template-columns: 1fr; }.tech { grid-template-columns: repeat(2, 1fr); }.gallery { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><div class="logo">A</div><div><strong>AnomaVision</strong><small>Production health</small></div></div>
+      <div class="top-actions"><span class="live"><i></i><span id="liveText">Monitoring live</span></span><button class="button" id="loadJson">Load status JSON</button><button class="button" id="resetDemo">Demo data</button><input id="jsonFile" class="file-input" type="file" accept=".json,application/json" /></div>
+    </header>
+
+    <section id="hero" class="hero neutral" aria-live="polite">
+      <div class="hero-copy"><div class="eyebrow"><span id="statusIcon" class="status-icon">?</span><span id="statusLabel">CHECK</span></div><h1 id="headline">Monitoring is not ready</h1><p id="plainStatus">The dashboard is not receiving a fresh monitoring result yet.</p><div class="next"><b>What should I do?</b><span id="nextStep">Ask the technical team to check that the monitoring service is running.</span></div></div>
+      <div class="score-wrap"><div class="score"><span id="score">0</span><small>%</small></div><div class="score-label">change from normal</div></div>
+    </section>
+
+    <section class="legend"><span class="legend-item"><i class="dot green"></i><b>Green</b> Looks normal</span><span class="legend-item"><i class="dot amber"></i><b>Amber</b> Still learning</span><span class="legend-item"><i class="dot red"></i><b>Red</b> Needs a review</span><span class="legend-note">An early warning does not automatically mean the model is wrong.</span></section>
+
+    <section class="stat-grid" aria-label="Key figures"><div class="stat"><span class="stat-icon purple">◉</span><div><b id="samples">0</b><small>images checked</small></div></div><div class="stat"><span class="stat-icon blue">◔</span><div><b id="windowFill">0%</b><small>of learning window filled</small></div></div><div class="stat"><span id="readyIcon" class="stat-icon amber">…</span><div><b id="readyText">Starting</b><small>monitoring status</small></div></div><div class="stat"><span class="stat-icon green">↻</span><div><b id="updated">Now</b><small>last dashboard update</small></div></div></section>
+
+    <section class="grid"><article class="card"><div class="card-head"><div><h2>How things are changing</h2><p>Recent results compared with the normal production pattern.</p></div><div class="tabs"><button class="tab active" data-range="7">7 days</button><button class="tab" data-range="30">30 days</button></div></div><div class="chart-box"><canvas id="trendChart" aria-label="Interactive production change trend"></canvas></div></article><article class="card"><div class="card-head"><div><h2>Current status</h2><p>A simple view of the latest result.</p></div></div><div class="ring-area"><canvas id="ringChart" class="ring-canvas"></canvas><div class="ring-label"><b id="ringValue">0%</b><small>change</small></div></div></article></section>
+
+    <section class="card" style="margin-top:14px"><div class="card-head"><div><h2>Latest production images</h2><p>These examples can help explain a red status.</p></div><button class="button" id="loadImages">Add images</button><input id="imageFiles" class="file-input" type="file" accept="image/*" multiple /></div><div id="gallery" class="gallery"><div class="gallery-empty">No images loaded yet. Add recent production images to review them here.</div></div></section>
+
+    <section class="card" style="margin-top:14px"><div class="card-head"><div><h2>Simple checklist</h2><p>You do not need to understand technical numbers.</p></div></div><div class="checklist"><div class="check"><span>01</span><b>Check the product</b><small>Is the product itself different?</small></div><div class="check"><span>02</span><b>Check the setup</b><small>Did the camera, lighting, or position change?</small></div><div class="check"><span>03</span><b>Decide if it was expected</b><small>If yes, tell the technical team the change was intentional.</small></div></div><div id="warning" class="warning">No active warnings.</div></section>
+
+    <details class="advanced"><summary>Technical details for specialists</summary><div class="tech"><div><span>PSI</span><b id="psi">—</b><small id="threshold">threshold —</small></div><div><span>Mean shift</span><b id="meanShift">—</b></div><div><span>Std shift</span><b id="stdShift">—</b></div><div><span>Cosine shift</span><b id="cosineShift">—</b></div></div></details>
+    <footer class="footer">AnomaVision watches for meaningful changes in production data so your team can investigate early.</footer>
+  </div>
+
+  <script>
+    const demo = { ready: true, status: 'stable', samples_seen: 1842, window_size: 500, window_fill: 500, drift_score: 0.08, psi: 0.08, threshold: 0.2, mean_shift: 0.03, std_shift: 0.01, cosine_shift: 0.02, warnings: [] };
+    let current = structuredClone(demo), chartRange = 7;
+    const STATUS_URL = 'drift/drift_status.json';
+    const $ = id => document.getElementById(id);
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    const num = (value, digits=2) => value === null || value === undefined || Number.isNaN(Number(value)) ? '—' : Number(value).toFixed(digits);
+    const percent = value => Math.max(0, Math.min(100, Math.round((Number(value) || 0) * 100)));
+    function state(data) {
+      if (!data.ready || data.status === 'warming_up') return { tone:'warming', label:'LEARNING', icon:'…', headline:'We are learning what normal looks like', plain:'The monitor needs more production images before it can give a reliable answer.', next:'No action needed. Leave monitoring running while it collects more examples.' };
+      if (data.status === 'drift') return { tone:'danger', label:'REVIEW', icon:'!', headline:'Please review recent images', plain:'Recent production images look different from the normal pattern.', next:'Open the recent images and check whether the product, camera, lighting, or process changed.' };
+      if (data.status === 'stable') return { tone:'good', label:'GOOD', icon:'✓', headline:'Everything looks normal', plain:'No important change has been found in recent production images.', next:'No action needed right now. Keep monitoring as usual.' };
+      return { tone:'neutral', label:'CHECK', icon:'?', headline:'Monitoring is not ready', plain:'The dashboard is not receiving a fresh monitoring result yet.', next:'Ask the technical team to check that the monitoring service is running.' };
+    }
+    function render(data) {
+      current = {...demo, ...data}; const s = state(current), score = percent(current.drift_score); const fill = current.window_size ? Math.round((Number(current.window_fill || 0) / Number(current.window_size)) * 100) : 0;
+      $('hero').className = 'hero ' + s.tone; $('statusIcon').textContent = s.icon; $('statusLabel').textContent = s.label; $('headline').textContent = s.headline; $('plainStatus').textContent = s.plain; $('nextStep').textContent = s.next; $('score').textContent = score; $('ringValue').textContent = score + '%';
+      $('samples').textContent = Number(current.samples_seen || 0).toLocaleString(); $('windowFill').textContent = Math.max(0, Math.min(100, fill)) + '%'; $('readyText').textContent = current.ready ? 'Ready' : 'Starting'; $('readyIcon').className = 'stat-icon ' + (s.tone === 'danger' ? 'red' : s.tone === 'good' ? 'green' : 'amber'); $('readyIcon').textContent = current.ready ? '✓' : '…'; $('updated').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      $('warning').textContent = Array.isArray(current.warnings) && current.warnings.length ? current.warnings.map(x => String(x).replaceAll('_',' ')).join(', ') : 'No active warnings.';
+      $('psi').textContent = num(current.psi, 3); $('threshold').textContent = 'threshold ' + num(current.threshold, 2); $('meanShift').textContent = num(current.mean_shift, 4); $('stdShift').textContent = num(current.std_shift, 4); $('cosineShift').textContent = num(current.cosine_shift, 4);
+      drawRing(score, s.tone); drawTrend(chartRange, score);
+    }
+    function series(days, score) { return Array.from({length: days}, (_, i) => Math.max(0, Math.min(100, Math.round(score * (.45 + i / days * .55) + Math.sin(i * 1.7) * 3 + (i === days - 1 ? 2 : 0))))); }
+    function drawTrend(days, score) { const c=$('trendChart'), r=c.getBoundingClientRect(), d=devicePixelRatio||1; c.width=r.width*d; c.height=r.height*d; const x=c.getContext('2d'); x.scale(d,d); const w=r.width,h=r.height,p={l:32,r:12,t:16,b:28}, vals=series(days,score), max=100; x.clearRect(0,0,w,h); x.font='11px system-ui'; x.fillStyle='#8b96a9'; [0,25,50,75,100].forEach(v=>{const y=p.t+(max-v)*(h-p.t-p.b)/max;x.strokeStyle='#edf0f5';x.lineWidth=1;x.beginPath();x.moveTo(p.l,y);x.lineTo(w-p.r,y);x.stroke();x.fillText(v+'%',2,y+4)}); const pts=vals.map((v,i)=>[p.l+i*(w-p.l-p.r)/(vals.length-1),p.t+(max-v)*(h-p.t-p.b)/max]); x.beginPath(); pts.forEach(([xx,yy],i)=>i?x.lineTo(xx,yy):x.moveTo(xx,yy)); x.lineTo(pts.at(-1)[0],h-p.b);x.lineTo(pts[0][0],h-p.b);x.closePath();x.fillStyle='rgba(99,87,221,.10)';x.fill();x.beginPath();pts.forEach(([xx,yy],i)=>i?x.lineTo(xx,yy):x.moveTo(xx,yy));x.strokeStyle='#6357dd';x.lineWidth=3;x.stroke();pts.forEach(([xx,yy])=>{x.fillStyle='#fff';x.strokeStyle='#6357dd';x.lineWidth=2;x.beginPath();x.arc(xx,yy,4,0,Math.PI*2);x.fill();x.stroke()});x.fillStyle='#8b96a9';x.fillText(days+' days ago',p.l,h-7);x.fillText('Today',w-42,h-7); }
+    function drawRing(score, tone) { const c=$('ringChart'), x=c.getContext('2d'), d=devicePixelRatio||1; c.width=190*d;c.height=190*d;x.scale(d,d);x.clearRect(0,0,190,190);const color=tone==='good'?'#159b63':tone==='danger'?'#d13b5a':tone==='warming'?'#bd760b':'#74819a';x.lineWidth=18;x.lineCap='round';x.strokeStyle='#edf0f5';x.beginPath();x.arc(95,95,67,0,Math.PI*2);x.stroke();x.strokeStyle=color;x.beginPath();x.arc(95,95,67,-Math.PI/2,-Math.PI/2+Math.PI*2*score/100);x.stroke(); }
+    function showImages(files) { const box=$('gallery');box.innerHTML='';if(!files.length){box.innerHTML='<div class="gallery-empty">No images loaded yet. Add recent production images to review them here.</div>';return;}[...files].slice(0,12).forEach((file,i)=>{const url=URL.createObjectURL(file), fig=document.createElement('figure');fig.innerHTML='<img src="'+url+'" alt="Production sample '+(i+1)+'"><figcaption>'+esc(file.name)+'</figcaption>';box.appendChild(fig);}); }
+    async function pollStatus() { try { const response = await fetch(STATUS_URL + '?t=' + Date.now(), {cache:'no-store'}); if (!response.ok) throw new Error('status unavailable'); const data = await response.json(); render(data); $('liveText').textContent = 'Connected · ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); } catch (error) { $('liveText').textContent = 'Waiting for drift status'; } }
+    $('loadJson').onclick=()=> $('jsonFile').click(); $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const reader=new FileReader();reader.onload=()=>{try{render(JSON.parse(reader.result));$('liveText').textContent='Status JSON loaded';}catch{alert('This file is not valid monitoring JSON.');}};reader.readAsText(f);}; $('resetDemo').onclick=()=>{render(demo);$('liveText').textContent='Demo data';}; $('loadImages').onclick=()=> $('imageFiles').click(); $('imageFiles').onchange=e=>showImages(e.target.files); document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');chartRange=Number(b.dataset.range);drawTrend(chartRange,percent(current.drift_score));}); window.addEventListener('resize',()=>{drawRing(percent(current.drift_score),state(current).tone);drawTrend(chartRange,percent(current.drift_score));}); render(demo); pollStatus(); setInterval(pollStatus, 2000);
+  </script>
+</body>
+</html>

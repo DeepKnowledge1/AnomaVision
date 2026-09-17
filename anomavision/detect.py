@@ -49,24 +49,34 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         "--config", type=str, default=None, help="Path to config.yml/.json"
     )
     parser.add_argument(
-        "--img_path", default=None, type=str,
+        "--img_path",
+        default=None,
+        type=str,
         help="Path to the dataset folder containing test images.",
     )
 
     parser.add_argument(
-        "--model_data_path", type=str, default="./distributions",
+        "--model_data_path",
+        type=str,
+        default="./distributions",
         help="Directory containing model files.",
     )
     parser.add_argument(
-        "--algorithm", type=str, default=None,
+        "--algorithm",
+        type=str,
+        default=None,
         help="Algorithm name (e.g., padim, patchcore).",
     )
     parser.add_argument(
-        "--model", type=str, default=None,
+        "--model",
+        type=str,
+        default=None,
         help="Model file (.pt for PyTorch, .onnx for ONNX, .engine for TensorRT)",
     )
     parser.add_argument(
-        "--device", type=str, default=None,
+        "--device",
+        type=str,
+        default=None,
         choices=["auto", "cpu", "cuda"],
         help="Device to run inference on (auto will choose cuda if available)",
     )
@@ -74,89 +84,126 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         "--batch_size", type=int, default=None, help="Batch size for inference"
     )
     parser.add_argument(
-        "--thresh", type=float, default=None,
+        "--thresh",
+        type=float,
+        default=None,
         help="Threshold for anomaly classification",
     )
 
     parser.add_argument(
-        "--num_workers", type=int, default=1,
+        "--num_workers",
+        type=int,
+        default=1,
         help="Number of worker processes for data loading.",
     )
     parser.add_argument(
-        "--pin_memory", action="store_true",
+        "--pin_memory",
+        action="store_true",
         help="Use pinned memory for faster GPU transfers.",
     )
 
     parser.add_argument(
-        "--enable_visualization", action="store_true", default=None,
+        "--enable_visualization",
+        action="store_true",
+        default=None,
         help="Enable visualization of results.",
     )
     parser.add_argument(
-        "--save_visualizations", action="store_true", default=None,
+        "--save_visualizations",
+        action="store_true",
+        default=None,
         help="Save visualization images to disk.",
     )
     parser.add_argument(
-        "--viz_output_dir", type=str, default=None,
+        "--viz_output_dir",
+        type=str,
+        default=None,
         help="Directory to save visualization images.",
     )
     parser.add_argument(
-        "--run_name", default=None, help="experiment name for this inference run",
+        "--run_name",
+        default=None,
+        help="experiment name for this inference run",
     )
     parser.add_argument(
-        "--overwrite", action="store_true",
+        "--overwrite",
+        action="store_true",
         help="overwrite existing run directory without auto-incrementing",
     )
     parser.add_argument(
-        "--viz_alpha", type=float, default=None,
+        "--viz_alpha",
+        type=float,
+        default=None,
         help="Alpha value for heatmap overlay.",
     )
     parser.add_argument(
-        "--viz_padding", type=int, default=None,
+        "--viz_padding",
+        type=int,
+        default=None,
         help="Padding for boundary visualization.",
     )
     parser.add_argument(
-        "--viz_color", type=str, default=None,
+        "--viz_color",
+        type=str,
+        default=None,
         help='RGB color for highlighting (comma-separated, e.g., "128,0,128").',
     )
 
     # Production drift monitoring
     parser.add_argument(
-        "--enable-drift-monitoring", dest="enable_drift_monitoring",
-        action="store_true", default=None,
+        "--enable-drift-monitoring",
+        dest="enable_drift_monitoring",
+        action="store_true",
+        default=None,
         help="Enable rolling production data-drift monitoring.",
     )
     parser.add_argument(
-        "--drift-reference", type=str, default=None,
+        "--drift-reference",
+        type=str,
+        default=None,
         help="Reference embeddings (.npy/.npz) for drift monitoring.",
     )
     parser.add_argument(
-        "--drift-window", type=int, default=None,
+        "--drift-window",
+        type=int,
+        default=None,
         help="Maximum number of production embeddings kept in the rolling window (default: 500).",
     )
     parser.add_argument(
-        "--drift-min-samples", type=int, default=None,
+        "--drift-min-samples",
+        type=int,
+        default=None,
         help="Minimum production samples before drift evaluation (default: 100).",
     )
     parser.add_argument(
-        "--drift-threshold", type=float, default=None,
+        "--drift-threshold",
+        type=float,
+        default=None,
         help="PSI threshold for drift alerts (default: 0.20).",
     )
     parser.add_argument(
-        "--drift-evaluation-interval", type=int, default=None,
+        "--drift-evaluation-interval",
+        type=int,
+        default=None,
         help="Evaluate drift every N new samples (default: 25).",
     )
     parser.add_argument(
-        "--drift-output", type=str, default=None,
+        "--drift-output",
+        type=str,
+        default=None,
         help="JSON path for the live drift status (default: ./drift/drift_status.json).",
     )
 
     parser.add_argument(
-        "--log_level", type=str, default="INFO",
+        "--log_level",
+        type=str,
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Logging level.",
     )
     parser.add_argument(
-        "--detailed_timing", action="store_true",
+        "--detailed_timing",
+        action="store_true",
         help="Enable detailed timing measurements.",
     )
 
@@ -192,7 +239,8 @@ def run_inference(args):
     try:
         viz_color = (
             tuple(map(int, config.viz_color.split(",")))
-            if config.viz_color else (128, 0, 128)
+            if config.viz_color
+            else (128, 0, 128)
         )
         if len(viz_color) != 3:
             raise ValueError
@@ -229,7 +277,9 @@ def run_inference(args):
                 "--drift-reference is required when --enable-drift-monitoring is enabled"
             )
         if not Path(drift_reference).exists():
-            raise FileNotFoundError(f"Drift reference file not found: {drift_reference}")
+            raise FileNotFoundError(
+                f"Drift reference file not found: {drift_reference}"
+            )
 
         reference_embeddings = load_embeddings(drift_reference)
         monitor = ProductionDriftMonitor(
@@ -237,9 +287,7 @@ def run_inference(args):
             window_size=int(config.get("drift_window", 500) or 500),
             min_samples=int(config.get("drift_min_samples", 100) or 100),
             threshold=float(config.get("drift_threshold", 0.20) or 0.20),
-            evaluation_interval=int(
-                config.get("drift_evaluation_interval", 25) or 25
-            ),
+            evaluation_interval=int(config.get("drift_evaluation_interval", 25) or 25),
         )
         drift_runtime = InferenceDriftRuntime(monitor, None)
         drift_output = Path(
@@ -460,11 +508,13 @@ def run_inference(args):
             if config.enable_visualization:
                 with profilers["visualization"]:
                     try:
-                        boundary_images = anomavision.visualization.framed_boundary_images(
-                            images,
-                            localization_masks,
-                            is_anomaly,
-                            padding=config.get("viz_padding", 40),
+                        boundary_images = (
+                            anomavision.visualization.framed_boundary_images(
+                                images,
+                                localization_masks,
+                                is_anomaly,
+                                padding=config.get("viz_padding", 40),
+                            )
                         )
                         heatmap_images = anomavision.visualization.heatmap_images(
                             images,
@@ -472,10 +522,12 @@ def run_inference(args):
                             masks=localization_masks,
                             alpha=config.get("viz_alpha", 0.5),
                         )
-                        highlighted_images = anomavision.visualization.highlighted_images(
-                            [images[i] for i in range(len(images))],
-                            localization_masks,
-                            color=viz_color,
+                        highlighted_images = (
+                            anomavision.visualization.highlighted_images(
+                                [images[i] for i in range(len(images))],
+                                localization_masks,
+                                color=viz_color,
+                            )
                         )
 
                         for img_id in range(len(images)):
@@ -531,12 +583,24 @@ def run_inference(args):
     logger.info("=" * 60)
     logger.info("ANOMAVISION PERFORMANCE SUMMARY")
     logger.info("=" * 60)
-    logger.info(f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms")
-    logger.info(f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms")
+    logger.info(
+        f"Setup time:                {profilers['setup'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Model loading time:        {profilers['model_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Data loading time:         {profilers['data_loading'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Inference time:            {profilers['inference'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Postprocessing time:       {profilers['postprocessing'].accumulated_time * 1000:.2f} ms"
+    )
+    logger.info(
+        f"Visualization time:        {profilers['visualization'].accumulated_time * 1000:.2f} ms"
+    )
     logger.info(f"Total pipeline time:       {total_pipeline_time * 1000:.2f} ms")
     logger.info("=" * 60)
 
