@@ -119,6 +119,7 @@ def main(args: argparse.Namespace | None = None) -> None:
     model = ModelWrapper(str(model_path), device)
     chunks: list[np.ndarray] = []
     seen = 0
+    representation = "model_embeddings"
     try:
         for batch, _, _, _ in loader:
             inference_batch = batch.half() if device == "cuda" else batch
@@ -136,6 +137,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                 # features. Use the same deterministic input representation as
                 # production monitoring instead of changing the detector.
                 values = input_drift_features(inference_batch).astype(np.float32)
+                representation = "input_statistics"
 
             if values.ndim != 2:
                 raise ValueError(f"Expected 2D embeddings, got shape {values.shape}")
@@ -166,7 +168,7 @@ def main(args: argparse.Namespace | None = None) -> None:
         "algorithm": str(config.algorithm),
         "class_name": str(config.class_name),
         "run_name": str(config.run_name),
-        "representation": "model_embeddings",
+        "representation": representation,
     }
     output.with_suffix(output.suffix + ".json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
@@ -177,6 +179,7 @@ def main(args: argparse.Namespace | None = None) -> None:
     print(f"Model:               {model_path}")
     print(f"Reference samples:   {reference.shape[0]}")
     print(f"Embedding dimension: {reference.shape[1]}")
+    print(f"Representation:      {representation}")
     print(f"Output:              {output}")
 
 
