@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from anomavision.drift_runtime import InferenceDriftRuntime
+from anomavision.drift_runtime import InferenceDriftRuntime, input_drift_features
 from anomavision.production_monitor import ProductionDriftMonitor
 
 
@@ -15,6 +15,11 @@ class NumpyModel:
     def _extract(self, batch):
         # Exercise backends/tests that expose NumPy features instead of tensors.
         return np.asarray(batch), 1, 1
+
+
+class NoEmbeddingModel:
+    def extract_drift_embeddings(self, batch):
+        raise NotImplementedError
 
 
 def test_monitor_warms_up_then_evaluates():
@@ -83,11 +88,27 @@ def test_runtime_accepts_numpy_feature_extractor():
     assert result["feature_dimensions"] == 3
 
 
+def test_runtime_falls_back_to_input_statistics_without_model_embeddings():
+    batch = np.arange(2 * 3 * 4 * 4, dtype=np.float32).reshape(2, 3, 4, 4)
+    features = input_drift_features(batch)
+    assert features.shape == (2, 15)
+    assert np.isfinite(features).all()
+
+    reference = np.repeat(features, 5, axis=0)
+    monitor = ProductionDriftMonitor(
+        reference, window_size=10, min_samples=5, evaluation_interval=5
+    )
+    runtime = InferenceDriftRuntime(monitor, NoEmbeddingModel())
+    result = runtime.update(batch[:5] if batch.shape[0] >= 5 else np.tile(batch, (3, 1, 1, 1)))
+    assert result is not None
+    assert result["feature_dimensions"] == 15
+
+
 def test_runtime_rejects_models_without_feature_extractor():
     rng = np.random.default_rng(3)
     monitor = ProductionDriftMonitor(rng.normal(size=(20, 2)), min_samples=2, window_size=5)
     runtime = InferenceDriftRuntime(monitor, object())
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError, match="image batch"):
         runtime.update(np.zeros((2, 2)))
 
 
