@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir "gradio>=6.3.0"
+
+COPY apps/ui/drift_dashboard.py ./apps/ui/drift_dashboard.py
+
+EXPOSE 7861
+
+CMD ["python", "apps/ui/drift_dashboard.py"]
+
+# Build:
+# docker build -f Docker/Dockerfile.drift-dashboard -t anomavision-drift-dashboard .
+#
+# Run with the monitor status directory mounted:
+# docker run --rm -p 7861:7861 \
+#   -v "${PWD}/monitoring:/app/monitoring" \
+#   -e ANOMAVISION_DRIFT_STATUS_FILE=/app/monitoring/drift_status.json \
+#   anomavision-drift-dashboard
