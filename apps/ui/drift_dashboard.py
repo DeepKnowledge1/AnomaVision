@@ -10,11 +10,14 @@ Run:
         python apps/ui/drift_dashboard.py
 """
 
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import gradio as gr
 
@@ -33,31 +36,65 @@ _BORDER = "#20283a"
 _TEXT = "#f4f7ff"
 _MUTED = "#8c96ad"
 
+_DEFAULT_STATUS: dict[str, Any] = {
+    "ready": False,
+    "status": "unavailable",
+    "samples_seen": 0,
+    "window_size": 0,
+    "window_fill": 0,
+    "drift_score": 0.0,
+    "psi": 0.0,
+    "mean_shift": 0.0,
+    "std_shift": 0.0,
+    "cosine_shift": 0.0,
+    "threshold": 0.2,
+    "warnings": ["monitoring_status_unavailable"],
+}
+
+
+class _StatusCache(TypedDict):
+    mtime: float | None
+    data: dict[str, Any]
+
+
+# Avoid re-reading + re-parsing the status file on every render (e.g. rapid
+# manual refresh clicks or a tight polling interval) when it hasn't changed.
+_cache: _StatusCache = {"mtime": None, "data": dict(_DEFAULT_STATUS)}
+
 
 def _read_status() -> dict[str, Any]:
     try:
+        mtime = STATUS_FILE.stat().st_mtime
+    except OSError:
+        _cache["mtime"] = None
+        _cache["data"] = dict(_DEFAULT_STATUS)
+        return _cache["data"]
+
+    if mtime == _cache["mtime"]:
+        return _cache["data"]
+
+    try:
         with STATUS_FILE.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return {
-            "ready": False,
-            "status": "unavailable",
-            "samples_seen": 0,
-            "window_size": 0,
-            "window_fill": 0,
-            "drift_score": 0.0,
-            "psi": 0.0,
-            "mean_shift": 0.0,
-            "std_shift": 0.0,
-            "cosine_shift": 0.0,
-            "threshold": 0.2,
-            "warnings": ["monitoring_status_unavailable"],
-        }
+        if not isinstance(data, dict):
+            raise ValueError("status file did not contain a JSON object")
+    except (json.JSONDecodeError, OSError, ValueError):
+        data = dict(_DEFAULT_STATUS)
+
+    _cache["mtime"] = mtime
+    _cache["data"] = data
+    return data
+
+
+def _clamp01(value: Any) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _pct(value: float) -> str:
-    return f"{max(0.0, min(1.0, float(value))) * 100:.0f}%"
+    return f"{_clamp01(value) * 100:.0f}%"
 
 
 def _num(value: Any, digits: int = 2) -> str:
@@ -72,7 +109,12 @@ def _bar(value: float, maximum: float = 1.0) -> str:
         ratio = max(0.0, min(1.0, float(value) / maximum))
     except (TypeError, ValueError, ZeroDivisionError):
         ratio = 0.0
-    return f"<div class='metric-bar'><span style='width:{ratio * 100:.1f}%'></span></div>"
+    return (
+        f"<div class='metric-bar'><span style='width:{ratio * 100:.1f}%'></span></div>"
+    )
+
+
+_HISTORY_STATE_CLASS = {"drift": "drift", "stable": "normal"}
 
 
 def _history_html(history: list[Any]) -> str:
@@ -84,8 +126,10 @@ def _history_html(history: list[Any]) -> str:
         if not isinstance(item, dict):
             continue
         state = str(item.get("status", "unknown")).lower()
-        cls = "drift" if state == "drift" else "normal" if state == "stable" else "unknown"
-        cells.append(f"<span class='history-cell {cls}' title='{state}'></span>")
+        cls = _HISTORY_STATE_CLASS.get(state, "unknown")
+        cells.append(
+            f"<span class='history-cell {cls}' title='{escape(state)}'></span>"
+        )
     return "<div class='history-row'>" + "".join(cells) + "</div>"
 
 
@@ -107,7 +151,9 @@ def render_dashboard() -> tuple[str, dict]:
         status_class = "danger"
     else:
         headline = "Production data is stable"
-        subtitle = "The current production window is within the configured drift threshold."
+        subtitle = (
+            "The current production window is within the configured drift threshold."
+        )
         status_label = "STABLE"
         status_class = "good"
 
@@ -126,9 +172,13 @@ def render_dashboard() -> tuple[str, dict]:
     fill_ratio = (fill / window) if window else 0.0
     updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    warning_html = "".join(
-        f"<span class='warning-pill'>⚠ {str(w).replace('_', ' ')}</span>" for w in warnings
-    ) or "<span class='warning-pill muted'>No active warnings</span>"
+    warning_html = (
+        "".join(
+            f"<span class='warning-pill'>⚠ {escape(str(w).replace('_', ' '))}</span>"
+            for w in warnings
+        )
+        or "<span class='warning-pill muted'>No active warnings</span>"
+    )
 
     html = f"""
     <div class='dashboard'>
@@ -176,7 +226,7 @@ def render_dashboard() -> tuple[str, dict]:
           <div class='health-row'><span>Reference comparison</span><strong class='ok'>READY</strong></div>
           <div class='health-row'><span>Window coverage</span><strong>{_pct(fill_ratio)}</strong></div>
           <div class='health-row'><span>Drift threshold</span><strong>{_num(threshold, 2)}</strong></div>
-          <div class='health-row'><span>Evaluation status</span><strong class='{status_class}'>{status.upper()}</strong></div>
+          <div class='health-row'><span>Evaluation status</span><strong class='{status_class}'>{escape(status.upper())}</strong></div>
           <div class='warnings'>{warning_html}</div>
         </div>
       </div>
@@ -206,7 +256,7 @@ h1 {{ font-size:34px; letter-spacing:-.04em; margin:7px 0 5px; font-weight:800; 
 h1 span {{ color:#9d8cff; }}
 .subtitle {{ color:{_MUTED}; margin:0; font-size:14px; max-width:760px; line-height:1.6; }}
 .live {{ border:1px solid {_BORDER}; background:{_CARD}; border-radius:999px; padding:9px 14px; color:{_MUTED}; font-size:11px; white-space:nowrap; }}
-.live i {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:{_GREEN}; box-shadow:0 0 12px { _GREEN }; }}
+.live i {{ display:inline-block; width:7px; height:7px; border-radius:50%; background:{_GREEN}; box-shadow:0 0 12px {_GREEN}; }}
 .hero {{ min-height:190px; border:1px solid {_BORDER}; border-radius:22px; padding:30px 34px; display:flex; justify-content:space-between; align-items:center; background:linear-gradient(135deg,{_CARD},#151c2e); box-shadow:0 20px 55px rgba(0,0,0,.22); position:relative; overflow:hidden; }}
 .hero::after {{ content:''; position:absolute; right:-70px; top:-100px; width:360px; height:360px; border-radius:50%; background:radial-gradient(circle,{_ACCENT}32,transparent 68%); pointer-events:none; }}
 .hero.danger {{ border-color:{_ACCENT2}55; }}
@@ -272,8 +322,21 @@ with gr.Blocks(title="AnomaVision — Data Drift Command Center", css=custom_css
     demo.load(fn=refresh, outputs=[dashboard, raw])
     refresh_btn.click(fn=refresh, outputs=[dashboard, raw])
 
+    # Auto-refresh on the configured interval, in addition to manual clicks.
+    # (REFRESH_SECONDS was previously only printed at startup and never used.)
+    if REFRESH_SECONDS > 0:
+        gr.Timer(REFRESH_SECONDS).tick(fn=refresh, outputs=[dashboard, raw])
+
 
 if __name__ == "__main__":
     print(f"[drift-dashboard] status file: {STATUS_FILE}")
-    print(f"[drift-dashboard] refresh: manual / every {REFRESH_SECONDS}s configured")
-    demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("DRIFT_DASHBOARD_PORT", "7861")), share=False, show_error=True)
+    if REFRESH_SECONDS > 0:
+        print(f"[drift-dashboard] auto-refresh: every {REFRESH_SECONDS}s")
+    else:
+        print("[drift-dashboard] auto-refresh: disabled (manual only)")
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=int(os.getenv("DRIFT_DASHBOARD_PORT", "7861")),
+        share=False,
+        show_error=True,
+    )
