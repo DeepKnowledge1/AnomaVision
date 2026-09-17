@@ -7,6 +7,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
+from torch.utils.data._utils.collate import default_collate_fn_map
 
 from ..utils import (
     create_image_transform,
@@ -25,6 +26,15 @@ def allowed_file(filename):
     ]
 
 
+class NativeImage(np.ndarray):
+    """Native-resolution image array kept as a list during DataLoader collation."""
+
+
+def _collate_native_images(batch, *, collate_fn_map=None):
+    """Preserve native-resolution visualization images instead of stacking them."""
+    return list(batch)
+
+
 def collate_anodet_batch(batch):
     """Collate transformed model inputs while preserving native images."""
     batches, images, classifications, masks = zip(*batch)
@@ -34,6 +44,13 @@ def collate_anodet_batch(batch):
         torch.as_tensor(classifications),
         torch.stack(list(masks), dim=0),
     )
+
+
+# Keep AnodetDataset's public ``image`` value as an ndarray while preventing
+# PyTorch's default DataLoader from stacking variable-resolution images. This
+# is scoped to the NativeImage subclass and does not change normal ndarray
+# collation used anywhere else in the project.
+default_collate_fn_map[NativeImage] = _collate_native_images
 
 
 class AnodetDataset(Dataset):
@@ -113,7 +130,7 @@ class AnodetDataset(Dataset):
         # Load image
         image = Image.open(self.image_paths[idx]).convert("RGB")
         batch = self.image_transforms(image)
-        image = np.array(image)
+        image = np.asarray(image).view(NativeImage)
         # image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
         # Load mask if mask_directory_path argument is given
