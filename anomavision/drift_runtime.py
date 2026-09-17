@@ -47,6 +47,12 @@ class InferenceDriftRuntime:
             features, _, _ = extractor(batch)
             # PatchCore returns (B, patches, dimensions). Pool over patches to
             # monitor the same representation used by the detector.
-            if features.ndim > 2:
-                features = features.float().mean(dim=1)
-            return features.detach().cpu().numpy()
+            if hasattr(features, "ndim") and features.ndim > 2:
+                if hasattr(features, "float"):
+                    features = features.float().mean(dim=1)
+                else:
+                    features = np.asarray(features, dtype=np.float64).mean(axis=1)
+
+            if hasattr(features, "detach"):
+                return features.detach().cpu().numpy()
+            return np.asarray(features)
