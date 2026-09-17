@@ -13,6 +13,9 @@ Usage:
 """
 
 import argparse
+import os
+import subprocess
+import sys
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -138,14 +141,21 @@ def _dispatch_detect(args: argparse.Namespace) -> None:
 
     if getattr(args, "enable_drift_monitoring", False):
         try:
-            import os
-            from anomavision.drift_dashboard import launch
-
             status_file = getattr(args, "drift_output", None) or "./drift/drift_status.json"
+            env = os.environ.copy()
+            env["ANOMAVISION_DRIFT_STATUS_FILE"] = str(status_file)
             if getattr(args, "config", None):
-                os.environ["ANOMAVISION_DRIFT_CONFIG"] = str(args.config)
-            os.environ["ANOMAVISION_DRIFT_STATUS_FILE"] = str(status_file)
-            launch(status_file=status_file, port=int(os.getenv("ANOMAVISION_DRIFT_DASHBOARD_PORT", "7860")))
+                env["ANOMAVISION_DRIFT_CONFIG"] = str(args.config)
+
+            subprocess.Popen(
+                [sys.executable, "-m", "anomavision.drift_dashboard"],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            print("[AnomaVision] Live drift dashboard: http://127.0.0.1:7860")
         except Exception as exc:
             # Monitoring UI must never stop anomaly inference.
             print(f"[AnomaVision] Live drift dashboard could not start: {exc}")
