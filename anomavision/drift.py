@@ -91,7 +91,12 @@ class DriftMonitor:
         # PSI is the primary distribution metric. The other signals make the
         # score sensitive to feature-space translation/scale changes as well.
         drift_score = float(
-            min(1.0, 0.60 * min(psi, 1.0) + 0.25 * min(mean_shift, 1.0) + 0.15 * min(std_shift, 1.0))
+            min(
+                1.0,
+                0.60 * min(psi, 1.0)
+                + 0.25 * min(mean_shift, 1.0)
+                + 0.15 * min(std_shift, 1.0),
+            )
         )
         status = "drift" if psi >= self.threshold else "stable"
 
@@ -118,22 +123,48 @@ class DriftMonitor:
         )
 
     def _population_stability_index(self, current: np.ndarray) -> float:
+        """Compute PSI using reference-derived quantile bins.
+
+        Fixed min/max bins can report very large PSI for two small samples drawn
+        from the same distribution because sparse bins receive almost all of
+        their mass from sampling noise. Reference quantiles keep the expected
+        distribution stable, while the bin count adapts to small production
+        windows. This preserves the PSI signal for genuine distribution shifts.
+        """
         total = 0.0
         used = 0
+        effective_bins = min(self.bins, max(2, int(np.sqrt(current.shape[0]))))
+        smoothing = max(self.epsilon, 1e-4)
+
         for feature in range(self.reference.shape[1]):
             ref = self.reference[:, feature]
             cur = current[:, feature]
-            low = min(ref.min(), cur.min())
-            high = max(ref.max(), cur.max())
-            if high - low <= self.epsilon:
+
+            quantiles = np.linspace(0.0, 1.0, effective_bins + 1)
+            edges = np.quantile(ref, quantiles)
+            edges = np.unique(edges)
+            if edges.size < 2:
                 continue
-            edges = np.linspace(low, high, self.bins + 1)
+
+            # Keep every production value in a bin, including values outside
+            # the reference range, without changing the reference distribution.
+            edges = edges.copy()
+            edges[0] = -np.inf
+            edges[-1] = np.inf
+
             ref_hist, _ = np.histogram(ref, bins=edges)
             cur_hist, _ = np.histogram(cur, bins=edges)
-            ref_pct = (ref_hist + self.epsilon) / (ref_hist.sum() + self.epsilon * self.bins)
-            cur_pct = (cur_hist + self.epsilon) / (cur_hist.sum() + self.epsilon * self.bins)
-            total += float(np.sum((cur_pct - ref_pct) * np.log(cur_pct / ref_pct)))
+            ref_pct = (ref_hist + smoothing) / (
+                ref_hist.sum() + smoothing * len(ref_hist)
+            )
+            cur_pct = (cur_hist + smoothing) / (
+                cur_hist.sum() + smoothing * len(cur_hist)
+            )
+            total += float(
+                np.sum((cur_pct - ref_pct) * np.log(cur_pct / ref_pct))
+            )
             used += 1
+
         return total / used if used else 0.0
 
     def _relative_location_shift(self, current: np.ndarray) -> float:
