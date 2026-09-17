@@ -1,5 +1,10 @@
 # Anomaly Detection: Production Data Drift
 
+
+<p align="center">
+  <img src="docs/images/Production_Data_Drift.png" width="50%" alt="Production_Data_Drift"/>
+</p>
+
 ## Overview
 
 AnomaVision can monitor whether production images have changed relative to a trusted reference population while leaving the existing anomaly detection path unchanged.

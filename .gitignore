@@ -357,6 +357,8 @@ images/
 !docs/images/streamlit.png
 !docs/images/archti.png
 !docs/AnomaVision_vs_Anomalib.pdf
+!docs/images/Production_Data_Drift.png
+
 poetry publish --build --username __toke.txt
 fix_flake.py
 apps/api/fastapi_app_np.py
