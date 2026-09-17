@@ -1,16 +1,5 @@
 #!/usr/bin/env python
-"""
-AnomaVision - Unified Command-Line Interface
-A single entry point for all anomaly detection operations.
-
-Usage:
-    anomavision train [args...]           # Train a new model
-    anomavision export [args...]          # Export model to different formats
-    anomavision detect [args...]          # Run inference on images
-    anomavision eval [args...]            # Evaluate model performance
-    anomavision drift [args...]           # Compare embedding distributions
-    anomavision drift-reference [args...] # Generate trusted reference embeddings
-"""
+"""AnomaVision unified command-line interface."""
 
 import argparse
 import os
@@ -19,45 +8,20 @@ import sys
 
 
 def create_parser() -> argparse.ArgumentParser:
-    """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
         prog="anomavision",
         description="AnomaVision: Professional anomaly detection toolkit",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s train --config config.yml --dataset_path /data --class_name bottle
-  %(prog)s export --model model.pt --format onnx --quantize-dynamic
-  %(prog)s detect --model model.onnx --img_path ./test --enable_visualization
-  %(prog)s eval --model model.pt --class_name bottle --dataset_path /data
-  %(prog)s drift --reference reference.npy --current production.npy --output drift.json
-  %(prog)s drift-reference --config config.yml --img_path ./train/good --output ./drift/reference_embeddings.npy
-
-For detailed help on each command:
-  %(prog)s train --help
-  %(prog)s export --help
-  %(prog)s detect --help
-  %(prog)s eval --help
-  %(prog)s drift --help
-  %(prog)s drift-reference --help
-        """,
     )
-
     try:
         from anomavision import __version__
         version_str = f"AnomaVision {__version__}"
     except ImportError:
         version_str = "AnomaVision"
-
     parser.add_argument("--version", action="version", version=version_str)
     subparsers = parser.add_subparsers(
-        title="commands",
-        description="Available AnomaVision operations",
-        dest="command",
-        help="Operation to perform",
-        required=True,
+        title="commands", dest="command", required=True,
     )
-
     _add_train_parser(subparsers)
     _add_export_parser(subparsers)
     _add_detect_parser(subparsers)
@@ -70,60 +34,37 @@ For detailed help on each command:
 
 def _add_train_parser(subparsers) -> None:
     from anomavision.train import create_parser as _cp
-    subparsers.add_parser(
-        "train", help="Train a new anomaly detection model", parents=[_cp(add_help=False)],
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    ).set_defaults(func=_dispatch_train)
+    subparsers.add_parser("train", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_train)
 
 
 def _add_export_parser(subparsers) -> None:
     from anomavision.export import create_parser as _cp
-    subparsers.add_parser(
-        "export", help="Export trained model to different formats", parents=[_cp(add_help=False)],
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    ).set_defaults(func=_dispatch_export)
+    subparsers.add_parser("export", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_export)
 
 
 def _add_detect_parser(subparsers) -> None:
     from anomavision.detect import create_parser as _cp
-    subparsers.add_parser(
-        "detect", help="Run inference on images", parents=[_cp(add_help=False)],
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    ).set_defaults(func=_dispatch_detect)
+    subparsers.add_parser("detect", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_detect)
 
 
 def _add_eval_parser(subparsers) -> None:
     from anomavision.eval import create_parser as _cp
-    subparsers.add_parser(
-        "eval", help="Evaluate model performance", parents=[_cp(add_help=False)],
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    ).set_defaults(func=_dispatch_eval)
+    subparsers.add_parser("eval", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_eval)
 
 
 def _add_autopilot_parser(subparsers) -> None:
     from anomavision.autopilot import create_parser as _cp
-    subparsers.add_parser(
-        "autopilot", help="Calibrate, profile, and package a production model", parents=[_cp(add_help=False)],
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    ).set_defaults(func=_dispatch_autopilot)
+    subparsers.add_parser("autopilot", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_autopilot)
 
 
 def _add_drift_parser(subparsers) -> None:
     from anomavision.drift_cli import create_parser as _cp
-    subparsers.add_parser(
-        "drift", help="Compare embedding distributions for drift", parents=[_cp(add_help=False)],
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    ).set_defaults(func=_dispatch_drift)
+    subparsers.add_parser("drift", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_drift)
 
 
 def _add_drift_reference_parser(subparsers) -> None:
     from anomavision.drift_reference import create_parser as _cp
-    subparsers.add_parser(
-        "drift-reference",
-        help="Generate trusted reference embeddings for production drift monitoring",
-        parents=[_cp(add_help=False)],
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    ).set_defaults(func=_dispatch_drift_reference)
+    subparsers.add_parser("drift-reference", parents=[_cp(add_help=False)], formatter_class=argparse.ArgumentDefaultsHelpFormatter).set_defaults(func=_dispatch_drift_reference)
 
 
 def _dispatch_train(args: argparse.Namespace) -> None:
@@ -147,8 +88,11 @@ def _dispatch_detect(args: argparse.Namespace) -> None:
             if getattr(args, "config", None):
                 env["ANOMAVISION_DRIFT_CONFIG"] = str(args.config)
 
+            # Use the compatibility entry point because it registers the
+            # external production image directory with Gradio.
+            dashboard_script = os.path.join("apps", "ui", "drift_dashboard.py")
             subprocess.Popen(
-                [sys.executable, "-m", "anomavision.drift_dashboard"],
+                [sys.executable, dashboard_script],
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
@@ -184,8 +128,7 @@ def _dispatch_drift_reference(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = create_parser()
-    args = parser.parse_args()
+    args = create_parser().parse_args()
     args.func(args)
 
 
