@@ -180,7 +180,7 @@ def _wait_for_dashboard(expected_root: str, expected_status: str, timeout: float
             ):
                 return state
         time.sleep(0.1)
-    return _dashboard_state()
+    return None
 
 
 def _dispatch_train(args: argparse.Namespace) -> None:
