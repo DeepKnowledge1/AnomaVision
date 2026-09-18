@@ -122,15 +122,34 @@ def _add_drift_reference_parser(subparsers) -> None:
     ).set_defaults(func=_dispatch_drift_reference)
 
 
-def _dashboard_is_running() -> bool:
-    """Return True when the local production dashboard already owns port 7860."""
+def _dashboard_state():
+    """Return metadata for the local dashboard, or None when it is unavailable."""
     try:
         with urllib.request.urlopen(
-            "http://127.0.0.1:7860/health", timeout=0.4
+            "http://127.0.0.1:7860/health", timeout=0.5
         ) as response:
-            return response.status == 200
+            if response.status != 200:
+                return None
+            import json
+
+            return json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, ValueError):
+        return None
+
+
+def _dashboard_is_running() -> bool:
+    """Return True when the local production dashboard is healthy."""
+    return _dashboard_state() is not None
+
+
+def _stop_dashboard() -> None:
+    """Stop a stale local dashboard so the current run can own port 7860."""
+    try:
+        urllib.request.urlopen(
+            "http://127.0.0.1:7860/shutdown", timeout=0.8
+        ).read()
     except (OSError, urllib.error.URLError):
-        return False
+        pass
 
 
 def _dispatch_train(args: argparse.Namespace) -> None:
@@ -159,10 +178,31 @@ def _dispatch_detect(args: argparse.Namespace) -> None:
                 env["ANOMAVISION_DRIFT_CONFIG"] = os.path.abspath(args.config)
             env["ANOMAVISION_PROJECT_ROOT"] = os.getcwd()
 
-            if _dashboard_is_running():
-                # Reuse the existing dashboard. Starting a second process on
-                # port 7860 previously failed silently and left the UI attached
-                # to the previous run.
+            dashboard_state = _dashboard_state()
+            expected_root = os.path.abspath(os.getcwd())
+            expected_status = os.path.abspath(status_file)
+
+            if dashboard_state is not None:
+                running_root = os.path.abspath(
+                    dashboard_state.get("project_root", "")
+                )
+                running_status = os.path.abspath(
+                    dashboard_state.get("status_file", "")
+                )
+                if running_root.lower() != expected_root.lower() or (
+                    running_status and running_status.lower() != expected_status.lower()
+                ):
+                    print("[AnomaVision] Replacing stale drift dashboard...")
+                    _stop_dashboard()
+                    import time
+
+                    time.sleep(0.25)
+                    dashboard_state = _dashboard_state()
+
+            if dashboard_state is not None:
+                # Reuse only the dashboard attached to this project and status
+                # file. A dashboard from another run/project must not mask live
+                # monitoring updates.
                 print("[AnomaVision] Reusing live drift dashboard: http://127.0.0.1:7860/anomavision_dashboard.html")
             else:
                 dashboard_script = os.path.join("apps", "ui", "drift_dashboard.py")
