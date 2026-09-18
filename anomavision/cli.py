@@ -20,6 +20,8 @@ import argparse
 import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -120,6 +122,17 @@ def _add_drift_reference_parser(subparsers) -> None:
     ).set_defaults(func=_dispatch_drift_reference)
 
 
+def _dashboard_is_running() -> bool:
+    """Return True when the local production dashboard already owns port 7860."""
+    try:
+        with urllib.request.urlopen(
+            "http://127.0.0.1:7860/health", timeout=0.4
+        ) as response:
+            return response.status == 200
+    except (OSError, urllib.error.URLError):
+        return False
+
+
 def _dispatch_train(args: argparse.Namespace) -> None:
     from anomavision import train
 
@@ -137,26 +150,31 @@ def _dispatch_detect(args: argparse.Namespace) -> None:
 
     if getattr(args, "enable_drift_monitoring", False):
         try:
-            status_file = (
+            status_file = os.path.abspath(
                 getattr(args, "drift_output", None) or "./drift/drift_status.json"
             )
             env = os.environ.copy()
-            env["ANOMAVISION_DRIFT_STATUS_FILE"] = str(status_file)
+            env["ANOMAVISION_DRIFT_STATUS_FILE"] = status_file
             if getattr(args, "config", None):
-                env["ANOMAVISION_DRIFT_CONFIG"] = str(args.config)
+                env["ANOMAVISION_DRIFT_CONFIG"] = os.path.abspath(args.config)
+            env["ANOMAVISION_PROJECT_ROOT"] = os.getcwd()
 
-            # Use the compatibility entry point because it registers the
-            # external production image directory with Gradio.
-            dashboard_script = os.path.join("apps", "ui", "drift_dashboard.py")
-            subprocess.Popen(
-                [sys.executable, dashboard_script],
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            print("[AnomaVision] Live drift dashboard: http://127.0.0.1:7860")
+            if _dashboard_is_running():
+                # Reuse the existing dashboard. Starting a second process on
+                # port 7860 previously failed silently and left the UI attached
+                # to the previous run.
+                print("[AnomaVision] Reusing live drift dashboard: http://127.0.0.1:7860/anomavision_dashboard.html")
+            else:
+                dashboard_script = os.path.join("apps", "ui", "drift_dashboard.py")
+                subprocess.Popen(
+                    [sys.executable, dashboard_script],
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                print("[AnomaVision] Live drift dashboard: http://127.0.0.1:7860/anomavision_dashboard.html")
         except Exception as exc:
             # Monitoring UI must never stop anomaly inference.
             print(f"[AnomaVision] Live drift dashboard could not start: {exc}")
