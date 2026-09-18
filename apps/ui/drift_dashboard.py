@@ -49,14 +49,36 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._send_samples()
             return
         if route == "/health":
-            payload = json.dumps({"ok": True, "dashboard": "anomavision"}).encode(
-                "utf-8"
+            status_path = os.getenv(
+                "ANOMAVISION_DRIFT_STATUS_FILE", "drift/drift_status.json"
             )
+            status_path_obj = Path(status_path).expanduser()
+            if not status_path_obj.is_absolute():
+                status_path_obj = ROOT / status_path_obj
+            payload = json.dumps(
+                {
+                    "ok": True,
+                    "dashboard": "anomavision",
+                    "project_root": str(ROOT),
+                    "status_file": str(status_path_obj.resolve()),
+                }
+            ).encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+            return
+        if route == "/shutdown":
+            # Local-only server: allow the CLI to replace a stale dashboard
+            # process when it belongs to another project/status file.
+            payload = b'{"ok":true,"shutting_down":true}'
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
         # SimpleHTTPRequestHandler safely serves drift/drift_status.json,
         # configured images, and other local project assets.
