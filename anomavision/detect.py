@@ -289,7 +289,7 @@ def run_inference(args):
             threshold=float(config.get("drift_threshold", 0.20) or 0.20),
             evaluation_interval=int(config.get("drift_evaluation_interval", 25) or 25),
         )
-        drift_runtime = InferenceDriftRuntime(monitor, None)
+        drift_runtime = InferenceDriftRuntime(monitor, model)
         drift_output = Path(
             config.get("drift_output", "./drift/drift_status.json")
             or "./drift/drift_status.json"
