@@ -264,43 +264,11 @@ def run_inference(args):
     if not config.get("model"):
         raise ValueError("model is required (via --model or config)")
 
+    # Drift monitoring is initialized after the detector is loaded. This is
+    # important for representation-aware backends such as PatchCore: the
+    # runtime must hold the active ModelWrapper used by inference.
     drift_runtime = None
     drift_output = None
-    if config.get("enable_drift_monitoring", False):
-        from anomavision.drift import load_embeddings
-        from anomavision.drift_runtime import InferenceDriftRuntime
-        from anomavision.production_monitor import ProductionDriftMonitor
-
-        drift_reference = config.get("drift_reference")
-        if not drift_reference:
-            raise ValueError(
-                "--drift-reference is required when --enable-drift-monitoring is enabled"
-            )
-        if not Path(drift_reference).exists():
-            raise FileNotFoundError(
-                f"Drift reference file not found: {drift_reference}"
-            )
-
-        reference_embeddings = load_embeddings(drift_reference)
-        monitor = ProductionDriftMonitor(
-            reference_embeddings,
-            window_size=int(config.get("drift_window", 500) or 500),
-            min_samples=int(config.get("drift_min_samples", 100) or 100),
-            threshold=float(config.get("drift_threshold", 0.20) or 0.20),
-            evaluation_interval=int(config.get("drift_evaluation_interval", 25) or 25),
-        )
-        drift_runtime = InferenceDriftRuntime(monitor, model)
-        drift_output = Path(
-            config.get("drift_output", "./drift/drift_status.json")
-            or "./drift/drift_status.json"
-        )
-        logger.info(
-            "Production drift monitoring enabled: reference=%s window=%d min_samples=%d threshold=%.3f",
-            drift_reference,
-            monitor.window_size,
-            monitor.min_samples,
-            monitor.threshold,
-        )
 
     profilers = {
         "setup": Profiler(),
@@ -352,6 +320,42 @@ def run_inference(args):
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise
+
+    if config.get("enable_drift_monitoring", False):
+        from anomavision.drift import load_embeddings
+        from anomavision.drift_runtime import InferenceDriftRuntime
+        from anomavision.production_monitor import ProductionDriftMonitor
+
+        drift_reference = config.get("drift_reference")
+        if not drift_reference:
+            raise ValueError(
+                "--drift-reference is required when --enable-drift-monitoring is enabled"
+            )
+        if not Path(drift_reference).exists():
+            raise FileNotFoundError(
+                f"Drift reference file not found: {drift_reference}"
+            )
+
+        reference_embeddings = load_embeddings(drift_reference)
+        monitor = ProductionDriftMonitor(
+            reference_embeddings,
+            window_size=int(config.get("drift_window", 500) or 500),
+            min_samples=int(config.get("drift_min_samples", 100) or 100),
+            threshold=float(config.get("drift_threshold", 0.20) or 0.20),
+            evaluation_interval=int(config.get("drift_evaluation_interval", 25) or 25),
+        )
+        drift_runtime = InferenceDriftRuntime(monitor, model)
+        drift_output = Path(
+            config.get("drift_output", "./drift/drift_status.json")
+            or "./drift/drift_status.json"
+        )
+        logger.info(
+            "Production drift monitoring enabled: reference=%s window=%d min_samples=%d threshold=%.3f",
+            drift_reference,
+            monitor.window_size,
+            monitor.min_samples,
+            monitor.threshold,
+        )
 
     RESULTS_PATH = None
     if config.get("save_visualizations", False):
