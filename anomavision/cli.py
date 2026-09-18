@@ -199,51 +199,49 @@ def _dispatch_detect(args: argparse.Namespace) -> None:
     from anomavision import detect
 
     if getattr(args, "enable_drift_monitoring", False):
-        try:
-            status_file = os.path.abspath(
-                getattr(args, "drift_output", None) or "./drift/drift_status.json"
-            )
-            env = os.environ.copy()
-            env["ANOMAVISION_DRIFT_STATUS_FILE"] = status_file
-            if getattr(args, "config", None):
-                env["ANOMAVISION_DRIFT_CONFIG"] = os.path.abspath(args.config)
-            env["ANOMAVISION_PROJECT_ROOT"] = os.getcwd()
+        status_file = os.path.abspath(
+            getattr(args, "drift_output", None) or "./drift/drift_status.json"
+        )
+        env = os.environ.copy()
+        env["ANOMAVISION_DRIFT_STATUS_FILE"] = status_file
+        if getattr(args, "config", None):
+            env["ANOMAVISION_DRIFT_CONFIG"] = os.path.abspath(args.config)
+        env["ANOMAVISION_PROJECT_ROOT"] = os.getcwd()
 
-            dashboard_state = _dashboard_state()
-            expected_root = os.path.abspath(os.getcwd())
-            expected_status = os.path.abspath(status_file)
+        dashboard_state = _dashboard_state()
+        expected_root = os.path.abspath(os.getcwd())
+        expected_status = os.path.abspath(status_file)
 
-            # Always restart the local dashboard for a new detect run. Reusing
-            # a process from a previous run can leave a browser/server process
-            # alive with stale environment state even when its project/status
-            # paths happen to match the current command.
-            if dashboard_state is not None:
-                print("[AnomaVision] Restarting drift dashboard for current run...")
-                _stop_dashboard()
-                if not _wait_for_dashboard_stopped():
-                    raise RuntimeError(
-                        "Existing drift dashboard is still running on port 7860."
-                    )
-
-            dashboard_script = os.path.join("apps", "ui", "drift_dashboard.py")
-            subprocess.Popen(
-                [sys.executable, dashboard_script],
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            dashboard_state = _wait_for_dashboard(expected_root, expected_status)
-            if dashboard_state is None:
+        # Always restart the local dashboard for a new detect run. Reusing
+        # a process from a previous run can leave stale environment state.
+        if dashboard_state is not None:
+            print("[AnomaVision] Restarting drift dashboard for current run...")
+            _stop_dashboard()
+            if not _wait_for_dashboard_stopped():
                 raise RuntimeError(
-                    "Drift dashboard did not become healthy on port 7860."
+                    "Existing drift dashboard is still running on port 7860."
                 )
 
-            print(
-                "[AnomaVision] Live drift dashboard: "
-                "http://127.0.0.1:7860/anomavision_dashboard.html"
+        dashboard_script = os.path.join("apps", "ui", "drift_dashboard.py")
+        subprocess.Popen(
+            [sys.executable, dashboard_script],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+        dashboard_state = _wait_for_dashboard(expected_root, expected_status)
+        if dashboard_state is None:
+            raise RuntimeError(
+                "Drift dashboard did not become healthy on port 7860."
             )
+
+        print(
+            "[AnomaVision] Live drift dashboard: "
+            "http://127.0.0.1:7860/anomavision_dashboard.html"
+        )
 
     detect.main(args)
 
