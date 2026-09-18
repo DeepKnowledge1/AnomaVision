@@ -425,6 +425,18 @@ def run_inference(args):
     except Exception as e:
         logger.warning(f"Warm-up skipped: {e}")
 
+    def _save_live_drift_status() -> None:
+        """Keep the dashboard status synchronized with the active detector run."""
+        if drift_runtime is None or drift_output is None:
+            return
+        drift_runtime.monitor.save_status(drift_output)
+        # The dashboard has a stable project-local endpoint. Also mirror a
+        # custom output path there so an already-running dashboard never becomes
+        # disconnected when a different --drift-output is supplied.
+        default_output = Path("./drift/drift_status.json").resolve()
+        if drift_output.resolve() != default_output:
+            drift_runtime.monitor.save_status(default_output)
+
     batch_count = 0
     image_counter = 0
 
@@ -448,7 +460,7 @@ def run_inference(args):
             if drift_runtime is not None:
                 try:
                     drift_result = drift_runtime.update(batch)
-                    drift_runtime.monitor.save_status(drift_output)
+                    _save_live_drift_status()
                     if drift_result is not None:
                         status = drift_result["status"]
                         if status == "drift":
@@ -563,7 +575,7 @@ def run_inference(args):
     finally:
         if drift_runtime is not None and drift_output is not None:
             try:
-                drift_runtime.monitor.save_status(drift_output)
+                _save_live_drift_status()
                 logger.info(f"Drift status saved to {drift_output}")
             except Exception as e:
                 logger.warning(f"Failed to save final drift status: {e}")
