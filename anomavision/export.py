@@ -144,8 +144,18 @@ class _ExportWrapper(torch.nn.Module):
     def forward(self, x):
         if hasattr(self.m, "forward") and self.export_format == "pytorch":
             return self.m.forward(x)  # Direct path for PT
-        else:
-            return self.m.predict(x, export=True)  # Unified path for ONNX/OpenVINO
+
+        # Keep score/map outputs unchanged and export the same internal
+        # representation used by PyTorch drift monitoring when available.
+        outputs = self.m.predict(x, export=True)
+        extractor = getattr(self.m, "_extract", None)
+        if callable(extractor):
+            embeddings = extractor(x)
+            if isinstance(embeddings, tuple):
+                embeddings = embeddings[0]
+            return outputs[0], outputs[1], embeddings
+
+        return outputs
 
 
 def _make_tensorrt_calibrator(trt, samples, cache_path, batch_size=1):
