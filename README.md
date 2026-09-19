@@ -8,29 +8,16 @@
 
 AnomaVision is a production-oriented computer vision toolkit for detecting **defects and unusual patterns** from normal images.
 
-It supports three anomaly detection methods:
+Supported methods:
+- **PaDiM**
+- **PatchCore**
+- **EfficientAD**
 
-- **PaDiM** — a simple, fast feature-distribution baseline.
-- **PatchCore** — a lightweight memory-based method designed for efficient inference.
-- **EfficientAD** — a lightweight student-teacher method designed for fast industrial anomaly detection.
-
-Training requires only **normal (`good`) images**. Labeled test images can then be used for evaluation, threshold calibration, and production model selection.
-
-## What can AnomaVision do?
-
-- Train anomaly detection models using normal images.
-- Detect image-level anomalies and generate anomaly heatmaps.
-- Evaluate anomaly detection and localization performance.
-- Calibrate anomaly thresholds from validation data.
-- Export models to **ONNX, OpenVINO, and TensorRT** where supported.
-- Run production model selection with **Production Autopilot**.
-- Export and compile **PaDiM and PatchCore to XModel for the AMD/Xilinx Kria KV260**.
-- Monitor production feature distributions for **data drift** without changing anomaly scores.
-- Launch a **live, customer-facing production health dashboard** while drift monitoring is enabled.
+It supports training, evaluation, threshold calibration, ONNX/OpenVINO/TensorRT export where supported, KV260/XModel deployment, and **production data-drift monitoring**.
 
 ## Quick start
 
-### 1. Install
+### Install
 
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
@@ -40,53 +27,176 @@ source .venv/bin/activate        # Windows: .venv\\Scripts\\Activate.ps1
 uv sync --extra cpu
 ```
 
-### 2. Prepare your dataset
-
-Use an MVTec-style structure with normal images under `train/good` and test images under `test`.
-
-### 3. Train
+### Train
 
 ```bash
 anomavision train --config config.yml
 ```
 
-### 4. Detect
+### Detect
 
 ```bash
 anomavision detect --config config.yml --img_path ./dataset/bottle/test
 ```
 
-### 5. Export
+### Export
 
 ```bash
 anomavision export --config config.yml --format onnx
 ```
 
-## Anomaly Detection: Production Data Drift
+---
 
-Production images can change over time even while the anomaly detection pipeline continues to run. AnomaVision can monitor these changes by comparing production model representations with a trusted reference distribution, without changing the existing anomaly detection path.
+# Production Data Drift Monitoring
 
-With drift monitoring enabled, AnomaVision can also start a **live production health dashboard** showing the current monitoring status, recent production images, and a simple explanation of detected changes for operators.
+AnomaVision can detect when production images become different from a trusted normal population.
+
+**The anomaly detector keeps running normally. Drift monitoring is an additional observer.**
+
+### Workflow
+
+```text
+Trusted normal images
+        ↓
+Generate reference .npy
+        ↓
+Run detection + drift monitoring
+        ↓
+Live dashboard + drift_status.json
+```
+
+## 1. Generate a reference
+
+Use **normal/good images** that represent an approved production condition.
+
+### Windows PowerShell — PatchCore + PyTorch
+
+```powershell
+python -m anomavision.drift_reference `
+  --config config.yml `
+  --img_path "D:\\01-DATA\\VisA_pytorch\\candle\\train\\good" `
+  --model "model.pt" `
+  --model_data_path ".\\distributions" `
+  --algorithm patchcore `
+  --class_name candle `
+  --run_name anomav_exp `
+  --device cpu `
+  --batch_size 8 `
+  --max_samples 500 `
+  --output ".\\drift\\reference_embeddings_patchcore.npy"
+```
+
+Verify it:
+
+```powershell
+python -c "import numpy as np; x=np.load('./drift/reference_embeddings_patchcore.npy'); print(x.shape)"
+```
 
 Example:
+
+```text
+(500, 15)
+```
+
+The exact feature dimension depends on the model and representation.
+
+## 2. Start detection with drift monitoring
+
+Use the **same algorithm/model representation** used to create the reference.
+
+### PatchCore + ONNX
+
+```powershell
+python -m anomavision.cli detect `
+  --config config.yml `
+  --model "model.onnx" `
+  --enable-drift-monitoring `
+  --algorithm patchcore `
+  --batch_size 1 `
+  --drift-reference ".\\drift\\reference_embeddings_patchcore.npy"
+```
+
+### PatchCore + PyTorch
 
 ```powershell
 python -m anomavision.cli detect `
   --config config.yml `
   --model "model.pt" `
   --enable-drift-monitoring `
-  --drift-reference ".\\drift\\reference_embeddings.npy"
+  --algorithm patchcore `
+  --drift-reference ".\\drift\\reference_embeddings_patchcore.npy"
 ```
 
-The dashboard is available at `http://127.0.0.1:7860` while the monitoring process is running.
+## Important: reference must match the model
 
-> **Data drift is an early-warning signal.** It indicates that production data has changed relative to the reference data; it does not by itself prove that model accuracy has degraded or that an image is defective.
+Do **not** mix references between algorithms or models.
 
-For the complete implementation and usage details, see **[`docs/anomaly_detection_production_data_drift.md`](docs/anomaly_detection_production_data_drift.md)**.
+For example:
 
-## Production Autopilot
+```text
+PaDiM reference      → PaDiM production model
+PatchCore reference  → PatchCore production model
+```
 
-See `docs/production_deployment.md` for deployment-specific options.
+If the reference is `(500, 64)` but production embeddings are `(1, 15)`, monitoring will be skipped because the dimensions do not match.
+
+Keep separate files when needed:
+
+```text
+drift/
+├── reference_embeddings_padim.npy
+└── reference_embeddings_patchcore.npy
+```
+
+## 3. Open the dashboard
+
+When detection starts with drift monitoring:
+
+```text
+http://127.0.0.1:7860/anomavision_dashboard.html
+```
+
+The dashboard shows:
+- production monitoring status
+- samples and rolling window
+- drift level
+- recent production images
+- technical metrics
+
+The machine-readable status is written to:
+
+```text
+./drift/drift_status.json
+```
+
+## What does drift mean?
+
+Drift means that recent production data is different from the trusted reference data.
+
+It **does not automatically mean**:
+- an image is defective
+- model accuracy has decreased
+- the model needs retraining
+
+Use the dashboard and recent images to investigate the cause.
+
+## Useful options
+
+```text
+--enable-drift-monitoring       Enable monitoring
+--drift-reference <file>       Trusted .npy reference
+--drift-window 500              Rolling production window
+--drift-min-samples 100        Samples before evaluation
+--drift-threshold 0.20         PSI drift threshold
+--drift-evaluation-interval 25 Evaluation frequency
+--drift-output <file>          JSON status output
+```
+
+Full technical documentation:
+
+**[Production Data Drift](docs/anomaly_detection_production_data_drift.md)**
+
+---
 
 ## KV260 support
 
@@ -96,18 +206,16 @@ AnomaVision supports a **Vitis AI workflow for PaDiM and PatchCore on the AMD/Xi
 
 | Topic | Guide |
 |---|---|
-| Quick start | [`docs/quickstart.md`](docs/quickstart.md) |
-| Installation | [`docs/installation.md`](docs/installation.md) |
-| CLI and configuration | [`docs/cli.md`](docs/cli.md), [`docs/config.md`](docs/config.md) |
-| Python API | [`docs/api.md`](docs/api.md) |
-| **Production data drift** | [`docs/anomaly_detection_production_data_drift.md`](docs/anomaly_detection_production_data_drift.md) |
-| KV260 / XModel | [`docs/kv260_xmodel.md`](docs/kv260_xmodel.md) |
-| Production deployment | [`docs/production_deployment.md`](docs/production_deployment.md) |
-| Benchmarks | [`docs/benchmark.md`](docs/benchmark.md) |
-| Troubleshooting | [`docs/troubleshooting.md`](docs/troubleshooting.md) |
-| Examples | [`examples/README.md`](examples/README.md) |
-| Contributing | [`docs/contributing.md`](docs/contributing.md) |
+| Quick start | [docs/quickstart.md](docs/quickstart.md) |
+| Installation | [docs/installation.md](docs/installation.md) |
+| CLI / configuration | [docs/cli.md](docs/cli.md), [docs/config.md](docs/config.md) |
+| Python API | [docs/api.md](docs/api.md) |
+| **Production data drift** | [docs/anomaly_detection_production_data_drift.md](docs/anomaly_detection_production_data_drift.md) |
+| KV260 / XModel | [docs/kv260_xmodel.md](docs/kv260_xmodel.md) |
+| Production deployment | [docs/production_deployment.md](docs/production_deployment.md) |
+| Benchmarks | [docs/benchmark.md](docs/benchmark.md) |
+| Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 
 ## License
 
-AnomaVision is released under the **MIT License**. See [`LICENSE`](LICENSE).
+AnomaVision is released under the **MIT License**. See [LICENSE](LICENSE).
