@@ -148,9 +148,7 @@ class OnnxBackend(InferenceBackend):
             )
 
         scores, maps = ort_outputs[0], ort_outputs[1]
-        self._last_drift_embeddings = (
-            ort_outputs[2] if len(ort_outputs) >= 3 else None
-        )
+        self._last_drift_embeddings = ort_outputs[2] if len(ort_outputs) >= 3 else None
         logger.debug("ONNX output shapes: %s, %s", scores.shape, maps.shape)
         if self._last_drift_embeddings is not None:
             logger.debug(

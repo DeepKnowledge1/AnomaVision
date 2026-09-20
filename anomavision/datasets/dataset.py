@@ -6,8 +6,8 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
-from torchvision import transforms as T
 from torch.utils.data._utils.collate import default_collate_fn_map
+from torchvision import transforms as T
 
 from ..utils import (
     create_image_transform,
