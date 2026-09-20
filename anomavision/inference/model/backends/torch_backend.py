@@ -75,6 +75,28 @@ class TorchBackend(InferenceBackend):
 
         self.model = model
         self.use_amp = bool(use_amp and self.device.type == "cuda")
+        self._last_drift_embeddings = None
+        self._drift_extractor = getattr(self.model, "_extract", None)
+        if callable(self._drift_extractor):
+            self._install_drift_cache()
+
+    def _install_drift_cache(self) -> None:
+        """Capture embeddings during normal prediction for zero-cost reuse.
+
+        PatchCore's anomaly prediction already calls ``_extract``. Wrapping that
+        call lets drift monitoring reuse the exact same representation instead of
+        running the backbone a second time.
+        """
+        extractor = self._drift_extractor
+
+        def cached_extract(batch):
+            result = extractor(batch)
+            embeddings = result[0] if isinstance(result, tuple) else result
+            if isinstance(embeddings, torch.Tensor):
+                self._last_drift_embeddings = embeddings.detach()
+            return result
+
+        self.model._extract = cached_extract
 
     def _autocast(self):
         return (
@@ -84,6 +106,7 @@ class TorchBackend(InferenceBackend):
         )
 
     def predict(self, batch: Batch) -> ScoresMaps:
+        self._last_drift_embeddings = None
         if not isinstance(batch, torch.Tensor):
             batch = torch.as_tensor(batch, dtype=torch.float32)
         batch = batch.to(self.device, non_blocking=True)
@@ -91,8 +114,43 @@ class TorchBackend(InferenceBackend):
             scores, maps = self.model.predict(batch)
         return scores.detach().cpu().numpy(), maps.detach().cpu().numpy()
 
+    def extract_drift_embeddings(self, batch: Batch):
+        """Return embeddings captured by the most recent prediction when available.
+
+        This avoids a second feature-extractor/backbone pass for models such as
+        PatchCore. If no cached prediction exists, the backend falls back to a
+        direct extraction so standalone drift monitoring still works.
+        """
+        if self._last_drift_embeddings is not None:
+            embeddings = self._last_drift_embeddings
+        else:
+            extractor = self._drift_extractor
+            if extractor is None:
+                raise NotImplementedError(
+                    f"{self.model.__class__.__name__} does not expose _extract(); "
+                    "drift monitoring is unavailable for this PyTorch model."
+                )
+            if not isinstance(batch, torch.Tensor):
+                batch = torch.as_tensor(batch, dtype=torch.float32)
+            batch = batch.to(self.device, non_blocking=True)
+            with torch.inference_mode(), self._autocast():
+                extracted = extractor(batch)
+            embeddings = extracted[0] if isinstance(extracted, tuple) else extracted
+
+        if embeddings.ndim < 2:
+            raise ValueError(
+                "Model drift representation must have at least two dimensions."
+            )
+        if embeddings.ndim > 2:
+            embeddings = embeddings.reshape(
+                embeddings.shape[0], -1, embeddings.shape[-1]
+            ).mean(dim=1)
+        return embeddings.detach().float().cpu().numpy()
+
     def close(self) -> None:
         self.model = None
+        self._last_drift_embeddings = None
+        self._drift_extractor = None
 
     def warmup(self, batch, runs: int = 2) -> None:
         if not isinstance(batch, torch.Tensor):

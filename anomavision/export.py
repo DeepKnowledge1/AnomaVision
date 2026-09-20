@@ -136,16 +136,28 @@ class DummyDataReader(CalibrationDataReader):
 
 
 class _ExportWrapper(torch.nn.Module):
-    def __init__(self, m, export_format="onnx"):
+    def __init__(self, m, export_format="onnx", include_embeddings=False):
         super().__init__()
         self.m = m
         self.export_format = export_format
+        self.include_embeddings = include_embeddings
 
     def forward(self, x):
         if hasattr(self.m, "forward") and self.export_format == "pytorch":
             return self.m.forward(x)  # Direct path for PT
-        else:
-            return self.m.predict(x, export=True)  # Unified path for ONNX/OpenVINO
+
+        # Keep score/map outputs unchanged. Embeddings are opt-in for
+        # ONNX export so normal wrapper behavior remains backward compatible.
+        outputs = self.m.predict(x, export=True)
+        if self.include_embeddings:
+            extractor = getattr(self.m, "_extract", None)
+            if callable(extractor):
+                embeddings = extractor(x)
+                if isinstance(embeddings, tuple):
+                    embeddings = embeddings[0]
+                return outputs[0], outputs[1], embeddings
+
+        return outputs
 
 
 def _make_tensorrt_calibrator(trt, samples, cache_path, batch_size=1):
@@ -293,6 +305,9 @@ class ModelExporter:
         t0 = time.perf_counter()
         try:
             model = self._load_model()
+            # ONNX export includes the model representation used by production
+            # drift monitoring. Keep _load_model() backward compatible.
+            model.include_embeddings = True
             dummy_input = torch.randn(*input_shape, device=self.device)
 
             # Auto-detect precision based on device if not forced

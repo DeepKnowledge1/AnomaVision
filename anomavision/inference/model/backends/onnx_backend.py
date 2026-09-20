@@ -76,6 +76,7 @@ class OnnxBackend(InferenceBackend):
 
         self.input_names: List[str] = [inp.name for inp in self.session.get_inputs()]
         self.output_names: List[str] = [out.name for out in self.session.get_outputs()]
+        self._last_drift_embeddings = None
         self.device = device.lower()
 
     def predict(self, batch: Batch) -> ScoresMaps:
@@ -147,8 +148,33 @@ class OnnxBackend(InferenceBackend):
             )
 
         scores, maps = ort_outputs[0], ort_outputs[1]
+        self._last_drift_embeddings = ort_outputs[2] if len(ort_outputs) >= 3 else None
         logger.debug("ONNX output shapes: %s, %s", scores.shape, maps.shape)
+        if self._last_drift_embeddings is not None:
+            logger.debug(
+                "ONNX drift embedding shape: %s",
+                self._last_drift_embeddings.shape,
+            )
         return scores, maps
+
+    def extract_drift_embeddings(self, batch: Batch) -> np.ndarray:
+        """Return the exported representation used by drift monitoring."""
+        embeddings = self._last_drift_embeddings
+        if embeddings is None:
+            raise NotImplementedError(
+                "This ONNX model does not expose drift embeddings."
+            )
+
+        embeddings = np.asarray(embeddings, dtype=np.float32)
+        if embeddings.ndim < 2:
+            raise ValueError(
+                "Model drift representation must have at least two dimensions."
+            )
+        if embeddings.ndim > 2:
+            embeddings = embeddings.reshape(
+                embeddings.shape[0], -1, embeddings.shape[-1]
+            ).mean(axis=1)
+        return embeddings
 
     def close(self) -> None:
         """Release ONNX Runtime session resources.

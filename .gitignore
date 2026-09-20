@@ -357,6 +357,8 @@ images/
 !docs/images/streamlit.png
 !docs/images/archti.png
 !docs/AnomaVision_vs_Anomalib.pdf
+!docs/images/Production_Data_Drift.png
+
 poetry publish --build --username __toke.txt
 fix_flake.py
 apps/api/fastapi_app_np.py
@@ -369,3 +371,4 @@ tests/__pycache__/*
 compiled_patchcore_kv260/*
 quantize_result/*
 compiled_padim_kv260/*
+drift/*.npy
