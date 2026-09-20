@@ -90,7 +90,7 @@ overwrite: false                           # Overwrite an existing output direct
 # =========================
 # Generate the trusted baseline once with:
 # anomavision drift-reference --config config.yml --img_path <healthy-images>
-enable_drift_monitoring: true              # Enable rolling production data-drift monitoring during inference
+enable_drift_monitoring: false              # Enable rolling production data-drift monitoring during inference
 drift_reference: "./drift/reference_embeddings.npy" # Reference embeddings generated from known healthy data
 drift_window: 50                          # Number of recent production samples kept in the rolling window
 drift_min_samples: 5                     # Minimum production samples required before drift is evaluated

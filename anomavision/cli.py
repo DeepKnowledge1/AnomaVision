@@ -12,7 +12,7 @@ Usage:
 Examples:
     anomavision train --config config.yml
     anomavision export --config config.yml --model model.pt --format onnx
-    anomavision detect --config config.yml --model model.onnx --img_path ./test_images
+    anomavision detect --config config.yml --model model.onnx --img_path D:/01-DATA/test
     anomavision eval --config config.yml --model model.pt --class_name bottle
 """
 
@@ -145,9 +145,7 @@ def _dashboard_is_running() -> bool:
 def _stop_dashboard() -> None:
     """Stop the current local dashboard before starting a fresh run."""
     try:
-        urllib.request.urlopen(
-            "http://127.0.0.1:7860/shutdown", timeout=0.8
-        ).read()
+        urllib.request.urlopen("http://127.0.0.1:7860/shutdown", timeout=0.8).read()
     except (OSError, urllib.error.URLError):
         pass
 
@@ -234,9 +232,7 @@ def _dispatch_detect(args: argparse.Namespace) -> None:
 
         dashboard_state = _wait_for_dashboard(expected_root, expected_status)
         if dashboard_state is None:
-            raise RuntimeError(
-                "Drift dashboard did not become healthy on port 7860."
-            )
+            raise RuntimeError("Drift dashboard did not become healthy on port 7860.")
 
         print(
             "[AnomaVision] Live drift dashboard: "

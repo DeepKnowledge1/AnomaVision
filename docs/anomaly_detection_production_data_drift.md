@@ -48,12 +48,12 @@ python -m anomavision.drift_reference `
   --device cpu `
   --batch_size 8 `
   --max_samples 500 `
-  --output ".\\drift\\reference_embeddings_patchcore.npy"
+  --output ".\\drift\\reference_embeddings_patchcore_onnx.npy"
 ```
 
 Verify the reference:
 ```powershell
-python -c "import numpy as np; x=np.load('./drift/reference_embeddings_patchcore.npy'); print(x.shape)"
+python -c "import numpy as np; x=np.load('./drift/reference_embeddings_patchcore_onnx.npy'); print(x.shape)"
 ```
 
 Example:
@@ -78,7 +78,7 @@ python -m anomavision.drift_reference `
   --device cpu `
   --batch_size 1 `
   --max_samples 500 `
-  --output ".\\drift\\reference_embeddings_patchcore.npy"
+  --output ".\\drift\\reference_embeddings_patchcore_onnx.npy"
 ```
 
 ## 2. Run detection with drift monitoring
@@ -93,7 +93,7 @@ python -m anomavision.cli detect `
   --enable-drift-monitoring `
   --algorithm patchcore `
   --batch_size 1 `
-  --drift-reference ".\\drift\\reference_embeddings_patchcore.npy"
+  --drift-reference ".\\drift\\reference_embeddings_patchcore_onnx.npy"
 ```
 
 ### PatchCore + PyTorch
@@ -103,7 +103,7 @@ python -m anomavision.cli detect `
   --model "model.pt" `
   --enable-drift-monitoring `
   --algorithm patchcore `
-  --drift-reference ".\\drift\\reference_embeddings_patchcore.npy"
+  --drift-reference ".\\drift\\reference_embeddings_patchcore_onnx.npy"
 ```
 
 ## 3. Open the dashboard
@@ -133,7 +133,7 @@ Keep separate reference files for different algorithms/models:
 ```text
 drift/
 ├── reference_embeddings_padim.npy
-└── reference_embeddings_patchcore.npy
+└── reference_embeddings_patchcore_onnx.npy
 ```
 
 Example mismatch:
@@ -171,13 +171,13 @@ The explicit stable/drift state is controlled by the configured PSI threshold.
 
 Example:
 ```powershell
-python -m anomavision.cli detect `
+anomavision detect `
   --config config.yml `
   --model "model.onnx" `
   --enable-drift-monitoring `
   --algorithm patchcore `
   --batch_size 1 `
-  --drift-reference ".\\drift\\reference_embeddings_patchcore.npy" `
+  --drift-reference ".\\drift\\reference_embeddings_patchcore_onnx.npy" `
   --drift-window 500 `
   --drift-min-samples 100 `
   --drift-threshold 0.20 `
@@ -252,7 +252,7 @@ Drift monitoring does not replace or modify the existing Hailo/KV260/XModel infe
 
 Check the reference shape:
 ```powershell
-python -c "import numpy as np; x=np.load('./drift/reference_embeddings_patchcore.npy'); print(x.shape)"
+python -c "import numpy as np; x=np.load('./drift/reference_embeddings_patchcore_onnx.npy'); print(x.shape)"
 ```
 
 Then make sure the production model generates the same feature dimension.
@@ -262,7 +262,7 @@ For example, if production reports `15 != 64`, the reference is from a different
 ### Reference file is not found
 
 ```powershell
-Test-Path ".\\drift\\reference_embeddings_patchcore.npy"
+Test-Path ".\\drift\\reference_embeddings_patchcore_onnx.npy"
 ```
 
 ### Dashboard does not start

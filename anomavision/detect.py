@@ -9,6 +9,7 @@ Usage - formats:
 """
 
 import argparse
+import json
 import os
 import time
 from pathlib import Path
@@ -205,6 +206,13 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         "--detailed_timing",
         action="store_true",
         help="Enable detailed timing measurements.",
+    )
+    parser.add_argument(
+        "--warmup-runs",
+        dest="warmup_runs",
+        type=int,
+        default=0,
+        help="Number of model warm-up runs before inference (default: 0).",
     )
 
     return parser
@@ -416,18 +424,22 @@ def run_inference(args):
             logger.error(f"Failed to create dataloader: {e}")
             raise
 
-    try:
-        first = next(iter(test_dataloader))
-        first_batch = first[0]
-        if device_str == "cuda":
-            first_batch = first_batch.half()
-        first_batch = first_batch.to(device_str)
-        model.warmup(batch=first_batch, runs=2)
-        logger.info("Warm-up complete.")
-    except StopIteration:
-        logger.warning("Dataset empty; skipping warm-up.")
-    except Exception as e:
-        logger.warning(f"Warm-up skipped: {e}")
+    warmup_runs = max(0, int(config.get("warmup_runs", 0) or 0))
+    if warmup_runs > 0:
+        try:
+            first = next(iter(test_dataloader))
+            first_batch = first[0]
+            if device_str == "cuda":
+                first_batch = first_batch.half()
+            first_batch = first_batch.to(device_str)
+            model.warmup(batch=first_batch, runs=warmup_runs)
+            logger.info("Warm-up complete (runs=%d).", warmup_runs)
+        except StopIteration:
+            logger.warning("Dataset empty; skipping warm-up.")
+        except Exception as e:
+            logger.warning(f"Warm-up skipped: {e}")
+    else:
+        logger.info("Warm-up skipped (warmup_runs=0).")
 
     def _save_live_drift_status() -> None:
         """Keep the dashboard status synchronized with the active detector run."""
@@ -445,9 +457,15 @@ def run_inference(args):
     image_counter = 0
 
     try:
-        for batch_idx, (batch, images, _, _) in enumerate(test_dataloader):
-            batch_count += 1
-            image_counter += batch.shape[0]
+        data_iter = iter(test_dataloader)
+        batch_idx = -1
+        while True:
+            with profilers["data_loading"]:
+                try:
+                    batch, images, _, _ = next(data_iter)
+                except StopIteration:
+                    break
+            batch_idx += 1
 
             if device_str == "cuda":
                 batch = batch.half()
@@ -459,6 +477,9 @@ def run_inference(args):
                 except Exception as e:
                     logger.error(f"Inference failed batch {batch_idx}: {e}")
                     continue
+
+            batch_count += 1
+            image_counter += batch.shape[0]
 
             # Production drift monitoring runs on the same inference batches.
             if drift_runtime is not None:
@@ -592,7 +613,7 @@ def run_inference(args):
                 pass
 
     total_pipeline_time = time.time() - total_start_time
-    final_count = total_images if (not stream_mode and total_images) else image_counter
+    final_count = image_counter
     fps = profilers["inference"].get_fps(final_count)
     avg_ms = profilers["inference"].get_avg_time_ms(batch_count)
 
@@ -623,13 +644,13 @@ def run_inference(args):
     logger.info("=" * 60)
     logger.info("ANOMAVISION INFERENCE PERFORMANCE")
     logger.info("=" * 60)
+    throughput = fps if batch_count else 0
     if fps > 0:
         logger.info(f"Pure inference FPS:        {fps:.2f} images/sec")
     if avg_ms > 0:
         logger.info(f"Average inference time:    {avg_ms:.2f} ms/batch")
     if batch_count > 0:
         batch_size = config.get("batch_size", 1) or 1
-        throughput = fps * (final_count / batch_count) if batch_count else 0
         logger.info(
             f"Throughput:                {throughput:.1f} images/sec (batch size: {batch_size})"
         )
@@ -640,7 +661,32 @@ def run_inference(args):
         "avg_inference_ms": avg_ms,
         "total_time_s": total_pipeline_time,
         "total_images": final_count,
+        "throughput": throughput,
+        "batch_size": int(config.get("batch_size", 1) or 1),
+        "device": str(device_str).upper(),
+        "model_type": model_type.value.upper(),
+        "algorithm": str(algorithm_name or "unknown").upper(),
+        "batch_count": batch_count,
+        "setup_ms": profilers["setup"].accumulated_time * 1000,
+        "model_loading_ms": profilers["model_loading"].accumulated_time * 1000,
+        "data_loading_ms": profilers["data_loading"].accumulated_time * 1000,
+        "postprocessing_ms": profilers["postprocessing"].accumulated_time * 1000,
+        "visualization_ms": profilers["visualization"].accumulated_time * 1000,
     }
+    if drift_output is not None:
+        for output_path in {drift_output, Path("./drift/drift_status.json")}:
+            try:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                payload = {}
+                if output_path.exists():
+                    payload = json.loads(output_path.read_text(encoding="utf-8"))
+                payload.update(metrics)
+                output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            except Exception as e:
+                logger.warning(
+                    "Failed to append performance metrics to %s: %s", output_path, e
+                )
+
     return metrics, results_accumulator
 
 
