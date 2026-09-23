@@ -23,7 +23,8 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         description="Validate an exported model for deployment without changing inference logic.",
         add_help=add_help,
     )
-    parser.add_argument("--model", required=True, help="Path to an ONNX model.")
+    parser.add_argument("--model", required=True, help="Path to a trained/exported model.")
+    parser.add_argument("--config", default=None, help="Existing AnomaVision config used for input shape.")
     parser.add_argument(
         "--runs", type=int, default=10, help="Number of inference runs for the latency check."
     )
@@ -61,7 +62,7 @@ def _backend_status() -> dict[str, str]:
     }
 
 
-def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2) -> dict[str, Any]:
+def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2, config_path: str | Path | None = None) -> dict[str, Any]:
     """Validate an ONNX artifact without changing its behavior."""
     path = Path(model_path)
     if not path.is_file():
@@ -69,68 +70,66 @@ def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2)
     if runs < 1 or warmup_runs < 0:
         raise ValueError("runs must be >= 1 and warmup_runs must be >= 0")
 
-    model = onnx.load(str(path))
-    onnx.checker.check_model(model)
+    suffix = path.suffix.lower()
 
-    inputs = []
-    for value in model.graph.input:
-        inputs.append({"name": value.name, "shape": _shape(value), "type": value.type.tensor_type.elem_type})
-
-    outputs = []
-    for value in model.graph.output:
-        outputs.append({"name": value.name, "shape": _shape(value), "type": value.type.tensor_type.elem_type})
-
-    session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-    session_inputs = session.get_inputs()
-    feed: dict[str, np.ndarray] = {}
-    for item in session_inputs:
-        shape = []
-        for dim in item.shape:
-            if isinstance(dim, int) and dim > 0:
-                shape.append(dim)
-            else:
-                shape.append(1)
-        if item.type != "tensor(float)":
-            raise ValueError(
-                f"Unsupported validation input type for {item.name}: {item.type}. "
-                "The validator currently supports float ONNX inputs."
-            )
-        feed[item.name] = np.zeros(shape, dtype=np.float32)
-
-    for _ in range(warmup_runs):
-        session.run(None, feed)
-
-    start = time.perf_counter()
-    for _ in range(runs):
-        session.run(None, feed)
-    elapsed = time.perf_counter() - start
-    latency_ms = elapsed / runs * 1000.0
+    if suffix == ".onnx":
+        model = onnx.load(str(path))
+        onnx.checker.check_model(model)
+        inputs = [{"name": v.name, "shape": _shape(v), "type": v.type.tensor_type.elem_type} for v in model.graph.input]
+        outputs = [{"name": v.name, "shape": _shape(v), "type": v.type.tensor_type.elem_type} for v in model.graph.output]
+        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        feed = {}
+        for item in session.get_inputs():
+            shape = [dim if isinstance(dim, int) and dim > 0 else 1 for dim in item.shape]
+            if item.type != "tensor(float)":
+                raise ValueError(f"Unsupported validation input type for {item.name}: {item.type}")
+            feed[item.name] = np.zeros(shape, dtype=np.float32)
+        for _ in range(warmup_runs):
+            session.run(None, feed)
+        start_time = time.perf_counter()
+        for _ in range(runs):
+            session.run(None, feed)
+        latency_ms = (time.perf_counter() - start_time) / runs * 1000.0
+        checks = {"file_exists": True, "onnx_valid": True, "onnxruntime_inference": True,
+                  "static_input_shape": all(all(dim != "?" for dim in item["shape"]) for item in inputs)}
+        model_format = "onnx"
+    elif suffix in {".pt", ".pth", ".torchscript", ".engine", ".hef", ".xmodel", ".xml"}:
+        from anomavision.inference.model.wrapper import ModelWrapper
+        wrapper = ModelWrapper(str(path), "cpu")
+        try:
+            inputs, outputs, latency_ms = [], [], None
+            if config_path:
+                from anomavision.config import _shape, load_config
+                import torch
+                cfg = load_config(str(config_path))
+                size = _shape(cfg.resize)
+                crop = cfg.get("crop_size")
+                if crop:
+                    size = _shape(crop)
+                batch = torch.zeros((1, 3, size[1], size[0]), dtype=torch.float32)
+                wrapper.warmup(batch=batch, runs=warmup_runs)
+                start_time = time.perf_counter()
+                for _ in range(runs):
+                    wrapper.predict(batch)
+                latency_ms = (time.perf_counter() - start_time) / runs * 1000.0
+                inputs = [{"name": "input", "shape": list(batch.shape), "type": "float32"}]
+            checks = {"file_exists": True, "model_load": True, "inference": latency_ms is not None}
+        finally:
+            wrapper.close()
+        model_format = suffix.lstrip(".")
+    else:
+        raise ValueError(f"Unsupported model format '{suffix}'.")
 
     backends = _backend_status()
-    checks = {
-        "file_exists": True,
-        "onnx_valid": True,
-        "onnxruntime_inference": True,
-        "static_input_shape": all(all(dim != "?" for dim in item["shape"]) for item in inputs),
-    }
-
     return {
-        "model": str(path),
-        "format": "onnx",
-        "inputs": inputs,
-        "outputs": outputs,
-        "performance": {
-            "runs": runs,
-            "warmup_runs": warmup_runs,
-            "latency_ms": round(latency_ms, 3),
-            "fps": round(1000.0 / latency_ms, 2) if latency_ms else None,
-        },
-        "backends": backends,
-        "checks": checks,
+        "model": str(path), "format": model_format, "inputs": inputs, "outputs": outputs,
+        "performance": {"runs": runs, "warmup_runs": warmup_runs,
+                        "latency_ms": round(latency_ms, 3) if latency_ms is not None else None,
+                        "fps": round(1000.0 / latency_ms, 2) if latency_ms else None},
+        "backends": backends, "checks": checks,
         "ready_for_deployment": all(checks.values()),
-        "note": "Validation is observational; no model or anomaly-detection logic is modified.",
+        "note": "Validation is observational and reuses AnomaVision's existing inference backends.",
     }
-
 
 def _print_report(report: dict[str, Any]) -> None:
     print("AnomaVision Deployment Validation")
@@ -153,7 +152,7 @@ def _print_report(report: dict[str, Any]) -> None:
 
 
 def main(args: argparse.Namespace) -> None:
-    report = validate_model(args.model, args.runs, args.warmup_runs)
+    report = validate_model(args.model, args.runs, args.warmup_runs, args.config)
     if args.json_output:
         print(json.dumps(report, indent=2))
     else:
