@@ -31,6 +31,12 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="Existing reference model used for output-consistency validation.",
     )
     parser.add_argument(
+        "--consistency-tolerance",
+        type=float,
+        default=1e-4,
+        help="Maximum allowed absolute output difference for consistency validation.",
+    )
+    parser.add_argument(
         "--runs", type=int, default=10, help="Number of inference runs for the latency check."
     )
     parser.add_argument(
@@ -72,8 +78,8 @@ def _compare_outputs(
     candidate: tuple[np.ndarray, np.ndarray],
     tolerance: float,
 ) -> dict[str, Any]:
-    reference_scores, reference_maps = (np.asarray(reference[0]), np.asarray(reference[1]))
-    candidate_scores, candidate_maps = (np.asarray(candidate[0]), np.asarray(candidate[1]))
+    reference_scores, reference_maps = np.asarray(reference[0]), np.asarray(reference[1])
+    candidate_scores, candidate_maps = np.asarray(candidate[0]), np.asarray(candidate[1])
 
     if reference_scores.shape != candidate_scores.shape:
         raise ValueError(
@@ -95,6 +101,7 @@ def _compare_outputs(
     mean_map_diff = float(np.mean(map_diff))
 
     return {
+        "tolerance": tolerance,
         "score": {
             "max_abs_diff": max_score_diff,
             "mean_abs_diff": mean_score_diff,
@@ -255,15 +262,11 @@ def _print_report(report: dict[str, Any]) -> None:
     if consistency is not None:
         print()
         print("Output consistency")
-        print(
-            f"  Score max abs diff: {consistency['score']['max_abs_diff']:.6g}"
-        )
-        print(
-            f"  Map max abs diff:   {consistency['map']['max_abs_diff']:.6g}"
-        )
-        print(
-            f"  Tolerance:           {consistency_tolerance if False else 'configured'}"
-        )
+        print(f"  Score max abs diff: {consistency['score']['max_abs_diff']:.6g}")
+        print(f"  Score mean abs diff: {consistency['score']['mean_abs_diff']:.6g}")
+        print(f"  Map max abs diff:   {consistency['map']['max_abs_diff']:.6g}")
+        print(f"  Map mean abs diff:  {consistency['map']['mean_abs_diff']:.6g}")
+        print(f"  Tolerance:          {consistency['tolerance']:.6g}")
 
     print()
     print("Backend compatibility")
@@ -283,6 +286,7 @@ def main(args: argparse.Namespace) -> None:
         args.warmup_runs,
         args.config,
         args.reference_model,
+        args.consistency_tolerance,
     )
     if args.json_output:
         print(json.dumps(report, indent=2))
