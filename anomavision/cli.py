@@ -49,7 +49,18 @@ def create_parser() -> argparse.ArgumentParser:
     _add_autopilot_parser(subparsers)
     _add_drift_parser(subparsers)
     _add_drift_reference_parser(subparsers)
+    _add_validate_parser(subparsers)
     return parser
+
+def _add_validate_parser(subparsers) -> None:
+    from anomavision.deployment_validation import create_parser as _cp
+
+    subparsers.add_parser(
+        "validate",
+        parents=[_cp(add_help=False)],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    ).set_defaults(func=_dispatch_validate)
+
 
 
 def _add_train_parser(subparsers) -> None:
@@ -264,6 +275,12 @@ def _dispatch_drift_reference(args: argparse.Namespace) -> None:
     from anomavision import drift_reference
 
     drift_reference.main(args)
+
+
+def _dispatch_validate(args: argparse.Namespace) -> None:
+    from anomavision import deployment_validation
+
+    deployment_validation.main(args)
 
 
 def main() -> None:
