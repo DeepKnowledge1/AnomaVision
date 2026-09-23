@@ -138,8 +138,11 @@ def _print_report(report: dict[str, Any]) -> None:
     for name, value in report["checks"].items():
         print(f"{'✓' if value else '✗'} {name.replace('_', ' ').title()}")
     perf = report["performance"]
-    print(f"Latency: {perf['latency_ms']:.3f} ms")
-    print(f"FPS:     {perf['fps']:.2f}")
+    if perf["latency_ms"] is not None:
+        print(f"Latency: {perf['latency_ms']:.3f} ms")
+        print(f"FPS:     {perf['fps']:.2f}")
+    else:
+        print("Latency: not measured (provide --config for runtime validation)")
     print()
     print("Backend compatibility")
     for name, status in report["backends"].items():
