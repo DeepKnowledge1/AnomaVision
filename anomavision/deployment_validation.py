@@ -63,7 +63,7 @@ def _backend_status() -> dict[str, str]:
 
 
 def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2, config_path: str | Path | None = None) -> dict[str, Any]:
-    """Validate an ONNX artifact without changing its behavior."""
+    """Validate an exported model without changing its behavior."""
     path = Path(model_path)
     if not path.is_file():
         raise FileNotFoundError(f"Model not found: {path}")
@@ -90,22 +90,29 @@ def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2,
         for _ in range(runs):
             session.run(None, feed)
         latency_ms = (time.perf_counter() - start_time) / runs * 1000.0
-        checks = {"file_exists": True, "onnx_valid": True, "onnxruntime_inference": True,
-                  "static_input_shape": all(all(dim != "?" for dim in item["shape"]) for item in inputs)}
+        checks = {
+            "file_exists": True,
+            "onnx_valid": True,
+            "onnxruntime_inference": True,
+            "static_input_shape": all(
+                all(dim != "?" for dim in item["shape"]) for item in inputs
+            ),
+        }
         model_format = "onnx"
     elif suffix in {".pt", ".pth", ".torchscript", ".engine", ".hef", ".xmodel", ".xml"}:
         from anomavision.inference.model.wrapper import ModelWrapper
+        from anomavision.config import _shape as config_shape, load_config
+        import torch
+
         wrapper = ModelWrapper(str(path), "cpu")
         try:
             inputs, outputs, latency_ms = [], [], None
             if config_path:
-                from anomavision.config import load_config
-                import torch
                 cfg = load_config(str(config_path))
-                size = _shape(cfg["resize"])
+                size = config_shape(cfg["resize"])
                 crop = cfg.get("crop_size")
                 if crop:
-                    size = _shape(crop)
+                    size = config_shape(crop)
                 batch = torch.zeros((1, 3, size[1], size[0]), dtype=torch.float32)
                 wrapper.warmup(batch=batch, runs=warmup_runs)
                 start_time = time.perf_counter()
@@ -113,7 +120,11 @@ def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2,
                     wrapper.predict(batch)
                 latency_ms = (time.perf_counter() - start_time) / runs * 1000.0
                 inputs = [{"name": "input", "shape": list(batch.shape), "type": "float32"}]
-            checks = {"file_exists": True, "model_load": True, "inference": latency_ms is not None}
+            checks = {
+                "file_exists": True,
+                "model_load": True,
+                "inference": latency_ms is not None,
+            }
         finally:
             wrapper.close()
         model_format = suffix.lstrip(".")
@@ -122,14 +133,22 @@ def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2,
 
     backends = _backend_status()
     return {
-        "model": str(path), "format": model_format, "inputs": inputs, "outputs": outputs,
-        "performance": {"runs": runs, "warmup_runs": warmup_runs,
-                        "latency_ms": round(latency_ms, 3) if latency_ms is not None else None,
-                        "fps": round(1000.0 / latency_ms, 2) if latency_ms else None},
-        "backends": backends, "checks": checks,
+        "model": str(path),
+        "format": model_format,
+        "inputs": inputs,
+        "outputs": outputs,
+        "performance": {
+            "runs": runs,
+            "warmup_runs": warmup_runs,
+            "latency_ms": round(latency_ms, 3) if latency_ms is not None else None,
+            "fps": round(1000.0 / latency_ms, 2) if latency_ms else None,
+        },
+        "backends": backends,
+        "checks": checks,
         "ready_for_deployment": all(checks.values()),
         "note": "Validation is observational and reuses AnomaVision's existing inference backends.",
     }
+
 
 def _print_report(report: dict[str, Any]) -> None:
     print("AnomaVision Deployment Validation")
