@@ -60,14 +60,27 @@ def _shape(value: Any) -> list[Any]:
     return dims
 
 
+def _installed(module: str) -> bool:
+    return importlib.util.find_spec(module) is not None
+
+
 def _backend_status() -> dict[str, str]:
+    """Report availability of every deployment backend supported by AnomaVision."""
     return {
-        "onnxruntime": "available",
-        "openvino": "available" if importlib.util.find_spec("openvino") else "not installed",
-        "tensorrt": "available" if importlib.util.find_spec("tensorrt") else "not installed",
-        "hailo": (
+        "pytorch": "available" if _installed("torch") else "not installed",
+        "torchscript": "available" if _installed("torch") else "not installed",
+        "onnxruntime": "available" if _installed("onnxruntime") else "not installed",
+        "openvino": "available" if _installed("openvino") else "not installed",
+        "tensorrt": "available" if _installed("tensorrt") else "not installed",
+        "hailo": "available" if _installed("hailo_platform") else "not installed",
+        "vitis_ai_vart": "available" if _installed("vart") else "not installed",
+        "vitis_ai_xir": "available" if _installed("xir") else "not installed",
+        "vitis_ai_library": (
+            "available" if _installed("vitis_ai_library") else "not installed"
+        ),
+        "kv260": (
             "available"
-            if importlib.util.find_spec("hailo_platform")
+            if _installed("vart") and _installed("xir")
             else "not installed"
         ),
     }
@@ -150,7 +163,7 @@ def validate_model(
 ) -> dict[str, Any]:
     """Validate an exported model without changing its behavior."""
     path = Path(model_path)
-    if not path.is_file():
+    if not path.exists():
         raise FileNotFoundError(f"Model not found: {path}")
     if runs < 1 or warmup_runs < 0:
         raise ValueError("runs must be >= 1 and warmup_runs must be >= 0")
@@ -190,7 +203,17 @@ def validate_model(
             ),
         }
         model_format = "onnx"
-    elif suffix in {".pt", ".pth", ".torchscript", ".engine", ".hef", ".xmodel", ".xml"}:
+    elif suffix in {
+        ".pt",
+        ".pth",
+        ".torchscript",
+        ".engine",
+        ".trt",
+        ".hef",
+        ".xmodel",
+        ".xml",
+        ".bin",
+    } or path.is_dir():
         from anomavision.inference.model.wrapper import ModelWrapper
 
         wrapper = ModelWrapper(str(path), "cpu")
@@ -211,7 +234,7 @@ def validate_model(
             }
         finally:
             wrapper.close()
-        model_format = suffix.lstrip(".")
+        model_format = "openvino" if path.is_dir() else suffix.lstrip(".")
     else:
         raise ValueError(f"Unsupported model format '{suffix}'.")
 
