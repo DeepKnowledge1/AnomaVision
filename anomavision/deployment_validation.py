@@ -99,7 +99,7 @@ def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2,
         try:
             inputs, outputs, latency_ms = [], [], None
             if config_path:
-                from anomavision.config import _shape, load_config
+                from anomavision.config import load_config
                 import torch
                 cfg = load_config(str(config_path))
                 size = _shape(cfg["resize"])
