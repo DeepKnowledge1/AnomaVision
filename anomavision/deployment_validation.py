@@ -26,6 +26,11 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument("--model", required=True, help="Path to a trained/exported model.")
     parser.add_argument("--config", default=None, help="Existing AnomaVision config used for input shape.")
     parser.add_argument(
+        "--reference-model",
+        default=None,
+        help="Existing reference model used for output-consistency validation.",
+    )
+    parser.add_argument(
         "--runs", type=int, default=10, help="Number of inference runs for the latency check."
     )
     parser.add_argument(
@@ -62,13 +67,92 @@ def _backend_status() -> dict[str, str]:
     }
 
 
-def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2, config_path: str | Path | None = None) -> dict[str, Any]:
+def _compare_outputs(
+    reference: tuple[np.ndarray, np.ndarray],
+    candidate: tuple[np.ndarray, np.ndarray],
+    tolerance: float,
+) -> dict[str, Any]:
+    reference_scores, reference_maps = (np.asarray(reference[0]), np.asarray(reference[1]))
+    candidate_scores, candidate_maps = (np.asarray(candidate[0]), np.asarray(candidate[1]))
+
+    if reference_scores.shape != candidate_scores.shape:
+        raise ValueError(
+            f"Score output shape mismatch: reference={reference_scores.shape}, "
+            f"candidate={candidate_scores.shape}"
+        )
+    if reference_maps.shape != candidate_maps.shape:
+        raise ValueError(
+            f"Map output shape mismatch: reference={reference_maps.shape}, "
+            f"candidate={candidate_maps.shape}"
+        )
+
+    score_diff = np.abs(reference_scores.astype(np.float64) - candidate_scores.astype(np.float64))
+    map_diff = np.abs(reference_maps.astype(np.float64) - candidate_maps.astype(np.float64))
+
+    max_score_diff = float(np.max(score_diff))
+    mean_score_diff = float(np.mean(score_diff))
+    max_map_diff = float(np.max(map_diff))
+    mean_map_diff = float(np.mean(map_diff))
+
+    return {
+        "score": {
+            "max_abs_diff": max_score_diff,
+            "mean_abs_diff": mean_score_diff,
+            "within_tolerance": max_score_diff <= tolerance,
+        },
+        "map": {
+            "max_abs_diff": max_map_diff,
+            "mean_abs_diff": mean_map_diff,
+            "within_tolerance": max_map_diff <= tolerance,
+        },
+        "within_tolerance": (
+            max_score_diff <= tolerance and max_map_diff <= tolerance
+        ),
+    }
+
+
+def _build_validation_batch(config_path: str | Path):
+    from anomavision.config import _shape as config_shape, load_config
+    import torch
+
+    cfg = load_config(str(config_path))
+    size = config_shape(cfg["resize"])
+    crop = cfg.get("crop_size")
+    if crop:
+        size = config_shape(crop)
+    return torch.zeros((1, 3, size[1], size[0]), dtype=torch.float32)
+
+
+def _run_model(model_path: str | Path, batch):
+    from anomavision.inference.model.wrapper import ModelWrapper
+
+    wrapper = ModelWrapper(str(model_path), "cpu")
+    try:
+        return wrapper.predict(batch)
+    finally:
+        wrapper.close()
+
+
+def validate_model(
+    model_path: str | Path,
+    runs: int = 10,
+    warmup_runs: int = 2,
+    config_path: str | Path | None = None,
+    reference_model: str | Path | None = None,
+    consistency_tolerance: float = 1e-4,
+) -> dict[str, Any]:
     """Validate an exported model without changing its behavior."""
     path = Path(model_path)
     if not path.is_file():
         raise FileNotFoundError(f"Model not found: {path}")
     if runs < 1 or warmup_runs < 0:
         raise ValueError("runs must be >= 1 and warmup_runs must be >= 0")
+    if consistency_tolerance < 0:
+        raise ValueError("consistency_tolerance must be >= 0")
+    if reference_model and not Path(reference_model).is_file():
+        raise FileNotFoundError(f"Reference model not found: {reference_model}")
+    if reference_model and not config_path:
+        raise ValueError("--config is required for output-consistency validation")
 
     suffix = path.suffix.lower()
 
@@ -101,19 +185,12 @@ def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2,
         model_format = "onnx"
     elif suffix in {".pt", ".pth", ".torchscript", ".engine", ".hef", ".xmodel", ".xml"}:
         from anomavision.inference.model.wrapper import ModelWrapper
-        from anomavision.config import _shape as config_shape, load_config
-        import torch
 
         wrapper = ModelWrapper(str(path), "cpu")
         try:
             inputs, outputs, latency_ms = [], [], None
             if config_path:
-                cfg = load_config(str(config_path))
-                size = config_shape(cfg["resize"])
-                crop = cfg.get("crop_size")
-                if crop:
-                    size = config_shape(crop)
-                batch = torch.zeros((1, 3, size[1], size[0]), dtype=torch.float32)
+                batch = _build_validation_batch(config_path)
                 wrapper.warmup(batch=batch, runs=warmup_runs)
                 start_time = time.perf_counter()
                 for _ in range(runs):
@@ -131,6 +208,16 @@ def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2,
     else:
         raise ValueError(f"Unsupported model format '{suffix}'.")
 
+    consistency = None
+    if reference_model:
+        batch = _build_validation_batch(config_path)
+        reference_output = _run_model(reference_model, batch)
+        candidate_output = _run_model(path, batch)
+        consistency = _compare_outputs(
+            reference_output, candidate_output, consistency_tolerance
+        )
+        checks["output_consistency"] = consistency["within_tolerance"]
+
     backends = _backend_status()
     return {
         "model": str(path),
@@ -143,6 +230,7 @@ def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2,
             "latency_ms": round(latency_ms, 3) if latency_ms is not None else None,
             "fps": round(1000.0 / latency_ms, 2) if latency_ms else None,
         },
+        "consistency": consistency,
         "backends": backends,
         "checks": checks,
         "ready_for_deployment": all(checks.values()),
@@ -162,6 +250,21 @@ def _print_report(report: dict[str, Any]) -> None:
         print(f"FPS:     {perf['fps']:.2f}")
     else:
         print("Latency: not measured (provide --config for runtime validation)")
+
+    consistency = report.get("consistency")
+    if consistency is not None:
+        print()
+        print("Output consistency")
+        print(
+            f"  Score max abs diff: {consistency['score']['max_abs_diff']:.6g}"
+        )
+        print(
+            f"  Map max abs diff:   {consistency['map']['max_abs_diff']:.6g}"
+        )
+        print(
+            f"  Tolerance:           {consistency_tolerance if False else 'configured'}"
+        )
+
     print()
     print("Backend compatibility")
     for name, status in report["backends"].items():
@@ -174,7 +277,13 @@ def _print_report(report: dict[str, Any]) -> None:
 
 
 def main(args: argparse.Namespace) -> None:
-    report = validate_model(args.model, args.runs, args.warmup_runs, args.config)
+    report = validate_model(
+        args.model,
+        args.runs,
+        args.warmup_runs,
+        args.config,
+        args.reference_model,
+    )
     if args.json_output:
         print(json.dumps(report, indent=2))
     else:
