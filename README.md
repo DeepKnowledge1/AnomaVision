@@ -13,7 +13,7 @@ Supported methods:
 - **PatchCore**
 - **EfficientAD**
 
-It supports training, evaluation, threshold calibration, ONNX/OpenVINO/TensorRT export where supported, KV260/XModel deployment, and **production data-drift monitoring**.
+It supports training, evaluation, threshold calibration, ONNX/OpenVINO/TensorRT export where supported, KV260/XModel deployment, and **production data-drift monitoring**.\n\nIt also includes **non-invasive deployment validation** for exported ONNX models, reporting model validity, tensor shapes, CPU inference latency, and available deployment backends without changing anomaly-detection logic.
 
 ## Quick start
 
