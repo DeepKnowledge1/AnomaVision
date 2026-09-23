@@ -102,7 +102,7 @@ def validate_model(model_path: str | Path, runs: int = 10, warmup_runs: int = 2,
                 from anomavision.config import _shape, load_config
                 import torch
                 cfg = load_config(str(config_path))
-                size = _shape(cfg.resize)
+                size = _shape(cfg["resize"])
                 crop = cfg.get("crop_size")
                 if crop:
                     size = _shape(crop)
