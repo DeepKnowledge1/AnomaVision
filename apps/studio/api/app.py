@@ -107,6 +107,8 @@ def config() -> dict[str, Any]:
     resize = data.get("resize", [224, 224])
     return {
         "algorithm": algorithm,
+        "dataset_path": str(data.get("dataset_path", "") or ""),
+        "class_name": str(data.get("class_name", "default") or "default"),
         "resize": resize,
         "normalize": bool(data.get("normalize", True)),
         "thresholds": thresholds,
