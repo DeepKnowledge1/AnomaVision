@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, Box, BrainCircuit, CircleGauge, Database, FlaskConical,
   LayoutDashboard, MonitorCog, Play, Rocket, Settings2, ShieldCheck,
-  SlidersHorizontal, Sparkles, Wifi
+  SlidersHorizontal, Sparkles, Wifi, FolderOpen
 } from "lucide-react";
 
 type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Monitoring" | "Settings";
@@ -234,6 +234,19 @@ function DatasetsPage({ project }: { project?: Project }) {
   },[]);
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
+  const [pickerBusy,setPickerBusy]=useState(false);
+
+  async function chooseFolder(){
+    if(!project){setError("Select a project first.");return;}
+    setPickerBusy(true);setError("");
+    try{
+      const r=await fetch(API_BASE+"/api/dataset/pick-folder",{cache:"no-store"});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.detail||"Could not open the folder dialog");
+      if(d.path){setPath(String(d.path));setReport(null);}
+    }catch(e){setError(e instanceof Error?e.message:"Could not open the folder dialog");}
+    finally{setPickerBusy(false);}
+  }
 
   async function inspect(){
     if(!project){setError("Select a project first.");return;}
@@ -285,7 +298,12 @@ function DatasetsPage({ project }: { project?: Project }) {
           <div className="dataset-input-row">
             <label>
               Dataset folder
-              <input value={path} onChange={e=>setPath(e.target.value)} placeholder={configLoaded?"Enter a local dataset folder":"Loading config…"} />
+              <div className="dataset-path-control">
+                <input value={path} onChange={e=>setPath(e.target.value)} placeholder={configLoaded?"Enter a local dataset folder":"Loading config…"} />
+                <button className="secondary" onClick={chooseFolder} disabled={pickerBusy}>
+                  <FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose folder"}
+                </button>
+              </div>
             </label>
             <button className="primary" onClick={inspect} disabled={busy||!path.trim()}>
               <ShieldCheck size={13}/>{busy?"Checking…":"Check dataset"}
