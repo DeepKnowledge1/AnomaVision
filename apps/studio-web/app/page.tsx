@@ -607,9 +607,27 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
 
         {error&&<div className="form-error">{error}</div>}
         {result&&<section className="card training-result">
-          <div className="section-head"><div><div className="section-title">Training completed</div><div className="subtitle">The model is now available in Models.</div></div><div className="badge">Completed</div></div>
-          <pre className="result-box">{JSON.stringify(result,null,2)}</pre>
-        </section>}
+          <div className="section-head">
+            <div><div className="section-title">Training completed</div><div className="subtitle">The model is now available in Models.</div></div>
+            <div className="badge success-badge">Completed</div>
+          </div>
+          <div className="training-success">
+            <div className="training-success-icon"><ShieldCheck size={18}/></div>
+            <div><strong>Your model was created successfully.</strong><span>Open Models to review the artifact or continue to validation.</span></div>
+            <button className="secondary" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}>Continue</button>
+          </div>
+          <div className="training-result-grid">
+            <div><span>Algorithm</span><b>{String(result.algorithm ?? algorithm).toUpperCase()}</b></div>
+            <div><span>Class</span><b>{String(result.class_name ?? className || "From config")}</b></div>
+            <div><span>Run</span><b>{String(result.run_name ?? result.model_id ?? "Created")}</b></div>
+            <div><span>Status</span><b>{String(result.status ?? "trained")}</b></div>
+          </div>
+          {(result.model_path || result.path) && <div className="artifact-box"><span>Model artifact</span><code>{String(result.model_path ?? result.path)}</code></div>}
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <pre className="result-box">{JSON.stringify(result,null,2)}</pre>
+          </details>
+        </section>
       </>}
   </>;
 }
