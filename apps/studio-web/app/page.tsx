@@ -549,7 +549,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
     finally{setBusy(false)}
   }
 
-  return <>
+  return <div className="training-page">
     <div className="page-head">
       <div>
         <div className="eyebrow">Build a model</div>
@@ -559,7 +559,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
     </div>
     {!project
       ? <div className="card empty-state"><strong>Select a project first</strong><span>Your training run will be saved inside the selected project.</span></div>
-      : <>
+      : <div className="training-content">
         <div className="training-steps">
           <div className="training-step active"><span>1</span><div><strong>Data</strong><small>Choose images</small></div></div>
           <div className="training-line"/>
@@ -574,7 +574,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
             <p className="form-help">Point Studio to the same local image folder you checked in Data Readiness.</p>
             <label>Dataset path<input value={dataset} onChange={e=>setDataset(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
             <label>Class name<input value={className} onChange={e=>setClassName(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
-            <div className="config-field-note">{className ? <>Using <strong>{className}</strong> from {configLoaded ? "config.yml" : "the current setup"}.</> : <>Class name will be taken from <strong>config.yml</strong> if you leave it empty.</>}</div>
+            <div className="config-field-note">{className ? <span>Using <strong>{className}</strong> from {configLoaded ? "config.yml" : "the current setup"}.</span> : <span>Class name will be taken from <strong>config.yml</strong> if you leave it empty.</span>}</div>
           </section>
 
           <section className="card">
