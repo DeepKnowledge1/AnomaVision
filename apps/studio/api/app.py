@@ -60,6 +60,7 @@ class ProjectCreate(BaseModel):
 class DatasetInspect(BaseModel):
     path: str = Field(min_length=1)
     recursive: bool = True
+    class_name: str | None = None
 
 
 class TrainingRequest(BaseModel):
@@ -260,7 +261,7 @@ def resolve_project_dataset(
     """Validate and normalize a dataset selection to train.py's contract."""
     _project_or_404(project_id)
     config_data = load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
-    class_name = str(config_data.get("class_name", "default") or "default")
+    class_name = str(request.class_name or config_data.get("class_name", "default") or "default")
     try:
         dataset_path, detected_class = normalize_dataset_source(request.path, class_name)
     except (ValueError, FileNotFoundError) as exc:
