@@ -375,3 +375,7 @@ drift/*.npy
 
 # AnomaVision Studio local runtime data
 .anomavision/
+apps/studio-web/.next/
+apps/studio-web/node_modules/
+apps/studio-web/.env.local
+apps/studio-web/.env.*.local
