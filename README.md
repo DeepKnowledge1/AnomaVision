@@ -17,7 +17,7 @@ It supports training, evaluation, threshold calibration, ONNX/OpenVINO/TensorRT 
 
 ## 🚀 Quick start
 
-### Install
+### 📦 Install
 
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
@@ -27,19 +27,19 @@ source .venv/bin/activate        # Windows: .venv\\Scripts\\Activate.ps1
 uv sync --extra cpu
 ```
 
-### Train
+### 🧠 Train
 
 ```bash
 anomavision train --config config.yml
 ```
 
-### Detect
+### 🔍 Detect
 
 ```bash
 anomavision detect --config config.yml --img_path ./dataset/bottle/test
 ```
 
-### Export
+### 📤 Export
 
 ```bash
 anomavision export --config config.yml --format onnx
