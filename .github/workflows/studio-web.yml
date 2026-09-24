@@ -1,0 +1,41 @@
+name: Studio Web
+
+on:
+  pull_request:
+    paths:
+      - "apps/studio-web/**"
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - "apps/studio-web/**"
+
+concurrency:
+  group: studio-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Next.js build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/studio-web
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/studio-web/package.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Studio
+        run: npm run build
