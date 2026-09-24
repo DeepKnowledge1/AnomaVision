@@ -536,10 +536,10 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
     if(!dataset.trim()){setError("Add your dataset path first.");return;}
     setBusy(true);setError("");setResult(null);
     try{
-      const valid=await validateDataset();
-      if(!valid)return;
-      const body:{dataset_path:string;algorithm:string;class_name?:string;batch_size?:number;resize?:number[];backbone?:string}={dataset_path:(resolved?.dataset_path||dataset),algorithm};
-      const selectedClass=className.trim();
+      const canonical=await validateDataset();
+      if(!canonical)return;
+      const body:{dataset_path:string;algorithm:string;class_name?:string;batch_size?:number;resize?:number[];backbone?:string}={dataset_path:canonical.dataset_path,algorithm};
+      const selectedClass=String(canonical.class_name||className).trim();
       if(selectedClass) body.class_name=selectedClass;
       if(batch)body.batch_size=Number(batch);
       if(backbone)body.backbone=backbone;
