@@ -513,6 +513,8 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
   const [result,setResult]=useState<Record<string,unknown>|null>(null);
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
+  const [pickerBusy,setPickerBusy]=useState(false);
+  const [resolved,setResolved]=useState<{dataset_path:string;class_name:string;train_good:string}|null>(null);
 
   useEffect(()=>{if(project)setAlgorithm(project.algorithm)},[project]);
 
@@ -534,7 +536,9 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
     if(!dataset.trim()){setError("Add your dataset path first.");return;}
     setBusy(true);setError("");setResult(null);
     try{
-      const body:{dataset_path:string;algorithm:string;class_name?:string;batch_size?:number;resize?:number[];backbone?:string}={dataset_path:dataset,algorithm};
+      const valid=await validateDataset();
+      if(!valid)return;
+      const body:{dataset_path:string;algorithm:string;class_name?:string;batch_size?:number;resize?:number[];backbone?:string}={dataset_path:(resolved?.dataset_path||dataset),algorithm};
       const selectedClass=className.trim();
       if(selectedClass) body.class_name=selectedClass;
       if(batch)body.batch_size=Number(batch);
@@ -580,8 +584,13 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
             <section className="card">
               <div className="section-title">1. Training data</div>
               <p className="form-help">Point Studio to the same local image folder you checked in Data Readiness.</p>
-              <label>Dataset path<input value={dataset} onChange={e=>setDataset(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
-              <label>Class name<input value={className} onChange={e=>setClassName(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
+              <label>Dataset path<input value={dataset} onChange={e=>{setDataset(e.target.value);setResolved(null)}} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
+              <div className="form-actions">
+                <button className="secondary" type="button" onClick={chooseFolder} disabled={pickerBusy}><FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose folder"}</button>
+                <button className="secondary" type="button" onClick={validateDataset} disabled={busy||!dataset.trim()}>Check training layout</button>
+              </div>
+              <label>Class name<input value={className} onChange={e=>{setClassName(e.target.value);setResolved(null)}} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
+              {resolved&&<div className="config-field-note"><span>✓ Training folder: <code>{resolved.train_good}</code></span></div>}
               <div className="config-field-note">{className ? <span>Using <strong>{className}</strong> from {configLoaded ? "config.yml" : "the current setup"}.</span> : <span>Class name will be taken from <strong>config.yml</strong> if you leave it empty.</span>}</div>
             </section>
 
