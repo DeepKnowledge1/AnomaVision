@@ -637,6 +637,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
           </details>
           </section>
         )}
+        </>
   </>;
 }
 
