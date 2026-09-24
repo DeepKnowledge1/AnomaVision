@@ -637,7 +637,6 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
           </details>
           </section>
         )}
-  </>;
 }
 
 function ModelsPage({models,onRefresh,onNavigate,onDeploy}:{models:Model[];onRefresh:()=>Promise<void>;onNavigate:(p:Page)=>void;onDeploy:(id:string)=>void}) {
