@@ -1088,28 +1088,25 @@ function LivePage({apiHealthy,onResult,onResults}:{apiHealthy:boolean;onResult:(
       await new Promise<void>(resolve=>(video as HTMLVideoElement & {requestVideoFrameCallback:(cb:()=>void)=>number}).requestVideoFrameCallback(()=>resolve()));
     }
   }
-  async function predictFrame(){if(!videoRef.current||cameraBusyRef.current)return;cameraBusyRef.current=true;setCameraBusy(true);setCameraError("");try{const video=videoRef.current;await waitForCameraFrame(video);const canvas=document.createElement("canvas");const [targetW,targetH]=studioConfig?.resize||[224,224];canvas.width=targetW;canvas.height=targetH;canvas.getContext("2d")?.drawImage(video,0,0);const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));if(!blob)throw new Error("Could not capture camera frame");const body=new FormData();body.append("files",blob,"camera.jpg");const started=performance.now();const r=await fetch(`${inferenceUrl}/predict-batch`,{method:"POST",body});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Camera inference failed");const rows=(d.batch_results||[]).map((x:any)=>({filename:"camera.jpg",...(x.result||{}),error:x.error}));setResult(d);setHistory(prev=>[...rows,...prev].slice(0,20));const elapsed=performance.now()-started;setTotalMs(rows.reduce((sum:number,x:any)=>sum+(Number(x.latency_ms)||0),0)||elapsed);setCameraFrames(prev=>prev+rows.length);const now=Date.now();fpsTimesRef.current=[...fpsTimesRef.current.filter(t=>now-t<5000),now];setCameraFps(fpsTimesRef.current.length/5);}catch(e){setCameraError(e instanceof Error?e.message:"Camera inference failed")}finally{cameraBusyRef.current=false;setCameraBusy(false)}}
+  async function predictFrame(){if(!videoRef.current||cameraBusyRef.current)return;cameraBusyRef.current=true;setCameraBusy(true);setCameraError("");try{const video=videoRef.current;await waitForCameraFrame(video);const canvas=document.createElement("canvas");const [targetW,targetH]=studioConfig?.resize||[224,224];canvas.width=targetW;canvas.height=targetH;canvas.getContext("2d")?.drawImage(video,0,0);const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));if(!blob)throw new Error("Could not capture camera frame");const body=new FormData();body.append("file",blob,"camera.jpg");const started=performance.now();const r=await fetch(inferenceUrl+"/predict",{method:"POST",body});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"Inference API error ("+r.status+")");const row={filename:"camera.jpg",...d};setResult(d);setHistory(prev=>[row,...prev].slice(0,20));const elapsed=performance.now()-started;setTotalMs(Number(d.latency_ms)||elapsed);setCameraFrames(prev=>prev+1);const now=Date.now();fpsTimesRef.current=[...fpsTimesRef.current.filter(t=>now-t<5000),now];setCameraFps(fpsTimesRef.current.length/5);}catch(e){setCameraError(e instanceof Error?e.message:"Camera inference failed")}finally{cameraBusyRef.current=false;setCameraBusy(false)}}
   function startAutoInference(){if(!camera||cameraLoopRef.current!==null)return;setCameraAuto(true);void predictFrame();cameraLoopRef.current=window.setInterval(()=>void predictFrame(),cameraInterval);}
   async function predictBatch(){
     if(!files.length)return;
     setBusy(true);setError("");setResult(null);
     try{
-      if(files.length===1){
-        const body=new FormData();body.append("file",files[0],files[0].name);
-        const started=performance.now();
+      const started=performance.now();
+      const rows:any[]=[];
+      for(const file of files.slice(0,10)){
+        const body=new FormData();body.append("file",file,file.name);
         const r=await fetch(inferenceUrl+"/predict",{method:"POST",body});
-        const d=await r.json();if(!r.ok)throw new Error(d.detail||"Image inference failed");
-        const row={filename:files[0].name,...d};
-        setResult(d);setHistory(prev=>[row,...prev].slice(0,20));setTotalMs(Number(d.latency_ms)||performance.now()-started);
-      }else{
-        const body=new FormData();files.slice(0,10).forEach(f=>body.append("files",f,f.name));
-        const r=await fetch(inferenceUrl+"/predict-batch",{method:"POST",body});
-        const d=await r.json();if(!r.ok)throw new Error(d.detail||"Batch inference failed");
-        setResult(d);
-        const rows=(d.batch_results||[]).map((x:any)=>({filename:x.filename,...(x.result||{}),error:x.error}));
-        setHistory(prev=>[...rows,...prev].slice(0,20));
-        setTotalMs(rows.reduce((sum:number,x:any)=>sum+(Number(x.latency_ms)||0),0));
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(d.detail||"Inference API error ("+r.status+")");
+        rows.push({filename:file.name,...d});
       }
+      const d=rows.length===1?rows[0]:{batch_results:rows.map(({filename,...result})=>({filename,result}))};
+      setResult(d);
+      setHistory(prev=>[...rows,...prev].slice(0,20));
+      setTotalMs(rows.reduce((sum:number,x:any)=>sum+(Number(x.latency_ms)||0),0)||performance.now()-started);
     }catch(e){setError(e instanceof Error?e.message:"Inference failed")}
     finally{setBusy(false)}
   }
