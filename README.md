@@ -94,9 +94,23 @@ See the [Deployment Validation guide](docs/deployment_validation.md) for all opt
 
 ## Production data drift
 
-Production data-drift monitoring is available as an optional observer around anomaly detection.
+Production data-drift monitoring helps detect changes in the data seen by an anomaly detector after deployment.
 
-See the [Production Data Drift guide](docs/anomaly_detection_production_data_drift.md) for setup, reference generation, metrics, dashboard, and troubleshooting.
+It compares production representations against a trusted **normal reference population** using a rolling window. It can report metrics such as **PSI, mean shift, standard-deviation shift, cosine shift, and drift score**, with the result available through a dashboard and JSON status file.
+
+The monitor is an **observer only**: it does not change anomaly scores or localization. Drift is an early-warning signal that should be investigated for causes such as lighting, camera position, preprocessing, or product changes.
+
+### Quick example
+
+```powershell
+anomavision detect `
+  --config config.yml `
+  --model model.onnx `
+  --enable-drift-monitoring `
+  --drift-reference .\drift\reference_embeddings.npy
+```
+
+See the [Production Data Drift guide](docs/anomaly_detection_production_data_drift.md) for reference generation, metrics, dashboard, configuration, and troubleshooting.
 
 ---
 
