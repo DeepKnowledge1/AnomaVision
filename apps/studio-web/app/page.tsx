@@ -317,10 +317,105 @@ function DatasetsPage({ project }: { project?: Project }) {
 }
 
 function TrainingPage({ project, onFinished }: { project?: Project; onFinished:()=>Promise<void> }) {
-  const [dataset,setDataset]=useState("");const [algorithm,setAlgorithm]=useState(project?.algorithm||"patchcore");const [className,setClassName]=useState("default");const [batch,setBatch]=useState("");const [backbone,setBackbone]=useState("");const [resize,setResize]=useState("224,224");const [result,setResult]=useState<Record<string,unknown>|null>(null);const [error,setError]=useState("");const [busy,setBusy]=useState(false);
+  const [dataset,setDataset]=useState("");
+  const [algorithm,setAlgorithm]=useState(project?.algorithm||"patchcore");
+  const [className,setClassName]=useState("default");
+  const [batch,setBatch]=useState("");
+  const [backbone,setBackbone]=useState("");
+  const [resize,setResize]=useState("224,224");
+  const [result,setResult]=useState<Record<string,unknown>|null>(null);
+  const [error,setError]=useState("");
+  const [busy,setBusy]=useState(false);
+
   useEffect(()=>{if(project)setAlgorithm(project.algorithm)},[project]);
-  async function train(){if(!project){setError("Select a project first.");return;}setBusy(true);setError("");setResult(null);try{const body:{dataset_path:string;algorithm:string;class_name:string;batch_size?:number;resize?:number[];backbone?:string}={dataset_path:dataset,algorithm,class_name};if(batch)body.batch_size=Number(batch);if(backbone)body.backbone=backbone;const dims=resize.split(",").map(Number);if(dims.length===2&&dims.every(Number.isFinite))body.resize=dims;const r=await fetch(`${API_BASE}/api/projects/${project.id}/training`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Training failed");setResult(d);await onFinished();}catch(e){setError(e instanceof Error?e.message:"Training failed")}finally{setBusy(false)}}
-  return <><div className="page-head"><div><div className="eyebrow">Experiments</div><h1>Training</h1><p className="subtitle">Launch the existing AnomaVision training engine with a reproducible Studio configuration.</p></div></div>{!project?<div className="card empty">Select a project first.</div>:<div className="card form-grid"><label>Dataset path<input value={dataset} onChange={e=>setDataset(e.target.value)} placeholder="C:\data\bottle"/></label><label>Algorithm<select value={algorithm} onChange={e=>setAlgorithm(e.target.value)}><option>patchcore</option><option>padim</option><option>efficientad</option></select></label><label>Class name<input value={className} onChange={e=>setClassName(e.target.value)}/></label><label>Image size<input value={resize} onChange={e=>setResize(e.target.value)} placeholder="224,224"/></label><label>Batch size<input value={batch} onChange={e=>setBatch(e.target.value)} placeholder="Use config default"/></label><label>Backbone<input value={backbone} onChange={e=>setBackbone(e.target.value)} placeholder="Use config default"/></label><div className="form-actions"><button className="primary" onClick={train} disabled={busy}>{busy?"Training…":"Start training"}</button></div>{error&&<div className="form-error">{error}</div>}{result&&<pre className="result-box">{JSON.stringify(result,null,2)}</pre>}</div>}</>;
+
+  async function train(){
+    if(!project){setError("Select a project first.");return;}
+    if(!dataset.trim()){setError("Add your dataset path first.");return;}
+    setBusy(true);setError("");setResult(null);
+    try{
+      const body:{dataset_path:string;algorithm:string;class_name:string;batch_size?:number;resize?:number[];backbone?:string}={dataset_path:dataset,algorithm,class_name};
+      if(batch)body.batch_size=Number(batch);
+      if(backbone)body.backbone=backbone;
+      const dims=resize.split(",").map(Number);
+      if(dims.length===2&&dims.every(Number.isFinite))body.resize=dims;
+      const r=await fetch(`${API_BASE}/api/projects/${project.id}/training`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.detail||"Training failed");
+      setResult(d);await onFinished();
+    }catch(e){setError(e instanceof Error?e.message:"Training failed")}
+    finally{setBusy(false)}
+  }
+
+  return <>
+    <div className="page-head">
+      <div>
+        <div className="eyebrow">Build a model</div>
+        <h1>Training</h1>
+        <p className="subtitle">Set up your experiment, then let the existing AnomaVision engine do the training.</p>
+      </div>
+    </div>
+    {!project
+      ? <div className="card empty-state"><strong>Select a project first</strong><span>Your training run will be saved inside the selected project.</span></div>
+      : <>
+        <div className="training-steps">
+          <div className="training-step active"><span>1</span><div><strong>Data</strong><small>Choose images</small></div></div>
+          <div className="training-line"/>
+          <div className="training-step active"><span>2</span><div><strong>Method</strong><small>Choose detector</small></div></div>
+          <div className="training-line"/>
+          <div className="training-step"><span>3</span><div><strong>Run</strong><small>Start training</small></div></div>
+        </div>
+
+        <div className="two-column training-layout">
+          <section className="card">
+            <div className="section-title">1. Training data</div>
+            <p className="form-help">Point Studio to the same local image folder you checked in Data Readiness.</p>
+            <label>Dataset path<input value={dataset} onChange={e=>setDataset(e.target.value)} placeholder="C:\data\bottle"/></label>
+            <label>Class name<input value={className} onChange={e=>setClassName(e.target.value)} placeholder="e.g. bottle"/></label>
+          </section>
+
+          <section className="card">
+            <div className="section-title">2. Detection method</div>
+            <p className="form-help">Choose the anomaly detector for this experiment.</p>
+            <div className="algorithm-options">
+              {[
+                ["patchcore","PatchCore","Strong local-feature baseline"],
+                ["padim","PaDiM","Fast statistical baseline"],
+                ["efficientad","EfficientAD","Lightweight industrial detector"]
+              ].map(([value,title,desc])=>
+                <button key={value} type="button" className={`algorithm-option ${algorithm===value?"selected":""}`} onClick={()=>setAlgorithm(value)}>
+                  <span className="algorithm-radio">{algorithm===value?"✓":""}</span>
+                  <span><strong>{title}</strong><small>{desc}</small></span>
+                </button>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <section className="card training-advanced">
+          <div className="section-head">
+            <div><div className="section-title">Optional settings</div><div className="subtitle">Leave these empty to use the canonical config.yml values.</div></div>
+            <div className="section-link">Config-aware</div>
+          </div>
+          <div className="form-grid">
+            <label>Image size<input value={resize} onChange={e=>setResize(e.target.value)} placeholder="224,224"/></label>
+            <label>Batch size<input value={batch} onChange={e=>setBatch(e.target.value)} placeholder="Use config default"/></label>
+            <label>Backbone<input value={backbone} onChange={e=>setBackbone(e.target.value)} placeholder="Use config default"/></label>
+          </div>
+        </section>
+
+        <div className="training-action">
+          <div><strong>Ready to train?</strong><span>{algorithm.toUpperCase()} · {resize} · {className || "default class"}</span></div>
+          <button className="primary" onClick={train} disabled={busy}><Play size={13}/>{busy?"Training…":"Start training"}</button>
+        </div>
+
+        {error&&<div className="form-error">{error}</div>}
+        {result&&<section className="card training-result">
+          <div className="section-head"><div><div className="section-title">Training completed</div><div className="subtitle">The model is now available in Models.</div></div><div className="badge">Completed</div></div>
+          <pre className="result-box">{JSON.stringify(result,null,2)}</pre>
+        </section>}
+      </>}
+  </>;
 }
 
 function ModelsPage({models,onRefresh}:{models:Model[];onRefresh:()=>Promise<void>}) {
