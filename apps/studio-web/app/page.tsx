@@ -605,13 +605,95 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
 }
 
 function MonitoringPage({project}:{project?:Project}) {
-  const [summary,setSummary]=useState<Record<string,any>|null>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState("");
-  async function load(){if(!project){setSummary(null);return}setBusy(true);try{const r=await fetch(`${API_BASE}/api/projects/${project.id}/monitoring`,{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Could not load monitoring");setSummary(d)}catch(e){setError(e instanceof Error?e.message:"Could not load monitoring")}finally{setBusy(false)}}
+  const [summary,setSummary]=useState<Record<string,any>|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+
+  async function load(){
+    if(!project){setSummary(null);return}
+    setBusy(true);setError("");
+    try{
+      const r=await fetch(`${API_BASE}/api/projects/${project.id}/monitoring`,{cache:"no-store"});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.detail||"Could not load monitoring");
+      setSummary(d);
+    }catch(e){setError(e instanceof Error?e.message:"Could not load monitoring")}
+    finally{setBusy(false)}
+  }
+
   useEffect(()=>{void load()},[project]);
+
   const latest=summary?.latest;
-  return <><div className="page-head"><div><div className="eyebrow">Production health</div><h1>Monitoring</h1><p className="subtitle">Read-only view of the existing production drift monitoring reports.</p></div><button className="secondary" onClick={load} disabled={busy}><Activity size={13}/> Refresh</button></div>
-    {!project?<div className="card empty">Select a project first.</div>:<><div className="grid-4 section"><Stat icon={<Activity size={15}/>} label="Status" value={String(summary?.status||"no_data")} meta="latest drift report"/><Stat icon={<CircleGauge size={15}/>} label="Drift score" value={latest?.drift_score!=null?Number(latest.drift_score).toFixed(3):"—"} meta="combined signal"/><Stat icon={<Database size={15}/>} label="PSI" value={latest?.psi!=null?Number(latest.psi).toFixed(3):"—"} meta="population stability index"/><Stat icon={<ShieldCheck size={15}/>} label="Warnings" value={String((latest?.warnings||[]).length)} meta="latest report" /></div>
-      {error&&<div className="form-error">{error}</div>}<div className="card"><div className="section-head"><div className="section-title">Latest drift report</div><div className="section-link">{summary?.report_count||0} reports</div></div>{latest?<><div className="check-list"><div className="check-row"><span>Reference samples</span><b>{latest.reference_samples}</b></div><div className="check-row"><span>Current samples</span><b>{latest.current_samples}</b></div><div className="check-row"><span>Feature dimensions</span><b>{latest.feature_dimensions}</b></div><div className="check-row"><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div><div className="check-row"><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div><div className="check-row"><span>Cosine shift</span><b>{Number(latest.cosine_shift).toFixed(4)}</b></div></div><div className="warning-list">{(latest.warnings||[]).map((w:string)=><span className="warning-chip" key={w}>{w.replaceAll("_"," ")}</span>)}</div></>:<div className="empty">No drift report has been stored for this project yet.</div>}</div></>}</>;
+  const status=String(summary?.status||"no_data");
+  const warnings=(latest?.warnings||[]) as string[];
+  const driftScore=latest?.drift_score!=null?Number(latest.drift_score):null;
+  const psi=latest?.psi!=null?Number(latest.psi):null;
+  const healthy=status==="ok" || status==="healthy" || status==="no_data";
+  const statusLabel=status==="no_data"?"No data":status.replaceAll("_"," ");
+
+  return <>
+    <div className="page-head">
+      <div>
+        <div className="eyebrow">Production health</div>
+        <h1>Monitoring</h1>
+        <p className="subtitle">Understand how the data seen by your model is changing over time.</p>
+      </div>
+      <button className="secondary" onClick={load} disabled={busy}><Activity size={13}/>{busy?"Refreshing…":"Refresh"}</button>
+    </div>
+
+    {!project ? <div className="card empty-state">
+      <div className="dataset-empty-icon"><Activity size={20}/></div>
+      <strong>Select a project first</strong>
+      <span>Monitoring reports are stored inside each Studio project.</span>
+    </div> : <>
+      <div className={`monitor-status ${healthy?"healthy":"attention"}`}>
+        <div className="monitor-status-icon"><span className="status-dot"/></div>
+        <div>
+          <strong>{latest ? (healthy?"Monitoring is healthy":"Review drift signals") : "Monitoring is ready"}</strong>
+          <span>{latest ? `Latest report · ${warnings.length} warning${warnings.length===1?"":"s"} · ${summary?.report_count||0} stored reports` : "No stored drift report yet. Reports will appear here when monitoring produces them."}</span>
+        </div>
+        <div className="monitor-status-value">{statusLabel}</div>
+      </div>
+
+      {error&&<div className="form-error">{error}</div>}
+
+      <div className="grid-4 section">
+        <Stat icon={<Activity size={15}/>} label="Drift score" value={driftScore!=null?driftScore.toFixed(3):"—"} meta="combined drift signal"/>
+        <Stat icon={<Database size={15}/>} label="PSI" value={psi!=null?psi.toFixed(3):"—"} meta="distribution shift"/>
+        <Stat icon={<ShieldCheck size={15}/>} label="Warnings" value={String(warnings.length)} meta={warnings.length?"review latest signals":"no warnings reported"} green={!warnings.length}/>
+        <Stat icon={<CircleGauge size={15}/>} label="Reports" value={String(summary?.report_count||0)} meta="stored monitoring reports"/>
+      </div>
+
+      <div className="two-column">
+        <section className="card">
+          <div className="section-head">
+            <div><div className="section-title">Latest drift report</div><div className="subtitle">The most recent report produced by the existing monitoring engine.</div></div>
+          </div>
+          {latest ? <div className="check-list">
+            <div className="check-row"><span>Reference samples</span><b>{latest.reference_samples}</b></div>
+            <div className="check-row"><span>Current samples</span><b>{latest.current_samples}</b></div>
+            <div className="check-row"><span>Feature dimensions</span><b>{latest.feature_dimensions}</b></div>
+            <div className="check-row"><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div>
+            <div className="check-row"><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div>
+            <div className="check-row"><span>Cosine shift</span><b>{Number(latest.cosine_shift).toFixed(4)}</b></div>
+          </div> : <div className="monitor-empty"><Activity size={18}/><strong>No report yet</strong><span>Run production monitoring to populate this view.</span></div>}
+        </section>
+
+        <section className="card">
+          <div className="section-head">
+            <div><div className="section-title">Signals to review</div><div className="subtitle">Warnings reported by the monitoring engine.</div></div>
+          </div>
+          {warnings.length ? <div className="warning-list monitor-warnings">{warnings.map((w:string)=><span className="warning-chip" key={w}>{w.replaceAll("_"," ")}</span>)}</div>
+            : <div className="monitor-empty"><ShieldCheck size={18}/><strong>No warnings</strong><span>The latest stored report contains no warning signals.</span></div>}
+        </section>
+      </div>
+
+      <div className="card monitoring-note">
+        <ShieldCheck size={15}/>
+        <div><strong>Existing monitoring engine</strong><span>Studio displays the stored drift reports; it does not change the underlying drift calculations or thresholds.</span></div>
+      </div>
+    </>}
+  </>;
 }
 
 function LivePage({apiHealthy}:{apiHealthy:boolean}) {
