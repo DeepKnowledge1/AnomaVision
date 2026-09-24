@@ -34,7 +34,7 @@ def normalize_dataset_source(source: str, class_name: str = "default") -> tuple[
         train_root = source_path.parent.parent
         return train_root.parent, train_root.name
 
-    if (source_path / "class_name_placeholder" / "train" / "good").is_dir():
+    # Canonical AnomaVision layout: dataset_root/<class>/train/good.\n    if class_name and (source_path / class_name / "train" / "good").is_dir():\n        return source_path, class_name\n\n    if (source_path / "class_name_placeholder" / "train" / "good").is_dir():
         return source_path, class_name
 
     raise ValueError(
