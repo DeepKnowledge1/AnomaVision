@@ -747,3 +747,63 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .dataset-config-actions .secondary { flex:1; }
   .config-field-note { grid-column:auto; }
 }
+
+
+/* Phase 3 — training completion */
+.training-success {
+  display:flex;
+  align-items:center;
+  gap:11px;
+  padding:12px 13px;
+  margin-top:12px;
+  border:1px solid rgba(80,190,130,.2);
+  border-radius:10px;
+  background:rgba(80,190,130,.035);
+}
+.training-success-icon {
+  width:31px;
+  height:31px;
+  flex:0 0 auto;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(80,190,130,.22);
+  border-radius:9px;
+}
+.training-success>div:nth-child(2) { min-width:0; flex:1; }
+.training-success strong,
+.training-success span { display:block; }
+.training-success strong { font-size:11px; }
+.training-success span { margin-top:3px; color:var(--muted); font-size:9px; }
+.training-result-grid {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin-top:12px;
+}
+.training-result-grid>div {
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:rgba(255,255,255,.018);
+}
+.training-result-grid span,
+.training-result-grid b { display:block; }
+.training-result-grid span { color:var(--muted); font-size:8px; text-transform:uppercase; letter-spacing:.06em; }
+.training-result-grid b { margin-top:4px; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.technical-details {
+  margin-top:10px;
+  border-top:1px solid var(--border);
+  padding-top:10px;
+}
+.technical-details summary {
+  cursor:pointer;
+  color:#9da6b4;
+  font-size:9px;
+  font-weight:650;
+}
+.technical-details .result-box { margin-top:8px; }
+@media(max-width:700px) {
+  .training-success { align-items:flex-start; flex-wrap:wrap; }
+  .training-success .secondary { margin-left:42px; }
+  .training-result-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
