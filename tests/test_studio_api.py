@@ -67,3 +67,17 @@ enable_drift_monitoring: false
     assert payload["resize"] == [224, 224]
     assert payload["thresholds"]["patchcore"] == 0.25
     assert payload["drift"]["window"] == 50
+
+
+def test_pick_dataset_folder(monkeypatch):
+    monkeypatch.setattr(
+        studio_api,
+        "_choose_dataset_folder",
+        lambda initial_dir="": r"D:\01-DATA\VisA_pytorch",
+    )
+
+    client = TestClient(studio_api.app)
+    response = client.get("/api/dataset/pick-folder")
+
+    assert response.status_code == 200
+    assert response.json()["path"] == r"D:\01-DATA\VisA_pytorch"
