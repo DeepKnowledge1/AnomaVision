@@ -34,6 +34,7 @@ export default function StudioPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
   const [models, setModels] = useState<Model[]>([]);
+  const [deploymentModelId, setDeploymentModelId] = useState("");
   const [apiHealthy, setApiHealthy] = useState(false);
 
   async function loadProjects() {
@@ -83,8 +84,8 @@ export default function StudioPage() {
         {page === "Projects" && <ProjectsPage projects={projects} selectedProject={selectedProject} onSelect={setSelectedProject} onCreated={loadProjects}/>}
         {page === "Datasets" && <DatasetsPage project={project}/>}
         {page === "Training" && <TrainingPage project={project} onFinished={() => loadModels(selectedProject)}/>}
-        {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)}/>}
-        {page === "Deployments" && <DeploymentsPage project={project} models={models}/>} {page === "Monitoring" && <MonitoringPage project={project}/>} {page === "Live" && <LivePage apiHealthy={apiHealthy}/>}
+        {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={setPage} onDeploy={(id) => { setDeploymentModelId(id); setPage("Deployments"); }}/>} 
+        {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>} {page === "Monitoring" && <MonitoringPage project={project}/>} {page === "Live" && <LivePage apiHealthy={apiHealthy}/>}
       </div>
     </main>
   </div>;
@@ -418,14 +419,72 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
   </>;
 }
 
-function ModelsPage({models,onRefresh}:{models:Model[];onRefresh:()=>Promise<void>}) {
-  return <><div className="page-head"><div><div className="eyebrow">Artifacts</div><h1>Models</h1><p className="subtitle">Browse models produced by the existing AnomaVision training pipeline.</p></div><button className="secondary" onClick={onRefresh}><Activity size={13}/> Refresh</button></div><div className="card">{models.length?models.map(m=><div className="row" key={m.id}><div className="row-main"><div className="icon-box"><BrainCircuit size={14}/></div><div><div className="row-title">{m.algorithm.toUpperCase()} · {m.class_name}</div><div className="row-sub">{m.run_name}</div></div></div><div className="badge">{m.status}</div></div>):<div className="empty">No models for the selected project yet. Run training first.</div>}</div></>;
+function ModelsPage({models,onRefresh,onNavigate,onDeploy}:{models:Model[];onRefresh:()=>Promise<void>;onNavigate:(p:Page)=>void;onDeploy:(id:string)=>void}) {
+  const trainedCount=models.filter(m=>m.status==="trained").length;
+  const latest=models[0];
+
+  return <>
+    <div className="page-head">
+      <div>
+        <div className="eyebrow">Model registry</div>
+        <h1>Models</h1>
+        <p className="subtitle">Your trained models, ready to validate and move toward deployment.</p>
+      </div>
+      <button className="secondary" onClick={onRefresh}><Activity size={13}/> Refresh</button>
+    </div>
+
+    <div className="grid-4 section">
+      <Stat icon={<BrainCircuit size={15}/>} label="Models" value={String(models.length)} meta={models.length ? "trained artifacts" : "train your first model"}/>
+      <Stat icon={<ShieldCheck size={15}/>} label="Trained" value={String(trainedCount)} meta="available for validation" green={trainedCount > 0}/>
+      <Stat icon={<FlaskConical size={15}/>} label="Latest method" value={latest?.algorithm ? latest.algorithm.toUpperCase() : "—"} meta={latest?.class_name || "no model yet"}/>
+      <Stat icon={<Rocket size={15}/>} label="Next step" value={models.length ? "Deploy" : "Train"} meta={models.length ? "validate a model first" : "build your first artifact"}/>
+    </div>
+
+    <section className="section">
+      <div className="section-head">
+        <div>
+          <div className="section-title">Trained artifacts</div>
+          <div className="subtitle">Each model keeps the original AnomaVision training configuration and artifact.</div>
+        </div>
+      </div>
+
+      {models.length ? <div className="model-list">
+        {models.map((m,index) => {
+          const artifact = m.path ? m.path.split(/[\\/]/).pop() : "model.pt";
+          return <div className="card model-card" key={m.id}>
+            <div className="model-main">
+              <div className="model-icon"><BrainCircuit size={17}/></div>
+              <div className="model-info">
+                <div className="model-title">
+                  <span>{m.algorithm.toUpperCase()}</span>
+                  <span className="model-separator">·</span>
+                  <span>{m.class_name}</span>
+                  {index === 0 && <span className="latest-chip">Latest</span>}
+                </div>
+                <div className="model-run">{m.run_name}</div>
+                <div className="model-meta"><span>Artifact</span><code>{artifact}</code><span>Status</span><b>{m.status}</b></div>
+              </div>
+            </div>
+            <div className="model-actions">
+              <span className="badge"><span className="status-dot"/>{m.status}</span>
+              <button className="secondary" onClick={() => onDeploy(m.id)}><Rocket size={13}/> Validate & deploy</button>
+            </div>
+          </div>;
+        })}
+      </div> : <div className="card empty-state">
+        <div className="dataset-empty-icon"><BrainCircuit size={20}/></div>
+        <strong>No trained models yet</strong>
+        <span>Train a model first. Once training finishes, its artifact will appear here with a direct deployment path.</span>
+        <button className="primary" onClick={() => onNavigate("Training")}><Play size={13}/> Start training</button>
+      </div>}
+    </section>
+  </>;
 }
 
-function DeploymentsPage({project,models}:{project?:Project;models:Model[]}) {
+function DeploymentsPage({project,models,initialModelId}:{project?:Project;models:Model[];initialModelId?:string}) {
   const [target,setTarget]=useState("onnx"); const [modelId,setModelId]=useState(models[0]?.id||"");
   const [result,setResult]=useState<Record<string,any>|null>(null); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
-  useEffect(()=>{setModelId(models[0]?.id||"")},[models]);
+  useEffect(()=>{setModelId(initialModelId || models[0]?.id || "")},[models,initialModelId]);
   async function deploy(){
     if(!project){setError("Select a project first.");return} if(!modelId){setError("Select a model first.");return}
     setBusy(true);setError("");setResult(null);
