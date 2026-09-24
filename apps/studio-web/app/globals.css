@@ -690,3 +690,60 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .page-head h1 { font-size: 23px; }
   .subtitle { font-size: 12px; }
 }
+
+
+/* Phase 3 — dataset/config clarity */
+.dataset-config-card {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:12px 13px;
+  margin-bottom:12px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:rgba(139,92,246,.045);
+}
+.dataset-config-card > div:first-child { min-width:0; }
+.dataset-config-label,
+.dataset-config-card strong,
+.dataset-config-card small { display:block; }
+.dataset-config-label {
+  color:#80779b;
+  font-size:8px;
+  font-weight:750;
+  letter-spacing:.1em;
+}
+.dataset-config-card strong {
+  margin-top:4px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+}
+.dataset-config-card small {
+  margin-top:3px;
+  color:var(--muted);
+  font-size:9px;
+}
+.dataset-config-card small b { color:#cfc7e7; font-weight:650; }
+.dataset-config-actions {
+  display:flex;
+  align-items:center;
+  gap:7px;
+  flex:0 0 auto;
+}
+.config-field-note {
+  grid-column:1 / -1;
+  margin-top:-5px;
+  color:var(--muted);
+  font-size:9px;
+}
+.config-field-note strong { color:#cfc7e7; font-weight:650; }
+
+@media(max-width:700px) {
+  .dataset-config-card { align-items:flex-start; flex-direction:column; }
+  .dataset-config-actions { width:100%; }
+  .dataset-config-actions .secondary { flex:1; }
+  .config-field-note { grid-column:auto; }
+}
