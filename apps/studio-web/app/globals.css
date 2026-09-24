@@ -176,3 +176,5 @@ input:focus, label select:focus { border-color:#6650a8; box-shadow:0 0 0 2px rgb
 
 .warning-list { display:flex; flex-wrap:wrap; gap:7px; margin-top:14px; }
 .warning-chip { padding:6px 8px; border-radius:999px; border:1px solid #63402c; background:rgba(245,158,11,.08); color:#f5c77b; font-size:9px; text-transform:capitalize; }
+
+.live-result-image { display:block; width:min(100%,520px); margin-top:16px; border-radius:10px; border:1px solid var(--border); }
