@@ -960,12 +960,14 @@ function MonitoringPage({project}:{project?:Project}) {
         <Stat icon={<ShieldCheck size={15}/>} label="Warnings" value={String(warnings.length)} meta={warnings.length?"review latest signals":"no warnings reported"} green={!warnings.length}/>
         <Stat icon={<CircleGauge size={15}/>} label="Reports" value={String(summary?.report_count||0)} meta="stored monitoring reports"/>
       </div>
-      {latest && <div className="drift-metric-grid">
-        <div><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div>
-        <div><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div>
-        <div><span>Cosine shift</span><b>{Number(latest.cosine_shift).toFixed(4)}</b></div>
-        <div><span>Current samples</span><b>{latest.current_samples ?? "—"}</b></div>
-      </div>
+      {latest && (
+        <div className="drift-metric-grid">
+          <div><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div>
+          <div><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div>
+          <div><span>Cosine shift</span><b>{Number(latest.cosine_shift).toFixed(4)}</b></div>
+          <div><span>Current samples</span><b>{latest.current_samples ?? "—"}</b></div>
+        </div>
+      )}
 
       <div className="two-column">
         <section className="card">
