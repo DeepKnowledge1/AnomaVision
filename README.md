@@ -15,7 +15,7 @@ Supported methods:
 
 It supports training, evaluation, threshold calibration, ONNX/OpenVINO/TensorRT export where supported, KV260/XModel deployment, **production data-drift monitoring**, and **non-invasive deployment validation**.
 
-## Quick start
+## 🚀 Quick start
 
 ### Install
 
@@ -47,7 +47,7 @@ anomavision export --config config.yml --format onnx
 
 ---
 
-## Deployment validation
+## 🛡️ Deployment validation
 
 Before moving an exported model into production, AnomaVision can validate the deployment artifact without changing the underlying anomaly-detection algorithm.
 
@@ -58,7 +58,7 @@ It checks model integrity, inference, performance, supported backend availabilit
 ```powershell
 anomavision validate `
   --model distributions\\padim\\bottle\\anomav_exp\\model.onnx `
-  --reference-model distributions\\padim\\bottle\\anomav_exp\\model.pt `
+  --reference-model distributions\\padim\\bottle\\anom_exp\\model.pt `
   --config config.yml `
   --runs 20
 ```
@@ -92,7 +92,7 @@ Supported deployment artifacts include PyTorch, TorchScript, ONNX, TensorRT, Ope
 
 See the [Deployment Validation guide](docs/deployment_validation.md) for all options, consistency validation, JSON output, backend details, and recommended production usage.
 
-## Production data drift
+## 📡 Production data drift
 
 Production data-drift monitoring helps detect changes in the data seen by an anomaly detector after deployment.
 
@@ -107,14 +107,14 @@ anomavision detect `
   --config config.yml `
   --model model.onnx `
   --enable-drift-monitoring `
-  --drift-reference .\drift\reference_embeddings.npy
+  --drift-reference .\\drift\\reference_embeddings.npy
 ```
 
 See the [Production Data Drift guide](docs/anomaly_detection_production_data_drift.md) for reference generation, metrics, dashboard, configuration, and troubleshooting.
 
 ---
 
-## Benchmarks
+## 📊 Benchmarks
 
 AnomaVision includes a reproducible benchmark workflow for comparing anomaly-detection performance and runtime characteristics.
 
@@ -123,8 +123,8 @@ The benchmark reports **Image AUROC, Pixel AUROC, latency, P95 latency, FPS, mod
 ### Quick example
 
 ```powershell
-python scripts\benchmarks\compare_with_anomalib.py `
-  --dataset_path D:\01-DATA `
+python scripts\\benchmarks\\compare_with_anomalib.py `
+  --dataset_path D:\\01-DATA `
   --class_name bottle `
   --algorithms padim `
   --device cpu
@@ -136,11 +136,11 @@ See the [Benchmark guide](docs/benchmark.md) for the methodology, commands, metr
 
 ---
 
-## KV260 support
+## ⚡ KV260 support
 
 AnomaVision supports a **Vitis AI workflow for PaDiM and PatchCore on the AMD/Xilinx Kria KV260**. XModel compilation has been validated in the Vitis AI environment; final on-device validation requires the physical hardware.
 
-## Documentation
+## 📚 Documentation
 
 | Topic | Guide |
 |---|---|
@@ -155,6 +155,6 @@ AnomaVision supports a **Vitis AI workflow for PaDiM and PatchCore on the AMD/Xi
 | Benchmarks | [docs/benchmark.md](docs/benchmark.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 
-## License
+## 📄 License
 
 AnomaVision is released under the **MIT License**. See [LICENSE](LICENSE).
