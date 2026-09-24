@@ -127,21 +127,50 @@ def config() -> dict[str, Any]:
 
 
 def _choose_dataset_folder(initial_dir: str = "") -> str:
-    """Open a native folder picker on the machine running the local Studio API."""
-    import tkinter as tk
-    from tkinter import filedialog
+    """Open a native folder picker on the local Windows desktop."""
+    if os.name != "nt":
+        raise RuntimeError("Native folder picker is currently supported on Windows only.")
 
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    try:
-        root.update()
-        return filedialog.askdirectory(
-            initialdir=initial_dir or None,
-            title="Select AnomaVision dataset folder",
-        ) or ""
-    finally:
-        root.destroy()
+    import subprocess
+
+    script = r"""
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = 'Select AnomaVision dataset folder'
+$dialog.ShowNewFolderButton = $false
+$initial = $env:ANOMAVISION_PICKER_INITIAL_DIR
+if ($initial -and (Test-Path -LiteralPath $initial -PathType Container)) {
+    $dialog.SelectedPath = $initial
+}
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    [Console]::Out.Write($dialog.SelectedPath)
+}
+$dialog.Dispose()
+"""
+    env = os.environ.copy()
+    env["ANOMAVISION_PICKER_INITIAL_DIR"] = initial_dir
+    result = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-STA",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        env=env,
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "PowerShell folder picker failed."
+        raise RuntimeError(detail)
+    return result.stdout.strip()
 
 
 @app.get("/api/dataset/pick-folder")
