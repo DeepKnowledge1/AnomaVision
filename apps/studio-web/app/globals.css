@@ -195,3 +195,48 @@ input:focus, label select:focus { border-color:#6650a8; box-shadow:0 0 0 2px rgb
 .camera-result.anomaly{border:1px solid rgba(255,120,120,.7)}
 .camera-result.normal{border:1px solid rgba(120,220,160,.7)}
 .config-note{margin-top:10px;font-size:11px;color:var(--muted)}
+
+
+/* Studio UX polish */
+.sidebar { box-shadow: 8px 0 30px rgba(0,0,0,.12); }
+.nav-item { position: relative; transition: background .15s ease, color .15s ease, transform .15s ease; }
+.nav-item:hover { transform: translateX(1px); }
+.nav-item.active::before {
+  content: ""; position: absolute; left: -12px; top: 7px; bottom: 7px; width: 2px;
+  border-radius: 2px; background: var(--accent);
+}
+.topbar { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px); }
+.primary, .secondary, .text-button { transition: border-color .15s ease, background .15s ease, transform .15s ease, opacity .15s ease; }
+.primary:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+.secondary:hover:not(:disabled) { border-color: #3d4654; background: #171b23; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+
+.card { box-shadow: 0 1px 0 rgba(255,255,255,.015); }
+.workflow-action { width: 100%; text-align: left; color: inherit; cursor: pointer; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+.workflow-action:hover { border-color: #55458a; background: #151722; transform: translateY(-2px); }
+.workflow-arrow { float: right; color: #8f80c9; font-size: 14px; }
+.text-button { border: 0; background: transparent; color: #a99ae8; font-size: 11px; padding: 3px; }
+.text-button:hover { color: #d9ccff; }
+
+.welcome-card {
+  display: flex; align-items: center; gap: 13px; margin-bottom: 14px;
+  padding: 14px 16px; border: 1px solid #39334f; border-radius: 11px;
+  background: linear-gradient(90deg, rgba(139,92,246,.10), rgba(139,92,246,.025));
+}
+.welcome-icon {
+  width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center;
+  border: 1px solid #514575; border-radius: 9px; color: #c8bbf4; background: rgba(139,92,246,.10);
+}
+.welcome-card > div:nth-child(2) { flex: 1; min-width: 0; }
+.welcome-card strong { font-size: 12px; }
+.welcome-card p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.empty-state { min-height: 150px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 6px; }
+.empty-state strong { font-size: 12px; }
+.empty-state span { color: var(--muted); font-size: 11px; margin-bottom: 5px; }
+
+@media (max-width: 620px) {
+  .welcome-card { align-items: flex-start; flex-wrap: wrap; }
+  .welcome-card .secondary { margin-left: 49px; }
+  .topbar { height: 56px; }
+  .project-switcher { min-width: 130px; max-width: 180px; }
+}
