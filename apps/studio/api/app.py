@@ -20,7 +20,7 @@ from apps.studio.services.deployment_service import deploy_model, TARGET_DESCRIP
 from apps.studio.services.monitoring_service import list_monitoring_reports, monitoring_summary
 from apps.studio.services.model_registry import list_models, get_model
 from apps.studio.services.project_store import ProjectStore
-from apps.studio.services.training_service import train_project
+from apps.studio.services.training_service import train_project, normalize_dataset_source
 from anomavision.config import load_config
 
 
@@ -251,6 +251,27 @@ def inspect_project_dataset(
     manifest = _project_dir(project_id) / "datasets" / "dataset_report.json"
     save_dataset_manifest(manifest, report)
     return report
+
+
+@app.post("/api/projects/{project_id}/datasets/resolve")
+def resolve_project_dataset(
+    project_id: str, request: DatasetInspect
+) -> dict[str, str]:
+    """Validate and normalize a dataset selection to train.py's contract."""
+    _project_or_404(project_id)
+    config_data = load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
+    class_name = str(config_data.get("class_name", "default") or "default")
+    try:
+        dataset_path, detected_class = normalize_dataset_source(request.path, class_name)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "dataset_path": str(dataset_path),
+        "class_name": detected_class,
+        "train_good": str(dataset_path / detected_class / "train" / "good")
+        if (dataset_path / detected_class / "train" / "good").is_dir()
+        else str(dataset_path / "train" / "good"),
+    }
 
 
 @app.post("/api/projects/{project_id}/training")
