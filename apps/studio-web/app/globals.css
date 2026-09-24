@@ -885,3 +885,9 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 /* Phase 8 — accessibility and final responsive polish */
 html{scroll-behavior:smooth}button,input,select{font:inherit}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,[tabindex="0"]:focus-visible{outline:2px solid #8b5cf6;outline-offset:2px}button,select{touch-action:manipulation}.stat-card{transition:border-color .15s ease,transform .15s ease}.stat-card:focus-visible{transform:translateY(-1px)}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.sidebar,.primary,.secondary,.card,.stat-card,.loading-spinner{transition:none!important;animation:none!important}}@media(max-width:900px){.grid-4,.training-result-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.two-column{grid-template-columns:1fr}.result-visual-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.grid-4,.training-result-grid,.drift-metric-grid,.result-visual-grid,.technical-grid{grid-template-columns:1fr}.page-head{min-height:0}.page-head h1{line-height:1.15}.primary,.secondary{min-height:40px}.dataset-input-row{grid-template-columns:1fr}.target-grid{grid-template-columns:1fr 1fr}.check-row{gap:8px}.check-row span{min-width:0;overflow-wrap:anywhere}.artifact-box code{overflow-wrap:anywhere;word-break:break-word}}@media(max-width:360px){.target-grid{grid-template-columns:1fr}.project-switcher{max-width:125px!important;min-width:105px!important}}@media(forced-colors:active){.status-dot{forced-color-adjust:auto}.primary,.secondary{border:1px solid ButtonText}}
+
+
+/* Stable camera workspace */
+.camera-frame{width:min(100%,720px);aspect-ratio:16/9;min-height:240px;background:#eef1f4;position:relative;overflow:hidden;border-radius:12px}
+.camera-preview{width:100%;height:100%;min-height:240px;aspect-ratio:auto;object-fit:cover;margin:0;border:1px solid var(--border);border-radius:10px;background:#eef1f4}
+.camera-panel{contain:layout paint}
