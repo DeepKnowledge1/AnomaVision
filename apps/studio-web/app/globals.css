@@ -868,3 +868,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .performance-note,.monitoring-note{display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.015);color:var(--muted);font-size:9px}
 .performance-note svg,.monitoring-note svg{flex:0 0 auto;margin-top:1px}.performance-note strong,.performance-note span,.monitoring-note strong,.monitoring-note span{display:block}.performance-note strong,.monitoring-note strong{color:var(--text);font-size:10px}.performance-note span,.monitoring-note span{margin-top:3px;line-height:1.45}
 @media(max-width:700px){.performance-status{align-items:flex-start;flex-direction:column}.performance-method{align-items:flex-start}}
+
+
+/* Phase 5 — drift metrics */
+.drift-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:-4px 0 12px}.drift-metric-grid>div{padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.015)}.drift-metric-grid span,.drift-metric-grid b{display:block}.drift-metric-grid span{color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.06em}.drift-metric-grid b{margin-top:4px;font-size:11px}@media(max-width:700px){.drift-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
