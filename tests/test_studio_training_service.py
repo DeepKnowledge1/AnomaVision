@@ -14,7 +14,7 @@ def test_normalize_class_folder(tmp_path: Path):
 
     dataset_path, class_name = normalize_dataset_source(str(class_dir))
 
-    assert dataset_path == tmp_path
+    assert dataset_path == class_dir
     assert class_name == "bottle"
 
 
