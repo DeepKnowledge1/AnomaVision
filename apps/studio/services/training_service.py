@@ -14,28 +14,51 @@ from anomavision.train import run_training
 
 
 def normalize_dataset_source(source: str, class_name: str = "default") -> tuple[Path, str]:
-    """Map common Studio image-folder layouts to the existing train.py contract.
+    """Normalize common dataset layouts to the existing train.py contract.
 
     Accepted layouts:
-      dataset/class/train/good
+      dataset/<class>/train/good
       dataset/train/good
-      dataset/class        (containing train/good)
+      dataset/<class>   (containing train/good)
+
+    Returns:
+      (dataset_root, class_name)
     """
     source_path = Path(source).expanduser().resolve()
     if not source_path.is_dir():
         raise ValueError(f"Dataset folder does not exist: {source_path}")
 
-    if (source_path / "train" / "good").is_dir():
-        # The existing train.py already supports dataset roots that directly
-        # contain train/good, so keep this source untouched.
-        return source_path, class_name
+    train_good = source_path / "train" / "good"
 
-    if source_path.name.lower() == "good" and source_path.parent.name.lower() == "train":
-        train_root = source_path.parent.parent
-        return train_root.parent, train_root.name
+    # User selected the class folder itself:
+    #   D:/01-DATA/bottle -> D:/01-DATA + bottle
+    if train_good.is_dir():
+        detected_class = source_path.name
+        parent = source_path.parent
 
-    # Canonical AnomaVision layout: dataset_root/<class>/train/good.\n    if class_name and (source_path / class_name / "train" / "good").is_dir():\n        return source_path, class_name\n\n    if (source_path / "class_name_placeholder" / "train" / "good").is_dir():
-        return source_path, class_name
+        # If this is the dataset root with a direct train/good layout,
+        # keep the root and the configured class name.
+        if class_name and class_name != "default":
+            candidate = source_path / class_name / "train" / "good"
+            if candidate.is_dir():
+                return source_path, class_name
+
+        return parent, detected_class
+
+    # User selected the complete dataset root:
+    #   D:/01-DATA + bottle -> D:/01-DATA + bottle
+    if class_name and class_name != "default":
+        class_train_good = source_path / class_name / "train" / "good"
+        if class_train_good.is_dir():
+            return source_path, class_name
+
+    # No explicit class name: accept a single class directory containing train/good.
+    candidates = [
+        child for child in source_path.iterdir()
+        if child.is_dir() and (child / "train" / "good").is_dir()
+    ]
+    if len(candidates) == 1:
+        return source_path, candidates[0].name
 
     raise ValueError(
         "Training data must contain a 'train/good' folder. "
