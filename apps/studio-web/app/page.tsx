@@ -427,7 +427,7 @@ function DatasetsPage({ project }: { project?: Project }) {
             </div>
             <div className="dataset-config-actions">
               {configPath && path!==configPath && <button className="secondary" onClick={()=>{setPath(configPath);setReport(null);}}>Use config folder</button>}
-              <button className="secondary" onClick={chooseFolder} disabled={pickerBusy}>
+              <button className="secondary" onClick={chooseTrainingFolder} disabled={pickerBusy}>
                 <FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose another folder"}
               </button>
             </div>
@@ -530,6 +530,36 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
       .catch(()=>{})
       .finally(()=>setConfigLoaded(true));
   },[]);
+
+  async function chooseTrainingFolder(){
+    if(!project){setError("Select a project first.");return;}
+    setPickerBusy(true);setError("");
+    try{
+      const r=await fetch(API_BASE+"/api/dataset/pick-folder",{cache:"no-store"});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.detail||"Could not open the folder dialog");
+      if(d.path){setDataset(String(d.path));setResolved(null);}
+    }catch(e){setError(e instanceof Error?e.message:"Could not open the folder dialog")}
+    finally{setPickerBusy(false)}
+  }
+
+  async function validateDataset(){
+    if(!project){setError("Select a project first.");return null;}
+    if(!dataset.trim()){setError("Choose a dataset folder first.");return null;}
+    try{
+      const r=await fetch(`${API_BASE}/api/projects/${project.id}/datasets/resolve`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({path:dataset,recursive:true})
+      });
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.detail||"Invalid training dataset");
+      setResolved(d);
+      setDataset(d.dataset_path);
+      setClassName(d.class_name);
+      return d;
+    }catch(e){setResolved(null);setError(e instanceof Error?e.message:"Invalid training dataset");return null}
+  }
 
   async function train(){
     if(!project){setError("Select a project first.");return;}
