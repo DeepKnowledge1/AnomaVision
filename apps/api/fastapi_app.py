@@ -1,6 +1,7 @@
 import base64
 import io
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -101,6 +102,7 @@ class PredictionResult(BaseModel):
     boundary_image_base64: Optional[str] = ""
     heatmap_image_base64: Optional[str] = ""
     highlighted_image_base64: Optional[str] = ""
+    latency_ms: float = 0.0
 
 
 class ConfigModel(BaseModel):
@@ -220,6 +222,7 @@ async def predict_anomaly(
         raise HTTPException(status_code=400, detail="File must be an image")
 
     try:
+        started = time.perf_counter()
         contents = await file.read()
         image_np = preprocess_image_from_upload(contents)
 
