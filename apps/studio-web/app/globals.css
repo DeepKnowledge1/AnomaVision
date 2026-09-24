@@ -165,3 +165,11 @@ input:focus, label select:focus { border-color:#6650a8; box-shadow:0 0 0 2px rgb
 .resolution-row b { color:#f5f7fa; }
 .placeholder { min-height:260px; display:flex; align-items:center; justify-content:center; gap:14px; }
 .placeholder > div:last-child { max-width:430px; }
+
+.deployment-result { display:flex; flex-direction:column; gap:6px; padding:12px; border:1px solid var(--border); border-radius:8px; background:#0d1015; margin-bottom:14px; }
+.deployment-result strong { font-size:13px; color:#7de4b5; }
+.deployment-result span { color:var(--muted); font-size:10px; word-break:break-all; }
+.check-list { border-top:1px solid #20252e; }
+.check-row { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid #20252e; font-size:11px; text-transform:capitalize; }
+.check-row b { font-size:9px; color:#7de4b5; }
+.perf-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:12px; }
