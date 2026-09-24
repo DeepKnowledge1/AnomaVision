@@ -427,7 +427,7 @@ function DatasetsPage({ project }: { project?: Project }) {
             </div>
             <div className="dataset-config-actions">
               {configPath && path!==configPath && <button className="secondary" onClick={()=>{setPath(configPath);setReport(null);}}>Use config folder</button>}
-              <button className="secondary" onClick={chooseTrainingFolder} disabled={pickerBusy}>
+              <button className="secondary" onClick={chooseFolder} disabled={pickerBusy}>
                 <FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose another folder"}
               </button>
             </div>
