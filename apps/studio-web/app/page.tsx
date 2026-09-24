@@ -550,7 +550,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
       const r=await fetch(`${API_BASE}/api/projects/${project.id}/datasets/resolve`,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({path:dataset,recursive:true})
+        body:JSON.stringify({path:dataset,recursive:true,class_name:className.trim()||undefined})
       });
       const d=await r.json();
       if(!r.ok)throw new Error(d.detail||"Invalid training dataset");
