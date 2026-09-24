@@ -92,18 +92,91 @@ export default function StudioPage() {
 
 function Overview({ project, projects, models, apiHealthy, onNavigate }: { project?: Project; projects: Project[]; models: Model[]; apiHealthy: boolean; onNavigate: (p: Page) => void }) {
   const latest = models[0];
+  const workflowPages: Record<string, Page | undefined> = {
+    Dataset: "Datasets",
+    Train: "Training",
+    Deploy: "Deployments",
+    Monitor: "Monitoring",
+  };
   return <>
-    <div className="page-head"><div><div className="eyebrow">Project overview</div><h1>{project?.name ?? "No project selected"}</h1><p className="subtitle">{project?.description || "Industrial anomaly detection · local workspace"}</p></div><button className="primary" onClick={() => onNavigate("Training")}><Play size={13}/> New training run</button></div>
-    {!apiHealthy && <div className="api-warning"><CircleGauge size={14}/> Studio API is offline. Start FastAPI on port 8000.</div>}
-    <div className="grid-4">
-      <Stat icon={<Database size={15}/>} label="Projects" value={String(projects.length)} meta={projects.length ? "workspace projects" : "create a project"}/>
-      <Stat icon={<BrainCircuit size={15}/>} label="Models" value={String(models.length)} meta={latest ? `${latest.algorithm} · ${latest.status}` : "no trained models"}/>
-      <Stat icon={<ShieldCheck size={15}/>} label="Validation" value="Ready" meta="deployment validation available" green/>
-      <Stat icon={<MonitorCog size={15}/>} label="Deployment" value="Not deployed" meta="choose a target"/>
+    <div className="page-head">
+      <div>
+        <div className="eyebrow">Workspace overview</div>
+        <h1>{project?.name ?? "Welcome to AnomaVision Studio"}</h1>
+        <p className="subtitle">{project?.description || "Build, validate and run industrial anomaly detection from one place."}</p>
+      </div>
+      <button className="primary" onClick={() => onNavigate(project ? "Training" : "Projects")}>
+        <Play size={13}/>{project ? "Start training" : "Create project"}
+      </button>
     </div>
-    <section className="section"><div className="section-head"><div className="section-title">Studio workflow</div><div className="section-link">Data → Train → Validate → Deploy → Monitor</div></div><div className="workflow">{workflows.map(([step,title,text]) => <div className="card workflow-card" key={step}><div className="step">{step}</div><div className="workflow-title">{title}</div><div className="workflow-text">{text}</div></div>)}</div></section>
-    <section className="section activity"><div className="card"><div className="section-head"><div className="section-title">Recent model activity</div><div className="section-link">{models.length} models</div></div>{models.length ? models.slice(0,4).map((m) => <ActivityRow key={m.id} icon={<BrainCircuit size={14}/>} title={`${m.algorithm.toUpperCase()} · ${m.class_name}`} sub={m.run_name} badge={m.status}/>) : <div className="empty">No trained models registered for this project yet.</div>}</div>
-      <div className="card"><div className="section-head"><div className="section-title">Runtime health</div><div className="section-link">Monitoring</div></div><HealthRow title="Studio API" sub="Python / FastAPI adapter" ok={apiHealthy}/><HealthRow title="Data drift" sub="Existing observer-only monitor" ok/><HealthRow title="AnomaVision core" sub="Training and inference engine" ok/></div></section>
+
+    {!project && (
+      <div className="welcome-card">
+        <div className="welcome-icon"><Sparkles size={19}/></div>
+        <div>
+          <strong>Start with a project</strong>
+          <p>Create a workspace, inspect your images, then train and validate your first anomaly detector.</p>
+        </div>
+        <button className="secondary" onClick={() => onNavigate("Projects")}>Create project</button>
+      </div>
+    )}
+
+    {!apiHealthy && <div className="api-warning"><CircleGauge size={14}/> Studio API is offline. Start FastAPI on port 8000.</div>}
+
+    <div className="grid-4">
+      <Stat icon={<Database size={15}/>} label="Projects" value={String(projects.length)} meta={projects.length ? "workspaces available" : "create your first workspace"}/>
+      <Stat icon={<BrainCircuit size={15}/>} label="Models" value={String(models.length)} meta={latest ? `${latest.algorithm} · ${latest.status}` : "train a model to get started"}/>
+      <Stat icon={<ShieldCheck size={15}/>} label="Validation" value={latest ? "Available" : "—"} meta={latest ? "validate before deployment" : "needs a trained model"} green={Boolean(latest)}/>
+      <Stat icon={<MonitorCog size={15}/>} label="Deployment" value="Ready" meta="choose a target when validated"/>
+    </div>
+
+    <section className="section">
+      <div className="section-head">
+        <div>
+          <div className="section-title">Your workflow</div>
+          <div className="subtitle">A simple path from images to production</div>
+        </div>
+        <div className="section-link">Data → Train → Validate → Deploy → Monitor</div>
+      </div>
+      <div className="workflow">
+        {workflows.map(([step,title,text]) => {
+          const target = workflowPages[title];
+          return target
+            ? <button className="card workflow-card workflow-action" key={step} onClick={() => onNavigate(target)}>
+                <div className="step">{step}</div>
+                <div className="workflow-title">{title}<span className="workflow-arrow">→</span></div>
+                <div className="workflow-text">{text}</div>
+              </button>
+            : <div className="card workflow-card" key={step}>
+                <div className="step">{step}</div>
+                <div className="workflow-title">{title}</div>
+                <div className="workflow-text">{text}</div>
+              </div>;
+        })}
+      </div>
+    </section>
+
+    <section className="section activity">
+      <div className="card">
+        <div className="section-head">
+          <div><div className="section-title">Recent models</div><div className="subtitle">Your latest trained artifacts</div></div>
+          <button className="text-button" onClick={() => onNavigate("Models")}>View all →</button>
+        </div>
+        {models.length
+          ? models.slice(0,4).map((m) => <ActivityRow key={m.id} icon={<BrainCircuit size={14}/>} title={`${m.algorithm.toUpperCase()} · ${m.class_name}`} sub={m.run_name} badge={m.status}/>)
+          : <div className="empty-state"><strong>No models yet</strong><span>Train your first model to see it here.</span><button className="secondary" onClick={() => onNavigate("Training")}>Start training</button></div>}
+      </div>
+
+      <div className="card">
+        <div className="section-head">
+          <div><div className="section-title">System status</div><div className="subtitle">Studio services at a glance</div></div>
+          <button className="text-button" onClick={() => onNavigate("Monitoring")}>Monitoring →</button>
+        </div>
+        <HealthRow title="Studio API" sub="FastAPI workspace service" ok={apiHealthy}/>
+        <HealthRow title="AnomaVision core" sub="Training and inference engine" ok/>
+        <HealthRow title="Drift monitoring" sub="Production observer" ok/>
+      </div>
+    </section>
   </>;
 }
 
