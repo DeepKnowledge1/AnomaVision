@@ -84,7 +84,7 @@ export default function StudioPage() {
         {page === "Datasets" && <DatasetsPage project={project}/>}
         {page === "Training" && <TrainingPage project={project} onFinished={() => loadModels(selectedProject)}/>}
         {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)}/>}
-        {["Deployments", "Live", "Monitoring"].includes(page) && <Placeholder page={page}/>}
+        {page === "Deployments" && <DeploymentsPage project={project} models={models}/>} {["Live", "Monitoring"].includes(page) && <Placeholder page={page}/>}
       </div>
     </main>
   </div>;
@@ -144,6 +144,36 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
 
 function ModelsPage({models,onRefresh}:{models:Model[];onRefresh:()=>Promise<void>}) {
   return <><div className="page-head"><div><div className="eyebrow">Artifacts</div><h1>Models</h1><p className="subtitle">Browse models produced by the existing AnomaVision training pipeline.</p></div><button className="secondary" onClick={onRefresh}><Activity size={13}/> Refresh</button></div><div className="card">{models.length?models.map(m=><div className="row" key={m.id}><div className="row-main"><div className="icon-box"><BrainCircuit size={14}/></div><div><div className="row-title">{m.algorithm.toUpperCase()} · {m.class_name}</div><div className="row-sub">{m.run_name}</div></div></div><div className="badge">{m.status}</div></div>):<div className="empty">No models for the selected project yet. Run training first.</div>}</div></>;
+}
+
+function DeploymentsPage({project,models}:{project?:Project;models:Model[]}) {
+  const [target,setTarget]=useState("onnx"); const [modelId,setModelId]=useState(models[0]?.id||"");
+  const [result,setResult]=useState<Record<string,any>|null>(null); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
+  useEffect(()=>{setModelId(models[0]?.id||"")},[models]);
+  async function deploy(){
+    if(!project){setError("Select a project first.");return} if(!modelId){setError("Select a model first.");return}
+    setBusy(true);setError("");setResult(null);
+    try{const r=await fetch(`${API_BASE}/api/projects/${project.id}/deployments`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model_id:modelId,target,runs:5,warmup_runs:1})});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Deployment failed");setResult(d)}
+    catch(e){setError(e instanceof Error?e.message:"Deployment failed")}finally{setBusy(false)}
+  }
+  const checks=result?.validation?.checks as Record<string,boolean>|undefined;
+  return <><div className="page-head"><div><div className="eyebrow">Production</div><h1>Deployments</h1><p className="subtitle">Export and validate a trained model using AnomaVision's existing deployment pipeline.</p></div></div>
+    {!project?<div className="card empty">Select a project first.</div>:<div className="two-column">
+      <section className="card"><div className="section-title">Create deployment</div><p className="form-help">Studio only orchestrates export and validation. The model and algorithm implementation stay unchanged.</p>
+        <label>Model<select value={modelId} onChange={e=>setModelId(e.target.value)}>{models.length?models.map(m=><option key={m.id} value={m.id}>{m.algorithm} · {m.class_name} · {m.run_name}</option>):<option value="">No trained models</option>}</select></label>
+        <label>Target<select value={target} onChange={e=>setTarget(e.target.value)}><option value="cpu">CPU validation</option><option value="onnx">ONNX</option><option value="openvino">OpenVINO</option><option value="tensorrt">TensorRT</option><option value="torchscript">TorchScript</option><option value="hailo">Hailo — manual flow</option><option value="kv260">KV260 — manual flow</option></select></label>
+        {error&&<div className="form-error">{error}</div>}
+        <button className="primary full" onClick={deploy} disabled={busy||!models.length}>{busy?"Exporting and validating…":"Export & validate"}</button>
+      </section>
+      <section><div className="card"><div className="section-head"><div className="section-title">Validation result</div>{result&&<div className="badge">{result.status}</div>}</div>
+        {!result?<div className="empty">Choose a model and target, then run validation.</div>:<>
+          <div className="deployment-result"><strong>{result.ready_for_deployment?"Ready for deployment":"Validation failed"}</strong><span>{result.artifact}</span></div>
+          <div className="check-list">{checks&&Object.entries(checks).map(([name,ok])=><div className="check-row" key={name}><span>{ok?"✓":"✕"} {name.replaceAll("_"," ")}</span><b>{ok?"PASS":"FAIL"}</b></div>)}</div>
+          {result.validation?.performance?.latency_ms!=null&&<div className="perf-grid"><Stat icon={<CircleGauge size={15}/>} label="Latency" value={`${result.validation.performance.latency_ms} ms`} meta={`${result.validation.performance.fps} FPS`}/><Stat icon={<ShieldCheck size={15}/>} label="Artifact" value={String(result.validation.format).toUpperCase()} meta="validated format"/></div>}
+        </>}
+      </div></section>
+    </div>}
+  </>;
 }
 
 function Placeholder({page}:{page:Page}) { const descriptions:Record<Page,string>={Overview:"",Projects:"",Datasets:"",Training:"",Models:"",Deployments:"Export and validate models for production targets without changing the algorithm core.",Live:"Inspect camera or stream inference using the existing AnomaVision runtime.",Monitoring:"Track runtime health, latency and production data drift."};return <><div className="page-head"><div><div className="eyebrow">Workspace</div><h1>{page}</h1><p className="subtitle">{descriptions[page]}</p></div><button className="secondary"><SlidersHorizontal size={13}/> Configure</button></div><div className="card placeholder"><div className="icon-box"><Sparkles size={18}/></div><div><b>Connected to the Studio architecture</b><p className="subtitle">This view is ready to consume the same Python services through the Studio API. No ML logic is duplicated in the frontend.</p></div></div></>; }
