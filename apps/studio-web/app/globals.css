@@ -406,3 +406,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .settings-list>div:last-child{border-bottom:0}.settings-list span{color:var(--muted);font-size:10px}.settings-list b{font-size:11px;text-transform:none}
 .settings-note{display:flex;align-items:flex-start;gap:10px;grid-column:1 / -1;color:var(--muted);font-size:10px}.settings-note svg{flex:0 0 auto;margin-top:1px}.settings-note strong,.settings-note span{display:block}.settings-note strong{color:var(--text);font-size:11px}.settings-note span{margin-top:3px;line-height:1.5}
 @media(max-width:760px){.settings-grid{grid-template-columns:1fr}.settings-note{grid-column:auto}}
+
+.live-top-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+@media(max-width:1100px){.live-top-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.live-top-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
