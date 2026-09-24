@@ -24,6 +24,14 @@ npm run dev
 
 Open the local URL shown by Next.js.
 
+In a second terminal, start the Python Studio API from the repository root:
+
+```powershell
+uv run uvicorn apps.studio.api.app:app --host 127.0.0.1 --port 8000
+```
+
+The web app defaults to `http://localhost:8000`. To use another API URL, set `NEXT_PUBLIC_STUDIO_API_URL` before starting Next.js.
+
 ## Architecture
 
 ```
