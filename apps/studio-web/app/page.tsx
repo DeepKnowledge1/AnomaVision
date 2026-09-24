@@ -616,7 +616,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
               <p className="form-help">Point Studio to the same local image folder you checked in Data Readiness.</p>
               <label>Dataset path<input value={dataset} onChange={e=>{setDataset(e.target.value);setResolved(null)}} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
               <div className="form-actions">
-                <button className="secondary" type="button" onClick={chooseFolder} disabled={pickerBusy}><FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose folder"}</button>
+                <button className="secondary" type="button" onClick={chooseTrainingFolder} disabled={pickerBusy}><FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose folder"}</button>
                 <button className="secondary" type="button" onClick={validateDataset} disabled={busy||!dataset.trim()}>Check training layout</button>
               </div>
               <label>Class name<input value={className} onChange={e=>{setClassName(e.target.value);setResolved(null)}} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
