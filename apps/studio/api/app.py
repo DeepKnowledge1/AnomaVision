@@ -65,7 +65,7 @@ class DatasetInspect(BaseModel):
 class TrainingRequest(BaseModel):
     dataset_path: str = Field(min_length=1)
     algorithm: str = "patchcore"
-    class_name: str = "default"
+    class_name: str | None = None
     batch_size: int | None = Field(default=None, ge=1, le=256)
     resize: list[int] | None = Field(default=None, min_length=2, max_length=2)
     backbone: str | None = None
@@ -263,6 +263,10 @@ def start_training(
     if algorithm not in ALGORITHMS:
         raise HTTPException(status_code=400, detail=f"Unsupported algorithm: {algorithm}")
 
+    # Use the canonical config class when the UI does not provide one.
+    config_data = load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
+    class_name = str(request.class_name or config_data.get("class_name", "default") or "default")
+
     overrides: dict[str, Any] = {}
     for name in ("batch_size", "backbone", "feat_dim", "coreset_ratio"):
         value = getattr(request, name)
@@ -276,7 +280,7 @@ def start_training(
             project_dir=_project_dir(project_id),
             dataset_source=request.dataset_path,
             algorithm=algorithm,
-            class_name=request.class_name,
+            class_name=class_name,
             **overrides,
         )
     except (ValueError, FileNotFoundError) as exc:
