@@ -45,7 +45,7 @@ export default function StudioPage() {
       ]);
       if (!health.ok || !response.ok) throw new Error();
       const data = (await response.json()) as Project[];
-      setProjects(data); setSelectedProject((current) => current || data[0]?.id || ""); setApiHealthy(true);
+      setProjects(data); setSelectedProject((current) => data.some((item) => item.id === current) ? current : (data[0]?.id || "")); setApiHealthy(true);
     } catch { setApiHealthy(false); }
   }
   async function loadModels(projectId: string) {
