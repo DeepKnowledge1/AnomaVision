@@ -371,15 +371,29 @@ function DatasetsPage({ project }: { project?: Project }) {
 function TrainingPage({ project, onFinished }: { project?: Project; onFinished:()=>Promise<void> }) {
   const [dataset,setDataset]=useState("");
   const [algorithm,setAlgorithm]=useState(project?.algorithm||"patchcore");
-  const [className,setClassName]=useState("default");
+  const [className,setClassName]=useState("");
   const [batch,setBatch]=useState("");
   const [backbone,setBackbone]=useState("");
-  const [resize,setResize]=useState("224,224");
+  const [resize,setResize]=useState("");
+  const [configLoaded,setConfigLoaded]=useState(false);
   const [result,setResult]=useState<Record<string,unknown>|null>(null);
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
 
   useEffect(()=>{if(project)setAlgorithm(project.algorithm)},[project]);
+
+  useEffect(()=>{
+    fetch(`${API_BASE}/api/config`,{cache:"no-store"})
+      .then(r=>r.ok?r.json():null)
+      .then(d=>{
+        if(!d)return;
+        if(d.dataset_path)setDataset(String(d.dataset_path));
+        if(d.class_name)setClassName(String(d.class_name));
+        if(Array.isArray(d.resize)&&d.resize.length===2)setResize(d.resize.join(","));
+      })
+      .catch(()=>{})
+      .finally(()=>setConfigLoaded(true));
+  },[]);
 
   async function train(){
     if(!project){setError("Select a project first.");return;}
@@ -422,8 +436,8 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
           <section className="card">
             <div className="section-title">1. Training data</div>
             <p className="form-help">Point Studio to the same local image folder you checked in Data Readiness.</p>
-            <label>Dataset path<input value={dataset} onChange={e=>setDataset(e.target.value)} placeholder="C:\data\bottle"/></label>
-            <label>Class name<input value={className} onChange={e=>setClassName(e.target.value)} placeholder="e.g. bottle"/></label>
+            <label>Dataset path<input value={dataset} onChange={e=>setDataset(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
+            <label>Class name<input value={className} onChange={e=>setClassName(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
           </section>
 
           <section className="card">
@@ -450,14 +464,14 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
             <div className="section-link">Config-aware</div>
           </div>
           <div className="form-grid">
-            <label>Image size<input value={resize} onChange={e=>setResize(e.target.value)} placeholder="224,224"/></label>
+            <label>Image size<input value={resize} onChange={e=>setResize(e.target.value)} placeholder="From config.yml"/></label>
             <label>Batch size<input value={batch} onChange={e=>setBatch(e.target.value)} placeholder="Use config default"/></label>
             <label>Backbone<input value={backbone} onChange={e=>setBackbone(e.target.value)} placeholder="Use config default"/></label>
           </div>
         </section>
 
         <div className="training-action">
-          <div><strong>Ready to train?</strong><span>{algorithm.toUpperCase()} · {resize} · {className || "default class"}</span></div>
+          <div><strong>Ready to train?</strong><span>{algorithm.toUpperCase()} · {resize || "config.yml"} · {className || "config.yml class"}</span></div>
           <button className="primary" onClick={train} disabled={busy}><Play size={13}/>{busy?"Training…":"Start training"}</button>
         </div>
 
