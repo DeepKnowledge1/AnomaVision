@@ -7,7 +7,7 @@ import {
   SlidersHorizontal, Sparkles, Wifi
 } from "lucide-react";
 
-type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Monitoring";
+type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Monitoring" | "Settings";
 type Project = { id: string; name: string; description?: string; algorithm: string; status: string; };
 type Model = { id: string; algorithm: string; class_name: string; run_name: string; status: string; path?: string; };
 type DatasetReport = {
@@ -65,7 +65,7 @@ export default function StudioPage() {
       <div className="nav-label">WORKSPACE</div>
       {nav.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${page === label ? "active" : ""}`} onClick={() => setPage(label)}><Icon size={15} strokeWidth={1.8}/><span>{label}</span></button>)}
       <div className="nav-label">SYSTEM</div>
-      <button className="nav-item"><Settings2 size={15} strokeWidth={1.8}/><span>Settings</span></button>
+      <button className={`nav-item ${page === "Settings" ? "active" : ""}`} onClick={() => setPage("Settings")}><Settings2 size={15} strokeWidth={1.8}/><span>Settings</span></button>
       <div className="sidebar-bottom"><div className="storage"><strong>Studio API</strong><span className={`status-dot ${apiHealthy ? "" : "offline-dot"}`}/>{apiHealthy ? "Connected" : "Offline"}</div></div>
     </aside>
 
@@ -85,7 +85,7 @@ export default function StudioPage() {
         {page === "Datasets" && <DatasetsPage project={project}/>}
         {page === "Training" && <TrainingPage project={project} onFinished={() => loadModels(selectedProject)}/>}
         {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={setPage} onDeploy={(id) => { setDeploymentModelId(id); setPage("Deployments"); }}/>} 
-        {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>} {page === "Monitoring" && <MonitoringPage project={project}/>} {page === "Live" && <LivePage apiHealthy={apiHealthy}/>}
+        {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>} {page === "Monitoring" && <MonitoringPage project={project}/>} {page === "Live" && <LivePage apiHealthy={apiHealthy}/>} {page === "Settings" && <SettingsPage apiHealthy={apiHealthy}/>}
       </div>
     </main>
   </div>;
@@ -740,6 +740,34 @@ function LivePage({apiHealthy}:{apiHealthy:boolean}) {
       {history.length===0?<div className="empty-state">No inference events yet.</div>:<div className="table-wrap"><table className="data-table"><thead><tr><th>Image</th><th>Score</th><th>Latency</th><th>Drift</th><th>Status</th><th>Result</th></tr></thead><tbody>{history.map((x,i)=><tr key={i}><td>{x.filename}</td><td>{x.error?"—":Number(x.anomaly_score).toFixed(4)}</td><td>{x.error?"—":`${Number(x.latency_ms||0).toFixed(1)} ms`}</td><td>{x.drift_report?`${Number(x.drift_report.drift_score||0).toFixed(3)} · ${x.drift_report.status||"observed"}`:"—"}</td><td>{x.error?"Error":activeThreshold!=null?(Number(x.anomaly_score||0)>=Number(activeThreshold)?"Anomaly":"Normal"):(x.is_anomaly?"Anomaly":"Normal")}</td><td>{x.error||"Completed"}</td></tr>)}</tbody></table></div>}
     </div></>;
 }
+function SettingsPage({apiHealthy}:{apiHealthy:boolean}) {
+  const [config,setConfig]=useState<any>(null); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
+  async function load(){
+    setBusy(true);setError("");
+    try{const r=await fetch(`${API_BASE}/api/config`,{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Could not load configuration");setConfig(d);}
+    catch(e){setError(e instanceof Error?e.message:"Could not load configuration")}finally{setBusy(false)}
+  }
+  useEffect(()=>{void load()},[]);
+  const thresholds=config?.thresholds||{};
+  return <>
+    <div className="page-head"><div><div className="eyebrow">System</div><h1>Settings</h1><p className="subtitle">View the configuration Studio uses. Changes still belong in the canonical config.yml.</p></div><button className="secondary" onClick={load} disabled={busy}><Settings2 size={13}/>{busy?"Refreshing…":"Refresh"}</button></div>
+    {!apiHealthy&&<div className="api-warning"><CircleGauge size={14}/> Studio API is offline. Settings are unavailable until FastAPI is running.</div>}
+    {error&&<div className="form-error">{error}</div>}
+    {config&&<div className="settings-grid">
+      <section className="card"><div className="section-head"><div><div className="section-title">Inference</div><div className="subtitle">Read-only values from config.yml.</div></div><span className="badge">Canonical</span></div>
+        <div className="settings-list"><div><span>Algorithm</span><b>{String(config.algorithm||"—").toUpperCase()}</b></div><div><span>Input size</span><b>{config.resize?.join(" × ")||"—"}</b></div><div><span>Normalize images</span><b>{config.normalize?"Enabled":"Disabled"}</b></div></div>
+      </section>
+      <section className="card"><div className="section-head"><div><div className="section-title">Thresholds</div><div className="subtitle">Used by Studio when displaying results.</div></div></div>
+        <div className="settings-list">{Object.entries(thresholds).map(([name,value])=><div key={name}><span>{name.toUpperCase()}</span><b>{Number(value).toFixed(3)}</b></div>)}</div>
+      </section>
+      <section className="card"><div className="section-head"><div><div className="section-title">Drift monitoring</div><div className="subtitle">Existing monitoring configuration.</div></div></div>
+        <div className="settings-list"><div><span>Status</span><b>{config.drift?.enabled?"Enabled":"Disabled"}</b></div><div><span>Window</span><b>{config.drift?.window??"—"}</b></div><div><span>Minimum samples</span><b>{config.drift?.min_samples??"—"}</b></div><div><span>Threshold</span><b>{config.drift?.threshold!=null?Number(config.drift.threshold).toFixed(3):"—"}</b></div><div><span>Evaluation interval</span><b>{config.drift?.evaluation_interval??"—"}</b></div></div>
+      </section>
+      <section className="card settings-note"><ShieldCheck size={17}/><div><strong>One source of truth</strong><span>Studio reads these values from the existing configuration API. It does not create a second configuration system or modify the anomaly-detection engine.</span></div></section>
+    </div>}
+  </>;
+}
+
 function Placeholder({page}:{page:Page}) { const descriptions:Record<Page,string>={Overview:"",Projects:"",Datasets:"",Training:"",Models:"",Deployments:"Export and validate models for production targets without changing the algorithm core.",Live:"Inspect camera or stream inference using the existing AnomaVision runtime.",Monitoring:"Track runtime health, latency and production data drift."};return <><div className="page-head"><div><div className="eyebrow">Workspace</div><h1>{page}</h1><p className="subtitle">{descriptions[page]}</p></div><button className="secondary"><SlidersHorizontal size={13}/> Configure</button></div><div className="card placeholder"><div className="icon-box"><Sparkles size={18}/></div><div><b>Connected to the Studio architecture</b><p className="subtitle">This view is ready to consume the same Python services through the Studio API. No ML logic is duplicated in the frontend.</p></div></div></>; }
 
 function Stat({icon,label,value,meta,green}:{icon:React.ReactNode;label:string;value:string;meta:string;green?:boolean}){return <div className="card"><div className="stat-label">{icon}<span>{label}</span></div><div className="stat-value">{value}</div><div className="stat-meta">{green&&<span className="status-dot"/>}{meta}</div></div>}
