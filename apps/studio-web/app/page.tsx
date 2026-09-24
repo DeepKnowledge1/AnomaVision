@@ -8,7 +8,7 @@ import {
   HelpCircle
 } from "lucide-react";
 
-type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Inference" | "Results" | "Monitoring" | "Settings";
+type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Inference" | "Results" | "Performance" | "Monitoring" | "Settings";
 type Project = { id: string; name: string; description?: string; algorithm: string; status: string; };
 type Model = { id: string; algorithm: string; class_name: string; run_name: string; status: string; path?: string; };
 type DatasetReport = {
@@ -30,6 +30,7 @@ const navGroups: { label: string; items: { label: Page; icon: React.ElementType 
     { label: "Deployments", icon: Rocket },
     { label: "Inference", icon: Wifi },
     { label: "Results", icon: ShieldCheck },
+    { label: "Performance", icon: CircleGauge },
   ]},
   { label: "Operate", items: [
     { label: "Monitoring", icon: Activity },
@@ -196,7 +197,7 @@ export default function StudioPage() {
           {page === "Training" && <TrainingPage project={project} onFinished={() => loadModels(selectedProject)}/>}
           {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={navigate} onDeploy={(id) => { setDeploymentModelId(id); navigate("Deployments"); }}/>}
           {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>}
-          {page === "Monitoring" && <MonitoringPage project={project}/>}
+          {page === "Performance" && <PerformancePage project={project} session={inferenceSession}/>}\n          {page === "Monitoring" && <MonitoringPage project={project}/>}
           {page === "Inference" && <LivePage apiHealthy={apiHealthy} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
           {page === "Results" && <ResultsPage session={inferenceSession} onNavigate={navigate}/>}
           {page === "Live" && <LivePage apiHealthy={apiHealthy} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
@@ -817,6 +818,65 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
           </>}
         </section>
       </div>
+    </>}
+  </>;
+}
+
+function PerformancePage({project,session}:{project?:Project;session:{result:any;history:any[];config:any}|null}) {
+  const config=session?.config;
+  const benchmark=config?.inference_benchmark;
+  const latest=session?.history?.[0];
+  const latency=latest?.latency_ms!=null?Number(latest.latency_ms):null;
+  const fps=latency&&latency>0?1000/latency:null;
+  const device=latest?.device||config?.device||"auto";
+  const algorithm=config?.algorithm||latest?.algorithm||"—";
+  return <>
+    <div className="page-head">
+      <div>
+        <div className="eyebrow">Runtime performance</div>
+        <h1>Performance</h1>
+        <p className="subtitle">Review inference speed and the benchmark contract without changing how AnomaVision measures performance.</p>
+      </div>
+    </div>
+    {!project ? <div className="card empty-state"><div className="dataset-empty-icon"><CircleGauge size={20}/></div><strong>Select a project first</strong><span>Performance information is shown for the active Studio workspace.</span></div> : <>
+      <div className="performance-status">
+        <div><span className="performance-kicker">CURRENT INFERENCE</span><strong>{latest ? "Performance data available" : "Ready to measure"}</strong><p>{latest ? "The values below come from your latest inference session." : "Run an image inference to see live latency and throughput here."}</p></div>
+        <div className="performance-method"><b>{String(algorithm).toUpperCase()}</b><span>{config?.resize ? `${config.resize[0]}×${config.resize[1]} input` : "config.yml"}</span></div>
+      </div>
+      <div className="grid-4 section">
+        <Stat icon={<CircleGauge size={15}/>} label="Latency" value={latency!=null?`${latency.toFixed(1)} ms`:"—"} meta="reported by inference runtime"/>
+        <Stat icon={<Activity size={15}/>} label="Throughput" value={fps!=null?`${fps.toFixed(1)} img/s`:"—"} meta="derived from latest latency"/>
+        <Stat icon={<BrainCircuit size={15}/>} label="Algorithm" value={String(algorithm).toUpperCase()} meta="active configuration"/>
+        <Stat icon={<MonitorCog size={15}/>} label="Device" value={String(device)} meta="runtime selection"/>
+      </div>
+      <div className="two-column">
+        <section className="card">
+          <div className="section-head"><div><div className="section-title">What the numbers mean</div><div className="subtitle">A quick interpretation for day-to-day engineering work.</div></div></div>
+          <div className="performance-explanations">
+            <div><b>Latency</b><span>Time reported for one inference result. Lower values mean faster response.</span></div>
+            <div><b>Throughput</b><span>Approximate images per second calculated from the latest single-image latency.</span></div>
+            <div><b>Device</b><span>The runtime device selected by the existing configuration. Studio does not override it.</span></div>
+          </div>
+        </section>
+        <section className="card">
+          <div className="section-head"><div><div className="section-title">Benchmark configuration</div><div className="subtitle">The existing reproducible benchmark settings from config.yml.</div></div></div>
+          {benchmark ? <div className="check-list">
+            <div className="check-row"><span>Status</span><b>{benchmark.enabled ? "Enabled" : "Disabled"}</b></div>
+            <div className="check-row"><span>Warm-up runs</span><b>{benchmark.warmup_runs ?? "—"}</b></div>
+            <div className="check-row"><span>Timed runs</span><b>{benchmark.test_runs ?? "—"}</b></div>
+            <div className="check-row"><span>Batch size</span><b>{benchmark.batch_size ?? "—"}</b></div>
+          </div> : <div className="monitor-empty"><CircleGauge size={18}/><strong>Benchmark settings unavailable</strong><span>The active config did not expose benchmark settings.</span></div>}
+        </section>
+      </div>
+      <details className="technical-details card"><summary>Technical details</summary>
+        <div className="technical-grid">
+          <div><span>Input size</span><b>{config?.resize ? `${config.resize[0]}×${config.resize[1]}` : "—"}</b></div>
+          <div><span>Batch size</span><b>{config?.batch_size ?? benchmark?.batch_size ?? "—"}</b></div>
+          <div><span>Workers</span><b>{config?.num_workers ?? "—"}</b></div>
+          <div><span>Pin memory</span><b>{config?.pin_memory == null ? "—" : String(config.pin_memory)}</b></div>
+        </div>
+      </details>
+      <div className="performance-note"><CircleGauge size={15}/><div><strong>Benchmarking stays reproducible</strong><span>Studio only presents existing configuration and observed inference results. It does not modify benchmark methodology or core runtime calculations.</span></div></div>
     </>}
   </>;
 }
