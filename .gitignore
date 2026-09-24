@@ -372,3 +372,6 @@ compiled_patchcore_kv260/*
 quantize_result/*
 compiled_padim_kv260/*
 drift/*.npy
+
+# AnomaVision Studio local runtime data
+.anomavision/
