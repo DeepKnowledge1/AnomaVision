@@ -68,3 +68,17 @@ under the selected project's `models/` area and the latest run metadata is recor
 The first Studio training controls are intentionally small: algorithm, backbone, batch size,
 image size, PaDiM feature dimensions, and PatchCore coreset ratio. More advanced controls can
 be added without changing the core training implementation.
+
+
+### Model registry and evaluation
+
+Studio now discovers trained `model.pt` artifacts from the project's model hierarchy
+and exposes them through the **Models** workspace.
+
+Evaluation is an adapter over the existing `anomavision.eval.run_evaluation()` pipeline.
+Studio does not implement a second metric or inference path. Evaluation results are saved
+with the selected model as `evaluation.json`.
+
+The current evaluation UI is intentionally focused on the existing MVTec-style dataset
+contract. Deployment formats and runtime validation remain separate concerns for the next
+milestone.
