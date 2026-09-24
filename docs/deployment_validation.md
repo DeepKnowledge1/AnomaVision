@@ -2,60 +2,33 @@
 
 AnomaVision includes a non-invasive deployment validation step for checking a trained or exported anomaly-detection model before it is moved into production.
 
-The goal is simple:
-
 > **Validate the deployment artifact without changing the anomaly-detection algorithm or inference behavior.**
 
-Deployment validation is especially useful when the same model moves through multiple representations such as PyTorch, ONNX, TensorRT, OpenVINO, Hailo, or Vitis AI/KV260.
+## CLI
 
-## Why this exists
+Run `anomavision validate --help` to see the current command-line interface.
 
-A model can work correctly during development and still fail later because of:
+| Parameter | Type | Default | Required | Description |
+|---|---|---:|---|---|
+| `--model` | path | — | **Yes** | Path to the trained/exported model or deployment artifact to validate. |
+| `--config` | path | `None` | No | Existing AnomaVision configuration used to build the validation input shape and run runtime inference. |
+| `--reference-model` | path | `None` | No | Existing reference model used for output-consistency validation. |
+| `--consistency-tolerance` | float | `1e-4` | No | Maximum allowed absolute difference for score and anomaly-map consistency checks. |
+| `--runs` | int | `10` | No | Number of measured inference runs used for latency/FPS. Must be at least 1. |
+| `--warmup-runs` | int | `2` | No | Number of warm-up inference runs excluded from latency measurement. Must be 0 or greater. |
+| `--json` | flag | off | No | Print the complete validation report as JSON instead of the human-readable report. |
 
-- an invalid or corrupted export
-- an unsupported runtime
-- unexpected input shapes
-- inference failures in the deployment format
-- performance that is too slow for the target use case
-- output differences between a reference model and an exported model
+## `--model`
 
-Deployment validation catches these issues before deployment.
-
-It is an additional production-safety layer around the existing AnomaVision inference stack.
-
-## Supported model formats
-
-The validator recognizes the model formats already supported by AnomaVision:
-
-| Format | Extension / representation |
-|---|---|
-| PyTorch | `.pt`, `.pth` |
-| TorchScript | `.torchscript` |
-| ONNX | `.onnx` |
-| TensorRT | `.engine`, `.trt` |
-| OpenVINO | `.xml`, `.bin`, or OpenVINO model directory |
-| Hailo | `.hef` |
-| Vitis AI / KV260 | `.xmodel` |
-
-The validator reuses AnomaVision's existing `ModelWrapper` and backend implementations wherever possible. It does not introduce a second inference implementation for the anomaly-detection algorithms.
-
-## Basic validation
-
-Validate a model:
+The only required parameter. It accepts the model formats already supported by AnomaVision: `.pt`, `.pth`, `.torchscript`, `.onnx`, `.engine`, `.trt`, `.xml`, `.bin`, `.hef`, and `.xmodel`. OpenVINO model directories are also accepted.
 
 ```bash
 anomavision validate --model distributions/padim/bottle/anomav_exp/model.pt
 ```
 
-For configuration-dependent validation, provide the existing configuration:
+## `--config`
 
-```bash
-anomavision validate \
-  --model distributions/padim/bottle/anom_exp/model.pt \
-  --config config.yml
-```
-
-On PowerShell:
+Use the existing AnomaVision configuration to build the validation input from its resize/crop settings.
 
 ```powershell
 anomavision validate `
@@ -63,151 +36,85 @@ anomavision validate `
   --config config.yml
 ```
 
-## Reference-model consistency
+For non-ONNX runtime validation, `--config` enables runtime inference measurement. Without it, latency is not measured for those formats.
 
-An exported model can also be compared with a reference model.
+## `--reference-model`
 
-For example, compare ONNX against the original PyTorch model:
+Compares the candidate deployment model against an existing reference model using the existing AnomaVision inference wrapper. `--config` is required when this option is used.
 
 ```powershell
 anomavision validate `
   --model distributions\padim\bottle\anomav_exp\model.onnx `
   --reference-model distributions\padim\bottle\anomav_exp\model.pt `
-  --config config.yml `
-  --runs 20
+  --config config.yml
 ```
 
-The validator compares the AnomaVision inference outputs:
+The comparison checks both anomaly scores and anomaly maps and reports maximum and mean absolute differences. Shape mismatches are rejected.
 
-- anomaly scores
-- anomaly maps
+## `--consistency-tolerance`
 
-It reports maximum and mean absolute differences for both.
-
-Example:
-
-```text
-Output consistency
-  Score max abs diff:  ...
-  Score mean abs diff: ...
-  Map max abs diff:    ...
-  Map mean abs diff:   ...
-  Tolerance:           0.0001
-```
-
-The tolerance can be changed when small numerical differences are expected:
+Default: `1e-4`. Both score and map maximum absolute differences must be less than or equal to this value. Negative values are rejected.
 
 ```bash
-anomavision validate --model model.onnx --reference-model model.pt --consistency-tolerance 1e-3
+anomavision validate --model model.onnx --reference-model model.pt --config config.yml --consistency-tolerance 1e-3
 ```
 
-## Validation checks
+## `--runs`
 
-Depending on the model format, validation can report:
+Controls the number of measured inference iterations. Default: `10`. The value must be at least `1`.
 
-### Model integrity
+```bash
+anomavision validate --model model.onnx --runs 50
+```
 
-- file exists
-- model loads successfully
-- deployment format is structurally valid where supported
+## `--warmup-runs`
 
-### Inference
-
-- model can execute inference
-- output is compatible with the AnomaVision inference interface
-
-### Input shape
-
-For ONNX models, static input shape information is checked where available.
-
-### Performance
-
-The validator performs inference runs and reports:
-
-- latency
-- FPS
-
-Use `--warmup-runs` to control warmup iterations and `--runs` to control measured iterations.
-
-Example:
+Controls warm-up inference iterations excluded from latency measurement. Default: `2`. The value may be `0`.
 
 ```bash
 anomavision validate --model model.onnx --warmup-runs 5 --runs 20
 ```
 
-### Output consistency
+## `--json`
 
-When `--reference-model` is supplied, the candidate model is compared with the reference model using the existing AnomaVision output representation.
-
-### Backend availability
-
-The report also shows whether supported deployment runtimes are installed.
-
-Example:
-
-```text
-Backend compatibility
-  pytorch: available
-  torchscript: available
-  onnxruntime: available
-  openvino: available
-  tensorrt: not installed
-  hailo: not installed
-  vitis_ai_vart: available
-  vitis_ai_xir: available
-  vitis_ai_library: not installed
-  kv260: available
-```
-
-## Important: runtime availability vs hardware validation
-
-A backend marked `available` means that the required runtime components are detected in the current environment.
-
-For example:
-
-```text
-kv260: available
-```
-
-does **not** mean that the specific model has been physically tested on a KV260 board.
-
-Actual target-device validation still requires the corresponding hardware and deployment environment.
-
-The same principle applies to Hailo and other hardware-specific targets.
-
-## JSON output
-
-For automation and CI/CD workflows, use:
+Prints the complete validation report as JSON. This is useful for CI/CD, deployment gates, scripts, and storing validation results.
 
 ```bash
 anomavision validate --model model.onnx --json
 ```
 
-This makes the validation result easier to consume from scripts and deployment pipelines.
+The JSON report contains model path, detected format, inputs, outputs, performance, consistency, backend availability, validation checks, deployment readiness, and the validation note.
 
-## CLI options
+## Supported formats
 
-| Option | Purpose |
+| Format | Extension / representation |
 |---|---|
-| `--model` | Model/deployment artifact to validate |
-| `--config` | Existing AnomaVision configuration |
-| `--reference-model` | Optional reference model for output comparison |
-| `--consistency-tolerance` | Maximum allowed output difference; default `1e-4` |
-| `--runs` | Number of measured inference runs |
-| `--warmup-runs` | Number of warmup runs |
-| `--json` | Print the validation report as JSON |
+| PyTorch | `.pt`, `.pth` |
+| TorchScript | `.torchscript` |
+| ONNX | `.onnx` |
+| TensorRT | `.engine`, `.trt` |
+| OpenVINO | `.xml`, `.bin`, or model directory |
+| Hailo | `.hef` |
+| Vitis AI / KV260 | `.xmodel` |
 
-Run:
+## Validation checks
 
-```bash
-anomavision validate --help
-```
+- Model/file existence and loading
+- ONNX structural validity where applicable
+- ONNX input shape information where applicable
+- Runtime inference
+- Latency and FPS
+- Reference-model output consistency
+- Deployment-backend availability
+- Final `ready_for_deployment` result
 
-for the current CLI help.
+## Backend compatibility
+
+The report checks availability of `pytorch`, `torchscript`, `onnxruntime`, `openvino`, `tensorrt`, `hailo`, `vitis_ai_vart`, `vitis_ai_xir`, `vitis_ai_library`, and `kv260`.
+
+**Important:** `available` means the required runtime components are detected in the current environment. It does not prove that a specific model has been physically tested on the target hardware. Actual KV260, Hailo, or other hardware validation requires the corresponding deployment environment.
 
 ## Production workflow
-
-Deployment validation fits between export and deployment:
 
 ```text
 Train
@@ -233,28 +140,11 @@ Production monitoring
 Data-drift monitoring
 ```
 
-This makes deployment validation a gate around the deployment artifact rather than a modification to the anomaly-detection algorithm.
-
 ## Design principles
 
-Deployment validation is intentionally non-invasive.
+Deployment validation is observational and non-invasive. It does not modify PaDiM, PatchCore, or EfficientAD; change preprocessing, anomaly scoring, or localization; retrain models; or change production inference behavior. It reuses the existing AnomaVision inference/backends wherever possible.
 
-It does **not**:
-
-- modify PaDiM
-- modify PatchCore
-- modify EfficientAD
-- change preprocessing
-- change anomaly scoring
-- retrain the model
-- alter localization behavior
-- change production inference behavior
-
-It observes and validates the existing model/backend behavior.
-
-## Recommended usage
-
-For an exported model, a practical validation command is:
+## Recommended command
 
 ```powershell
 anomavision validate `
@@ -265,13 +155,4 @@ anomavision validate `
   --warmup-runs 5
 ```
 
-Review:
-
-1. model validity
-2. inference success
-3. latency/FPS
-4. output consistency
-5. backend availability
-6. target hardware requirements
-
-Only the runtime/backend availability is automatically inferred from the current environment. Physical target-device validation remains a separate deployment test.
+Review model validity, inference success, latency/FPS, output consistency, backend availability, and target hardware requirements.
