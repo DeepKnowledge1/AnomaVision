@@ -84,7 +84,7 @@ export default function StudioPage() {
         {page === "Datasets" && <DatasetsPage project={project}/>}
         {page === "Training" && <TrainingPage project={project} onFinished={() => loadModels(selectedProject)}/>}
         {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)}/>}
-        {page === "Deployments" && <DeploymentsPage project={project} models={models}/>} {["Live", "Monitoring"].includes(page) && <Placeholder page={page}/>}
+        {page === "Deployments" && <DeploymentsPage project={project} models={models}/>} {page === "Monitoring" && <MonitoringPage project={project}/>} {page === "Live" && <LivePage apiHealthy={apiHealthy}/>}
       </div>
     </main>
   </div>;
@@ -174,6 +174,20 @@ function DeploymentsPage({project,models}:{project?:Project;models:Model[]}) {
       </div></section>
     </div>}
   </>;
+}
+
+function MonitoringPage({project}:{project?:Project}) {
+  const [summary,setSummary]=useState<Record<string,any>|null>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState("");
+  async function load(){if(!project){setSummary(null);return}setBusy(true);try{const r=await fetch(`${API_BASE}/api/projects/${project.id}/monitoring`,{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Could not load monitoring");setSummary(d)}catch(e){setError(e instanceof Error?e.message:"Could not load monitoring")}finally{setBusy(false)}}
+  useEffect(()=>{void load()},[project]);
+  const latest=summary?.latest;
+  return <><div className="page-head"><div><div className="eyebrow">Production health</div><h1>Monitoring</h1><p className="subtitle">Read-only view of the existing production drift monitoring reports.</p></div><button className="secondary" onClick={load} disabled={busy}><Activity size={13}/> Refresh</button></div>
+    {!project?<div className="card empty">Select a project first.</div>:<><div className="grid-4 section"><Stat icon={<Activity size={15}/>} label="Status" value={String(summary?.status||"no_data")} meta="latest drift report"/><Stat icon={<CircleGauge size={15}/>} label="Drift score" value={latest?.drift_score!=null?Number(latest.drift_score).toFixed(3):"—"} meta="combined signal"/><Stat icon={<Database size={15}/>} label="PSI" value={latest?.psi!=null?Number(latest.psi).toFixed(3):"—"} meta="population stability index"/><Stat icon={<ShieldCheck size={15}/>} label="Warnings" value={String((latest?.warnings||[]).length)} meta="latest report" /></div>
+      {error&&<div className="form-error">{error}</div>}<div className="card"><div className="section-head"><div className="section-title">Latest drift report</div><div className="section-link">{summary?.report_count||0} reports</div></div>{latest?<><div className="check-list"><div className="check-row"><span>Reference samples</span><b>{latest.reference_samples}</b></div><div className="check-row"><span>Current samples</span><b>{latest.current_samples}</b></div><div className="check-row"><span>Feature dimensions</span><b>{latest.feature_dimensions}</b></div><div className="check-row"><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div><div className="check-row"><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div><div className="check-row"><span>Cosine shift</span><b>{Number(latest.cosine_shift).toFixed(4)}</b></div></div><div className="warning-list">{(latest.warnings||[]).map((w:string)=><span className="warning-chip" key={w}>{w.replaceAll("_"," ")}</span>)}</div></>:<div className="empty">No drift report has been stored for this project yet.</div>}</div></>}</>;
+}
+
+function LivePage({apiHealthy}:{apiHealthy:boolean}) {
+  return <><div className="page-head"><div><div className="eyebrow">Inference</div><h1>Live</h1><p className="subtitle">Runtime inference will connect here without replacing the existing AnomaVision runtime.</p></div></div><div className="grid-4"><Stat icon={<Wifi size={15}/>} label="Studio API" value={apiHealthy?"Online":"Offline"} meta="FastAPI connection"/><Stat icon={<CircleGauge size={15}/>} label="Inference" value="Ready" meta="runtime adapter"/><Stat icon={<Activity size={15}/>} label="Drift" value="Observer" meta="does not change anomaly scores"/><Stat icon={<ShieldCheck size={15}/>} label="Safety" value="Non-invasive" meta="monitoring stays outside detector"/></div><div className="card placeholder"><div className="icon-box"><Play size={18}/></div><div><b>Live runtime adapter</b><p className="subtitle">The next Live step can attach a camera, folder watcher or stream to the existing detection runtime and surface inference events here.</p></div></div></>;
 }
 
 function Placeholder({page}:{page:Page}) { const descriptions:Record<Page,string>={Overview:"",Projects:"",Datasets:"",Training:"",Models:"",Deployments:"Export and validate models for production targets without changing the algorithm core.",Live:"Inspect camera or stream inference using the existing AnomaVision runtime.",Monitoring:"Track runtime health, latency and production data drift."};return <><div className="page-head"><div><div className="eyebrow">Workspace</div><h1>{page}</h1><p className="subtitle">{descriptions[page]}</p></div><button className="secondary"><SlidersHorizontal size={13}/> Configure</button></div><div className="card placeholder"><div className="icon-box"><Sparkles size={18}/></div><div><b>Connected to the Studio architecture</b><p className="subtitle">This view is ready to consume the same Python services through the Studio API. No ML logic is duplicated in the frontend.</p></div></div></>; }
