@@ -613,7 +613,8 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
         </div>
 
         {error&&<div className="form-error">{error}</div>}
-        {result&&<section className="card training-result">
+        {result && (
+          <section className="card training-result">
           <div className="section-head">
             <div><div className="section-title">Training completed</div><div className="subtitle">The model is now available in Models.</div></div>
             <div className="badge success-badge">Completed</div>
@@ -634,8 +635,8 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
             <summary>Technical details</summary>
             <pre className="result-box">{JSON.stringify(result,null,2)}</pre>
           </details>
-        </section>
-      </>}
+          </section>
+        )}
   </>;
 }
 
