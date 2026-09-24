@@ -16,6 +16,8 @@ import streamlit as st
 
 from apps.studio.services.catalog import ALGORITHMS, DEPLOYMENT_TARGETS
 from apps.studio.services.project_store import ProjectStore
+from apps.studio.services.model_registry import list_models
+from apps.studio.services.evaluation_service import evaluate_project_model
 from apps.studio.training_page import render_training_page
 
 st.set_page_config(
@@ -250,13 +252,94 @@ def datasets_page() -> None:
 
 def models_page() -> None:
     st.title("Models")
-    st.caption("Model artifacts will be registered here after training and evaluation.")
-    st.info("No Studio model registry entries yet.")
-    st.subheader("Algorithms")
-    for key, item in ALGORITHMS.items():
-        with st.container(border=True):
-            st.write(f'**{item["name"]}**')
-            st.caption(item["description"])
+    st.caption("Trained artifacts and evaluation results for the selected project.")
+
+    projects = store.list_projects()
+    if not projects:
+        st.info("Create a project and train a model first.")
+        return
+
+    selected = st.session_state.get("selected_project") or projects[0]["id"]
+    ids = [p["id"] for p in projects]
+    selected = st.selectbox(
+        "Project",
+        ids,
+        index=ids.index(selected) if selected in ids else 0,
+        format_func=lambda pid: next(p["name"] for p in projects if p["id"] == pid),
+    )
+    st.session_state["selected_project"] = selected
+
+    project_dir = STORE_ROOT / selected
+    models = list_models(project_dir)
+
+    if not models:
+        st.info("No trained models found. Start a training run first.")
+    else:
+        st.subheader("Model registry")
+        st.dataframe(
+            [
+                {
+                    "algorithm": model["algorithm"].upper(),
+                    "class": model["class_name"],
+                    "run": model["run_name"],
+                    "status": model["status"],
+                }
+                for model in models
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        options = {model["id"]: model for model in models}
+        model_id = st.selectbox(
+            "Model",
+            list(options),
+            format_func=lambda mid: f'{options[mid]["algorithm"].upper()} · {options[mid]["class_name"]} · {options[mid]["run_name"]}',
+        )
+        model = options[model_id]
+        st.code(model["path"], language="text")
+
+        st.subheader("Evaluate")
+        st.caption("Uses the existing AnomaVision evaluation pipeline. For MVTec, select the dataset root containing the class folder.")
+        dataset_path = st.text_input(
+            "Evaluation dataset",
+            placeholder=r"C:\datasets\mvtec_anomaly_detection",
+            key="evaluation-dataset",
+        )
+        device = st.selectbox("Device", ["cpu", "auto"])
+        batch_size = st.number_input("Evaluation batch size", min_value=1, max_value=64, value=1)
+
+        if st.button("Evaluate model", type="primary", disabled=not dataset_path.strip()):
+            try:
+                with st.spinner("Evaluating model..."):
+                    result = evaluate_project_model(
+                        project_dir=project_dir,
+                        model_id=model_id,
+                        dataset_path=dataset_path,
+                        device=device,
+                        batch_size=int(batch_size),
+                    )
+                st.session_state["evaluation_result"] = result
+                st.success("Evaluation completed.")
+            except Exception as exc:
+                st.error(f"Evaluation failed: {exc}")
+
+        result = st.session_state.get("evaluation_result")
+        if result and result.get("model_id") == model_id:
+            st.subheader("Evaluation results")
+            metrics = result.get("metrics", {})
+            cols = st.columns(4)
+            metric_items = list(metrics.items())
+            for col, (name, value) in zip(cols, metric_items[:4]):
+                with col:
+                    metric_card(name.replace("_", " ").title(), f"{value:.4f}" if isinstance(value, float) else str(value))
+            st.json(metrics)
+
+    with st.expander("Available algorithms"):
+        for key, item in ALGORITHMS.items():
+            with st.container(border=True):
+                st.write(f'**{item["name"]}**')
+                st.caption(item["description"])
 
 
 def deployments_page() -> None:
