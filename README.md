@@ -13,11 +13,11 @@ Supported methods:
 - **PatchCore**
 - **EfficientAD**
 
-It supports training, evaluation, threshold calibration, ONNX/OpenVINO/TensorRT export where supported, KV260/XModel deployment, and **production data-drift monitoring**.
+It supports training, evaluation, threshold calibration, ONNX/OpenVINO/TensorRT export where supported, KV260/XModel deployment, **production data-drift monitoring**, and **non-invasive deployment validation**.
 
-## Quick start
+## 🚀 Quick start
 
-### Install
+### 📦 Install
 
 ```bash
 git clone https://github.com/DeepKnowledge1/AnomaVision.git
@@ -27,19 +27,19 @@ source .venv/bin/activate        # Windows: .venv\\Scripts\\Activate.ps1
 uv sync --extra cpu
 ```
 
-### Train
+### 🧠 Train
 
 ```bash
 anomavision train --config config.yml
 ```
 
-### Detect
+### 🔍 Detect
 
 ```bash
 anomavision detect --config config.yml --img_path ./dataset/bottle/test
 ```
 
-### Export
+### 📤 Export
 
 ```bash
 anomavision export --config config.yml --format onnx
@@ -47,18 +47,104 @@ anomavision export --config config.yml --format onnx
 
 ---
 
-## Production data drift
+## 🛡️ Deployment validation
 
-Production data-drift monitoring is available as an optional observer around anomaly detection.
+Validate exported models before deployment without changing the anomaly-detection algorithm.
 
-See the [Production Data Drift guide](docs/anomaly_detection_production_data_drift.md) for setup, reference generation, metrics, dashboard, and troubleshooting.
+It checks **model integrity, inference, performance, backend compatibility, and output consistency** against a reference model.
+
+```powershell
+anomavision validate `
+  --model model.onnx `
+  --reference-model model.pt `
+  --config config.yml
+  ```
+
+## 🛡️ Deployment validation
+
+Before moving an exported model into production, AnomaVision can validate the deployment artifact without changing the underlying anomaly-detection algorithm.
+
+It checks model integrity, inference, performance, supported backend availability, and—when a reference model is supplied—output consistency.
+
+### Quick example
+
+```powershell
+anomavision validate `
+  --model distributions\\padim\\bottle\\anomav_exp\\model.onnx `
+  --config config.yml `
+  --runs 20
+```
+
+Typical output includes:
+
+```text
+AnomaVision Deployment Validation
+────────────────────────────────────
+Model: distributions\padim\bottle\anomav_exp\model.onnx
+✓ File Exists
+✓ Onnx Valid
+✓ Onnxruntime Inference
+✓ Static Input Shape
+Latency: 11.020 ms
+FPS:     90.75
+....
+```
+
+Supported deployment artifacts include PyTorch, TorchScript, ONNX, TensorRT, OpenVINO, Hailo HEF, and Vitis AI/KV260 XModel.
+
+**Note:** backend availability means the required runtime components are installed. It does not by itself prove that a specific model has been tested on physical target hardware.
+
+See the [Deployment Validation guide](docs/deployment_validation.md) for all options, consistency validation, JSON output, backend details, and recommended production usage.
+
+## 📡 Production data drift
+
+Production data-drift monitoring helps detect changes in the data seen by an anomaly detector after deployment.
+
+It compares production representations against a trusted **normal reference population** using a rolling window. It can report metrics such as **PSI, mean shift, standard-deviation shift, cosine shift, and drift score**, with the result available through a dashboard and JSON status file.
+
+The monitor is an **observer only**: it does not change anomaly scores or localization. Drift is an early-warning signal that should be investigated for causes such as lighting, camera position, preprocessing, or product changes.
+
+### Quick example
+
+```powershell
+anomavision detect `
+  --config config.yml `
+  --model model.onnx `
+  --enable-drift-monitoring `
+  --drift-reference .\\drift\\reference_embeddings.npy
+```
+
+See the [Production Data Drift guide](docs/anomaly_detection_production_data_drift.md) for reference generation, metrics, dashboard, configuration, and troubleshooting.
+
 ---
 
-## KV260 support
+## 📊 Benchmarks
+
+AnomaVision includes a reproducible benchmark workflow for comparing anomaly-detection performance and runtime characteristics.
+
+The benchmark reports **Image AUROC, Pixel AUROC, latency, P95 latency, FPS, model/artifact size, and memory usage**. The current comparison script uses a shared evaluation contract so results can be reproduced consistently.
+
+### Quick example
+
+```powershell
+python scripts\\benchmarks\\compare_with_anomalib.py `
+  --dataset_path D:\\01-DATA `
+  --class_name bottle `
+  --algorithms padim `
+  --device cpu
+```
+
+Historical benchmark results are available for **MVTec AD and VisA**, including per-class results and visual comparisons. These results are retained for reference; the corrected benchmark should be rerun before making current performance claims.
+
+See the [Benchmark guide](docs/benchmark.md) for the methodology, commands, metrics, and detailed results.
+
+---
+
+## ⚡ KV260 support
 
 AnomaVision supports a **Vitis AI workflow for PaDiM and PatchCore on the AMD/Xilinx Kria KV260**. XModel compilation has been validated in the Vitis AI environment; final on-device validation requires the physical hardware.
 
-## Documentation
+## 📚 Documentation
 
 | Topic | Guide |
 |---|---|
@@ -66,12 +152,13 @@ AnomaVision supports a **Vitis AI workflow for PaDiM and PatchCore on the AMD/Xi
 | Installation | [docs/installation.md](docs/installation.md) |
 | CLI / configuration | [docs/cli.md](docs/cli.md), [docs/config.md](docs/config.md) |
 | Python API | [docs/api.md](docs/api.md) |
+| **Deployment validation** | [docs/deployment_validation.md](docs/deployment_validation.md) |
 | **Production data drift** | [docs/anomaly_detection_production_data_drift.md](docs/anomaly_detection_production_data_drift.md) |
 | KV260 / XModel | [docs/kv260_xmodel.md](docs/kv260_xmodel.md) |
 | Production deployment | [docs/production_deployment.md](docs/production_deployment.md) |
 | Benchmarks | [docs/benchmark.md](docs/benchmark.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 
-## License
+## 📄 License
 
 AnomaVision is released under the **MIT License**. See [LICENSE](LICENSE).
