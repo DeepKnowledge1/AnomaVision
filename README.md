@@ -58,7 +58,7 @@ It checks model integrity, inference, performance, supported backend availabilit
 ```powershell
 anomavision validate `
   --model distributions\\padim\\bottle\\anomav_exp\\model.onnx `
-  --reference-model distributions\\padim\\bottle\\anom_exp\\model.pt `
+  --reference-model distributions\\padim\\bottle\\anomav_exp\\model.pt `
   --config config.yml `
   --runs 20
 ```
