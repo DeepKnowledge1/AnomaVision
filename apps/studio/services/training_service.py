@@ -14,55 +14,70 @@ from anomavision.train import run_training
 
 
 def normalize_dataset_source(source: str, class_name: str = "default") -> tuple[Path, str]:
-    """Normalize common dataset layouts to the existing train.py contract.
+    """Resolve any common MVTec folder selection to train.py's exact contract.
 
-    Accepted layouts:
-      dataset/<class>/train/good
-      dataset/train/good
-      dataset/<class>   (containing train/good)
+    train.py receives:
+        dataset_path=<dataset root>
+        class_name=<class>
+    and reads:
+        <dataset_path>/<class_name>/train/good
 
-    Returns:
-      (dataset_root, class_name)
+    Supported selections:
+      <dataset>
+      <dataset>/<class>
+      <dataset>/<class>/train
+      <dataset>/<class>/train/good
+      <dataset>/train/good
     """
-    source_path = Path(source).expanduser().resolve()
-    if not source_path.is_dir():
-        raise ValueError(f"Dataset folder does not exist: {source_path}")
+    selected = Path(source).expanduser().resolve()
+    if not selected.is_dir():
+        raise ValueError(f"Dataset folder does not exist: {selected}")
 
-    train_good = source_path / "train" / "good"
+    parts = [p.lower() for p in selected.parts]
 
-    # User selected the class folder itself:
-    #   D:/01-DATA/bottle -> D:/01-DATA + bottle
-    if train_good.is_dir():
-        detected_class = source_path.name
-        parent = source_path.parent
+    # A complete class training folder: .../<class>/train/good
+    if selected.name.lower() == "good" and selected.parent.name.lower() == "train":
+        class_dir = selected.parent.parent
+        return class_dir.parent, class_dir.name
 
-        # If this is the dataset root with a direct train/good layout,
-        # keep the root and the configured class name.
-        if class_name and class_name != "default":
-            candidate = source_path / class_name / "train" / "good"
-            if candidate.is_dir():
-                return source_path, class_name
+    # A class training folder: .../<class>/train
+    if selected.name.lower() == "train" and (selected / "good").is_dir():
+        class_dir = selected.parent
+        return class_dir.parent, class_dir.name
 
-        return parent, detected_class
+    # A class folder: .../<class>/train/good
+    if (selected / "train" / "good").is_dir():
+        return selected.parent, selected.name
 
-    # User selected the complete dataset root:
-    #   D:/01-DATA + bottle -> D:/01-DATA + bottle
-    if class_name and class_name != "default":
-        class_train_good = source_path / class_name / "train" / "good"
-        if class_train_good.is_dir():
-            return source_path, class_name
+    # Dataset root with a named class.
+    requested_class = (class_name or "").strip()
+    if requested_class and requested_class.lower() != "default":
+        class_good = selected / requested_class / "train" / "good"
+        if class_good.is_dir():
+            return selected, requested_class
 
-    # No explicit class name: accept a single class directory containing train/good.
+        # Case-insensitive class directory lookup.
+        for child in selected.iterdir():
+            if child.is_dir() and child.name.lower() == requested_class.lower():
+                if (child / "train" / "good").is_dir():
+                    return selected, child.name
+
+    # Dataset root with exactly one discoverable class.
     candidates = [
-        child for child in source_path.iterdir()
+        child for child in selected.iterdir()
         if child.is_dir() and (child / "train" / "good").is_dir()
     ]
     if len(candidates) == 1:
-        return source_path, candidates[0].name
+        return selected, candidates[0].name
+
+    # Dataset root that directly contains train/good.
+    if (selected / "train" / "good").is_dir():
+        effective_class = requested_class if requested_class and requested_class.lower() != "default" else selected.name
+        return selected, effective_class
 
     raise ValueError(
-        "Training data must contain a 'train/good' folder. "
-        "Select the dataset root or the class folder."
+        "Invalid dataset layout. Select the dataset root, class folder, "
+        "train folder, or train/good folder."
     )
 
 
