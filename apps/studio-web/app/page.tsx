@@ -940,6 +940,12 @@ function MonitoringPage({project}:{project?:Project}) {
         <Stat icon={<ShieldCheck size={15}/>} label="Warnings" value={String(warnings.length)} meta={warnings.length?"review latest signals":"no warnings reported"} green={!warnings.length}/>
         <Stat icon={<CircleGauge size={15}/>} label="Reports" value={String(summary?.report_count||0)} meta="stored monitoring reports"/>
       </div>
+      {latest && <div className="drift-metric-grid">
+        <div><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div>
+        <div><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div>
+        <div><span>Cosine shift</span><b>{Number(latest.cosine_shift).toFixed(4)}</b></div>
+        <div><span>Current samples</span><b>{latest.current_samples ?? "—"}</b></div>
+      </div>
 
       <div className="two-column">
         <section className="card">
@@ -965,9 +971,18 @@ function MonitoringPage({project}:{project?:Project}) {
         </section>
       </div>
 
+      <details className="technical-details card">
+        <summary>Technical details</summary>
+        <div className="technical-grid">
+          <div><span>Reference samples</span><b>{latest?.reference_samples ?? "—"}</b></div>
+          <div><span>Feature dimensions</span><b>{latest?.feature_dimensions ?? "—"}</b></div>
+          <div><span>Window</span><b>{summary?.window ?? latest?.window ?? "—"}</b></div>
+          <div><span>Minimum samples</span><b>{summary?.min_samples ?? latest?.min_samples ?? "—"}</b></div>
+        </div>
+      </details>
       <div className="card monitoring-note">
         <ShieldCheck size={15}/>
-        <div><strong>Existing monitoring engine</strong><span>Studio displays the stored drift reports; it does not change the underlying drift calculations or thresholds.</span></div>
+        <div><strong>Observer only</strong><span>Studio displays the stored drift reports. It does not change anomaly scores, drift calculations, reference embeddings, or monitoring thresholds.</span></div>
       </div>
     </>}
   </>;
