@@ -3,31 +3,55 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Web = Join-Path $Root "apps\studio-web"
 
+function Wait-ForUrl {
+    param(
+        [string]$Url,
+        [int]$TimeoutSeconds = 60
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+                return $true
+            }
+        } catch {
+            Start-Sleep -Seconds 1
+        }
+    }
+
+    return $false
+}
+
 Write-Host "Starting AnomaVision Studio..." -ForegroundColor Cyan
 
-# Studio workspace API
 $studioApiCommand = "Set-Location '$Root'; uv run uvicorn apps.studio.api.app:app --host 127.0.0.1 --port 8000"
-
-# Existing AnomaVision inference API
-# Use a single-quoted PowerShell string so $env:PORT is evaluated
-# in the child process, not by this launcher.
-$inferenceApiCommand = 'Set-Location "' + $Root + '"; $env:PORT="8001"; uv run python api.py'
-
-# Studio web application
+$inferenceApiCommand = "Set-Location '$Root'; " + $envLine + " uv run python api.py"
 $webCommand = "Set-Location '$Web'; npm run dev"
 
-Start-Process powershell.exe -ArgumentList "-NoExit","-Command",$studioApiCommand
-Start-Sleep -Seconds 2
+Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $studioApiCommand)
+Write-Host "Waiting for Studio API on 8000..." -ForegroundColor Yellow
+if (-not (Wait-ForUrl "http://127.0.0.1:8000/docs" 30)) {
+    throw "Studio API did not start on port 8000."
+}
 
-Start-Process powershell.exe -ArgumentList "-NoExit","-Command",$inferenceApiCommand
-Start-Sleep -Seconds 3
+Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $inferenceApiCommand)
+Write-Host "Waiting for inference API on 8001..." -ForegroundColor Yellow
+if (-not (Wait-ForUrl "http://127.0.0.1:8001/health" 90)) {
+    throw "Inference API did not start on port 8001. Check the inference PowerShell window for the startup error."
+}
 
-Start-Process powershell.exe -ArgumentList "-NoExit","-Command",$webCommand
+Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $webCommand)
+Write-Host "Waiting for Studio Web on 3000..." -ForegroundColor Yellow
+if (-not (Wait-ForUrl "http://127.0.0.1:3000" 60)) {
+    throw "Studio Web did not start on port 3000. Check the Next.js PowerShell window."
+}
 
+Write-Host ""
+Write-Host "AnomaVision Studio is ready." -ForegroundColor Green
 Write-Host "Studio API:     http://localhost:8000" -ForegroundColor Green
 Write-Host "Inference API:  http://localhost:8001" -ForegroundColor Green
 Write-Host "Studio Web:     http://localhost:3000" -ForegroundColor Green
-Write-Host "Wait a few seconds for Next.js, then open http://localhost:3000" -ForegroundColor Yellow
 
-Start-Sleep -Seconds 4
 Start-Process "http://localhost:3000"
