@@ -745,7 +745,7 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
       <strong>Select a project first</strong>
       <span>Your project contains the models and deployment artifacts for this workflow.</span>
     </div> : <>
-      <div className="deployment-steps">
+      <div className="deployment-readiness"><ShieldCheck size={16}/><div><strong>Validate before you deploy</strong><span>Studio runs the existing checks against the selected artifact. A failed check means the result needs review before deployment.</span></div></div>\n      <div className="deployment-steps">
         <div className="deployment-step active"><span>1</span><div><b>Select model</b><small>Choose a trained artifact</small></div></div>
         <div className="deployment-step"><span>2</span><div><b>Choose target</b><small>Pick the runtime format</small></div></div>
         <div className="deployment-step"><span>3</span><div><b>Validate</b><small>Check integrity and performance</small></div></div>
@@ -753,8 +753,8 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
 
       <div className="two-column">
         <section className="card deployment-config">
-          <div className="section-title">Deployment setup</div>
-          <p className="form-help">Studio orchestrates export and validation. Your model and algorithm implementation remain unchanged.</p>
+          <div className="section-title">Prepare validation</div>
+          <p className="form-help">Choose an existing trained model and target. Studio orchestrates export and validation without changing the model or algorithm.</p>
 
           <label>Model
             <select value={modelId} onChange={e=>{setModelId(e.target.value);setResult(null)}} disabled={busy}>
@@ -791,7 +791,7 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
 
         <section className="card deployment-result-card">
           <div className="section-head">
-            <div><div className="section-title">Validation result</div><div className="subtitle">{result?"Latest run":"Results will appear here after validation."}</div></div>
+            <div><div className="section-title">Validation result</div><div className="subtitle">{result?"Latest validation run":"The validation outcome will appear here."}</div></div>
             {result&&<div className={`badge ${result.ready_for_deployment?"success-badge":"failure-badge"}`}>{result.ready_for_deployment?"READY":"FAILED"}</div>}
           </div>
 
@@ -814,7 +814,7 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
               <Stat icon={<ShieldCheck size={15}/>} label="Format" value={String(result.validation.format).toUpperCase()} meta="validated artifact"/>
             </div>}
 
-            <div className="artifact-box"><span>Artifact</span><code>{result.artifact}</code></div>
+            <details className="technical-details deployment-technical"><summary>Technical details</summary><div className="technical-grid"><div><span>Target</span><b>{String(target).toUpperCase()}</b></div><div><span>Format</span><b>{String(result.validation.format||target).toUpperCase()}</b></div><div><span>Validation runs</span><b>{result.validation.runs ?? "—"}</b></div><div><span>Warm-up runs</span><b>{result.validation.warmup_runs ?? "—"}</b></div></div><div className="artifact-box"><span>Artifact path</span><code>{result.artifact}</code></div></details>
           </>}
         </section>
       </div>
