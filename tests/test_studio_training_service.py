@@ -49,3 +49,6 @@ def test_create_training_config(tmp_path: Path):
     assert "algorithm: patchcore" in text
     assert "batch_size: 4" in text
     assert "class_name: bottle" in text
+    assert "crop_size:" in text
+    assert "norm_mean:" in text
+    assert "coreset_ratio:" in text
