@@ -482,32 +482,125 @@ function ModelsPage({models,onRefresh,onNavigate,onDeploy}:{models:Model[];onRef
 }
 
 function DeploymentsPage({project,models,initialModelId}:{project?:Project;models:Model[];initialModelId?:string}) {
-  const [target,setTarget]=useState("onnx"); const [modelId,setModelId]=useState(models[0]?.id||"");
-  const [result,setResult]=useState<Record<string,any>|null>(null); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
+  const [target,setTarget]=useState("onnx");
+  const [modelId,setModelId]=useState(models[0]?.id||"");
+  const [result,setResult]=useState<Record<string,any>|null>(null);
+  const [error,setError]=useState("");
+  const [busy,setBusy]=useState(false);
+
   useEffect(()=>{setModelId(initialModelId || models[0]?.id || "")},[models,initialModelId]);
+
+  const selected=models.find(m=>m.id===modelId);
+
   async function deploy(){
-    if(!project){setError("Select a project first.");return} if(!modelId){setError("Select a model first.");return}
+    if(!project){setError("Select a project first.");return}
+    if(!modelId){setError("Select a model first.");return}
     setBusy(true);setError("");setResult(null);
-    try{const r=await fetch(`${API_BASE}/api/projects/${project.id}/deployments`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model_id:modelId,target,runs:5,warmup_runs:1})});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Deployment failed");setResult(d)}
-    catch(e){setError(e instanceof Error?e.message:"Deployment failed")}finally{setBusy(false)}
+    try{
+      const r=await fetch(`${API_BASE}/api/projects/${project.id}/deployments`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model_id:modelId,target,runs:5,warmup_runs:1})
+      });
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.detail||"Deployment failed");
+      setResult(d);
+    }catch(e){setError(e instanceof Error?e.message:"Deployment failed")}
+    finally{setBusy(false)}
   }
+
   const checks=result?.validation?.checks as Record<string,boolean>|undefined;
-  return <><div className="page-head"><div><div className="eyebrow">Production</div><h1>Deployments</h1><p className="subtitle">Export and validate a trained model using AnomaVision's existing deployment pipeline.</p></div></div>
-    {!project?<div className="card empty">Select a project first.</div>:<div className="two-column">
-      <section className="card"><div className="section-title">Create deployment</div><p className="form-help">Studio only orchestrates export and validation. The model and algorithm implementation stay unchanged.</p>
-        <label>Model<select value={modelId} onChange={e=>setModelId(e.target.value)}>{models.length?models.map(m=><option key={m.id} value={m.id}>{m.algorithm} · {m.class_name} · {m.run_name}</option>):<option value="">No trained models</option>}</select></label>
-        <label>Target<select value={target} onChange={e=>setTarget(e.target.value)}><option value="cpu">CPU validation</option><option value="onnx">ONNX</option><option value="openvino">OpenVINO</option><option value="tensorrt">TensorRT</option><option value="torchscript">TorchScript</option><option value="hailo">Hailo — manual flow</option><option value="kv260">KV260 — manual flow</option></select></label>
-        {error&&<div className="form-error">{error}</div>}
-        <button className="primary full" onClick={deploy} disabled={busy||!models.length}>{busy?"Exporting and validating…":"Export & validate"}</button>
-      </section>
-      <section><div className="card"><div className="section-head"><div className="section-title">Validation result</div>{result&&<div className="badge">{result.status}</div>}</div>
-        {!result?<div className="empty">Choose a model and target, then run validation.</div>:<>
-          <div className="deployment-result"><strong>{result.ready_for_deployment?"Ready for deployment":"Validation failed"}</strong><span>{result.artifact}</span></div>
-          <div className="check-list">{checks&&Object.entries(checks).map(([name,ok])=><div className="check-row" key={name}><span>{ok?"✓":"✕"} {name.replaceAll("_"," ")}</span><b>{ok?"PASS":"FAIL"}</b></div>)}</div>
-          {result.validation?.performance?.latency_ms!=null&&<div className="perf-grid"><Stat icon={<CircleGauge size={15}/>} label="Latency" value={`${result.validation.performance.latency_ms} ms`} meta={`${result.validation.performance.fps} FPS`}/><Stat icon={<ShieldCheck size={15}/>} label="Artifact" value={String(result.validation.format).toUpperCase()} meta="validated format"/></div>}
-        </>}
-      </div></section>
-    </div>}
+  const passed=checks?Object.values(checks).filter(Boolean).length:0;
+  const total=checks?Object.keys(checks).length:0;
+  const performance=result?.validation?.performance;
+
+  return <>
+    <div className="page-head">
+      <div>
+        <div className="eyebrow">Production readiness</div>
+        <h1>Deployments</h1>
+        <p className="subtitle">Choose a target, export the trained artifact, then validate it with the existing AnomaVision pipeline.</p>
+      </div>
+    </div>
+
+    {!project ? <div className="card empty-state">
+      <div className="dataset-empty-icon"><Rocket size={20}/></div>
+      <strong>Select a project first</strong>
+      <span>Your project contains the models and deployment artifacts for this workflow.</span>
+    </div> : <>
+      <div className="deployment-steps">
+        <div className="deployment-step active"><span>1</span><div><b>Select model</b><small>Choose a trained artifact</small></div></div>
+        <div className="deployment-step"><span>2</span><div><b>Choose target</b><small>Pick the runtime format</small></div></div>
+        <div className="deployment-step"><span>3</span><div><b>Validate</b><small>Check integrity and performance</small></div></div>
+      </div>
+
+      <div className="two-column">
+        <section className="card deployment-config">
+          <div className="section-title">Deployment setup</div>
+          <p className="form-help">Studio orchestrates export and validation. Your model and algorithm implementation remain unchanged.</p>
+
+          <label>Model
+            <select value={modelId} onChange={e=>{setModelId(e.target.value);setResult(null)}} disabled={busy}>
+              {models.length?models.map(m=><option key={m.id} value={m.id}>{m.algorithm.toUpperCase()} · {m.class_name} · {m.run_name}</option>):<option value="">No trained models</option>}
+            </select>
+          </label>
+
+          {selected && <div className="selected-model">
+            <div className="icon-box"><BrainCircuit size={14}/></div>
+            <div><b>{selected.algorithm.toUpperCase()} · {selected.class_name}</b><span>{selected.run_name}</span></div>
+            <span className="badge">{selected.status}</span>
+          </div>}
+
+          <div className="target-label">Deployment target</div>
+          <div className="target-grid">
+            {[
+              ["cpu","CPU","Validate existing model"],
+              ["onnx","ONNX","Portable runtime artifact"],
+              ["openvino","OpenVINO","Intel / CPU deployment"],
+              ["tensorrt","TensorRT","NVIDIA deployment"],
+              ["torchscript","TorchScript","PyTorch runtime"],
+              ["hailo","Hailo","Manual deployment flow"],
+              ["kv260","KV260","Manual deployment flow"],
+            ].map(([id,name,desc])=><button key={id} className={`target-card ${target===id?"selected":""}`} onClick={()=>{setTarget(id);setResult(null)}} disabled={busy}>
+              <strong>{name}</strong><span>{desc}</span>
+            </button>)}
+          </div>
+
+          {error&&<div className="form-error">{error}</div>}
+          <button className="primary full" onClick={deploy} disabled={busy||!models.length}>
+            <Rocket size={13}/>{busy?"Exporting and validating…":"Export & validate"}
+          </button>
+        </section>
+
+        <section className="card deployment-result-card">
+          <div className="section-head">
+            <div><div className="section-title">Validation result</div><div className="subtitle">{result?"Latest run":"Results will appear here after validation."}</div></div>
+            {result&&<div className={`badge ${result.ready_for_deployment?"success-badge":"failure-badge"}`}>{result.ready_for_deployment?"READY":"FAILED"}</div>}
+          </div>
+
+          {!result ? <div className="deployment-empty">
+            <div className="deployment-empty-icon"><ShieldCheck size={22}/></div>
+            <strong>Validate before deployment</strong>
+            <span>Studio will export the selected target, run the existing validation checks, and report the result here.</span>
+          </div> : <>
+            <div className={`deployment-outcome ${result.ready_for_deployment?"ready":"failed"}`}>
+              <div className="outcome-icon">{result.ready_for_deployment?"✓":"!"}</div>
+              <div><strong>{result.ready_for_deployment?"Ready for deployment":"Validation failed"}</strong><span>{result.ready_for_deployment?"All required checks passed.":"Review the failed checks before using this artifact."}</span></div>
+            </div>
+
+            {checks&&<div className="validation-summary"><b>{passed}/{total}</b><span>validation checks passed</span></div>}
+
+            <div className="check-list">{checks&&Object.entries(checks).map(([name,ok])=><div className="check-row" key={name}><span>{ok?"✓":"✕"} {name.replaceAll("_"," ")}</span><b>{ok?"PASS":"FAIL"}</b></div>)}</div>
+
+            {performance?.latency_ms!=null&&<div className="perf-grid">
+              <Stat icon={<CircleGauge size={15}/>} label="Latency" value={`${performance.latency_ms} ms`} meta={`${performance.fps} FPS`}/>
+              <Stat icon={<ShieldCheck size={15}/>} label="Format" value={String(result.validation.format).toUpperCase()} meta="validated artifact"/>
+            </div>}
+
+            <div className="artifact-box"><span>Artifact</span><code>{result.artifact}</code></div>
+          </>}
+        </section>
+      </div>
+    </>}
   </>;
 }
 
