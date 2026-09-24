@@ -618,7 +618,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
           </div>
           <div className="training-result-grid">
             <div><span>Algorithm</span><b>{String(result.algorithm ?? algorithm).toUpperCase()}</b></div>
-            <div><span>Class</span><b>{String(result.class_name ?? className || "From config")}</b></div>
+            <div><span>Class</span><b>{String(result.class_name ?? className ?? "From config")}</b></div>
             <div><span>Run</span><b>{String(result.run_name ?? result.model_id ?? "Created")}</b></div>
             <div><span>Status</span><b>{String(result.status ?? "trained")}</b></div>
           </div>
