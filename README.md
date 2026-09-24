@@ -114,6 +114,28 @@ See the [Production Data Drift guide](docs/anomaly_detection_production_data_dri
 
 ---
 
+## Benchmarks
+
+AnomaVision includes a reproducible benchmark workflow for comparing anomaly-detection performance and runtime characteristics.
+
+The benchmark reports **Image AUROC, Pixel AUROC, latency, P95 latency, FPS, model/artifact size, and memory usage**. The current comparison script uses a shared evaluation contract so results can be reproduced consistently.
+
+### Quick example
+
+```powershell
+python scripts\benchmarks\compare_with_anomalib.py `
+  --dataset_path D:\01-DATA `
+  --class_name bottle `
+  --algorithms padim `
+  --device cpu
+```
+
+Historical benchmark results are available for **MVTec AD and VisA**, including per-class results and visual comparisons. These results are retained for reference; the corrected benchmark should be rerun before making current performance claims.
+
+See the [Benchmark guide](docs/benchmark.md) for the methodology, commands, metrics, and detailed results.
+
+---
+
 ## KV260 support
 
 AnomaVision supports a **Vitis AI workflow for PaDiM and PatchCore on the AMD/Xilinx Kria KV260**. XModel compilation has been validated in the Vitis AI environment; final on-device validation requires the physical hardware.
