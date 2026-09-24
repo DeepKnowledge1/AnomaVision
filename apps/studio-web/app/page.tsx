@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity, Box, BrainCircuit, ChevronDown, CircleGauge, Database,
   FlaskConical, LayoutDashboard, MonitorCog, Play, Rocket, Settings2,
@@ -8,6 +8,24 @@ import {
 } from "lucide-react";
 
 type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Monitoring";
+
+type Project = {
+  id: string;
+  name: string;
+  description?: string;
+  algorithm: string;
+  status: string;
+};
+
+type Model = {
+  id: string;
+  algorithm: string;
+  class_name: string;
+  run_name: string;
+  status: string;
+};
+
+const API_BASE = process.env.NEXT_PUBLIC_STUDIO_API_URL ?? "http://localhost:8000";
 
 const nav: { label: Page; icon: React.ElementType }[] = [
   { label: "Overview", icon: LayoutDashboard },
@@ -30,6 +48,53 @@ const workflows = [
 
 export default function StudioPage() {
   const [page, setPage] = useState<Page>("Overview");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>("");
+  const [models, setModels] = useState<Model[]>([]);
+  const [apiHealthy, setApiHealthy] = useState(false);
+
+  useEffect(() => {
+    void loadProjects();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProject) {
+      setModels([]);
+      return;
+    }
+    void loadModels(selectedProject);
+  }, [selectedProject]);
+
+  async function loadProjects() {
+    try {
+      const [healthResponse, projectResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/health`, { cache: "no-store" }),
+        fetch(`${API_BASE}/api/projects`, { cache: "no-store" }),
+      ]);
+      if (!healthResponse.ok || !projectResponse.ok) throw new Error("Studio API unavailable");
+      const data = (await projectResponse.json()) as Project[];
+      setApiHealthy(true);
+      setProjects(data);
+      setSelectedProject((current) => current || data[0]?.id || "");
+    } catch {
+      setApiHealthy(false);
+    }
+  }
+
+  async function loadModels(projectId: string) {
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${projectId}/models`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Models unavailable");
+      setModels((await response.json()) as Model[]);
+    } catch {
+      setModels([]);
+    }
+  }
+
+  const project = useMemo(
+    () => projects.find((item) => item.id === selectedProject),
+    [projects, selectedProject],
+  );
 
   return (
     <div className="studio-shell">
@@ -53,7 +118,11 @@ export default function StudioPage() {
         <button className="nav-item"><Settings2 size={15} strokeWidth={1.8} /><span>Settings</span></button>
 
         <div className="sidebar-bottom">
-          <div className="storage"><strong>Local workspace</strong>~/.anomavision/projects</div>
+          <div className="storage">
+            <strong>Studio API</strong>
+            <span className={`status-dot ${apiHealthy ? "" : "offline-dot"}`} />
+            {apiHealthy ? "Connected" : "Offline"}
+          </div>
         </div>
       </aside>
 
@@ -61,35 +130,70 @@ export default function StudioPage() {
         <header className="topbar">
           <div className="crumb">Studio / {page}</div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button className="project-switcher"><CircleGauge size={13} /> Bottle Inspection <ChevronDown size={13} /></button>
+            <select
+              className="project-switcher"
+              value={selectedProject}
+              onChange={(event) => setSelectedProject(event.target.value)}
+              aria-label="Select project"
+            >
+              {projects.length === 0 && <option value="">No projects</option>}
+              {projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
             <div className="avatar">AR</div>
           </div>
         </header>
 
         <div className="content">
-          {page === "Overview" ? <Overview onNavigate={setPage} /> : <Placeholder page={page} />}
+          {page === "Overview" ? (
+            <Overview project={project} models={models} apiHealthy={apiHealthy} onNavigate={setPage} />
+          ) : (
+            <Placeholder page={page} />
+          )}
         </div>
       </main>
     </div>
   );
 }
 
-function Overview({ onNavigate }: { onNavigate: (page: Page) => void }) {
+function Overview({
+  project,
+  models,
+  apiHealthy,
+  onNavigate,
+}: {
+  project?: Project;
+  models: Model[];
+  apiHealthy: boolean;
+  onNavigate: (page: Page) => void;
+}) {
+  const latestModel = models[0];
+  const projectName = project?.name ?? "No project selected";
+  const algorithm = latestModel?.algorithm ?? project?.algorithm ?? "—";
+
   return (
     <>
       <div className="page-head">
         <div>
           <div className="eyebrow">Project overview</div>
-          <h1>Bottle Inspection</h1>
-          <p className="subtitle">Industrial anomaly detection · PatchCore · local workspace</p>
+          <h1>{projectName}</h1>
+          <p className="subtitle">
+            {project?.description || `Industrial anomaly detection · ${algorithm.toUpperCase()} · local workspace`}
+          </p>
         </div>
         <button className="primary" onClick={() => onNavigate("Training")}><Play size={13} style={{ marginRight: 7, verticalAlign: -2 }} /> New training run</button>
       </div>
 
+      {!apiHealthy && (
+        <div className="api-warning">
+          <CircleGauge size={14} />
+          <span>Studio API is offline. Start the FastAPI service to load your real projects and models.</span>
+        </div>
+      )}
+
       <div className="grid-4">
-        <Stat icon={<Database size={15} />} label="Dataset" value="1,248" meta="normal images · ready" />
-        <Stat icon={<BrainCircuit size={15} />} label="Latest model" value="PatchCore" meta="trained · 18 min ago" />
-        <Stat icon={<ShieldCheck size={15} />} label="Validation" value="Passed" meta="CPU · ONNX · 11.0 ms" green />
+        <Stat icon={<Database size={15} />} label="Projects" value={String(project ? 1 : 0)} meta={project ? "active project" : "create a project"} />
+        <Stat icon={<BrainCircuit size={15} />} label="Models" value={String(models.length)} meta={latestModel ? `${latestModel.algorithm} · ${latestModel.status}` : "no trained models"} />
+        <Stat icon={<ShieldCheck size={15} />} label="Validation" value="Ready" meta="deployment validation available" green />
         <Stat icon={<MonitorCog size={15} />} label="Deployment" value="Not deployed" meta="choose a target" />
       </div>
 
@@ -111,17 +215,27 @@ function Overview({ onNavigate }: { onNavigate: (page: Page) => void }) {
 
       <section className="section activity">
         <div className="card">
-          <div className="section-head"><div className="section-title">Recent activity</div><div className="section-link">View all</div></div>
-          <ActivityRow icon={<UploadCloud size={14} />} title="Dataset analyzed" sub="bottle / train / good · 1,248 images" badge="Ready" />
-          <ActivityRow icon={<BrainCircuit size={14} />} title="PatchCore training completed" sub="18 minutes ago · 224 × 224 · CPU" badge="Ready" />
-          <ActivityRow icon={<ShieldCheck size={14} />} title="ONNX validation completed" sub="11.0 ms latency · consistency checked" badge="Passed" />
+          <div className="section-head"><div className="section-title">Recent model activity</div><div className="section-link">{models.length} model{models.length === 1 ? "" : "s"}</div></div>
+          {models.length === 0 ? (
+            <div className="empty">No trained models registered for this project yet.</div>
+          ) : (
+            models.slice(0, 4).map((model) => (
+              <ActivityRow
+                key={model.id}
+                icon={<BrainCircuit size={14} />}
+                title={`${model.algorithm.toUpperCase()} · ${model.class_name}`}
+                sub={model.run_name}
+                badge={model.status}
+              />
+            ))
+          )}
         </div>
 
         <div className="card">
           <div className="section-head"><div className="section-title">Runtime health</div><div className="section-link">Monitoring</div></div>
-          <div className="row"><div className="row-main"><div className="icon-box"><CircleGauge size={14} /></div><div><div className="row-title">Inference engine</div><div className="row-sub">AnomaVision core</div></div></div><div className="badge"><span className="status-dot" />Healthy</div></div>
-          <div className="row"><div className="row-main"><div className="icon-box"><SlidersHorizontal size={14} /></div><div><div className="row-title">Data drift</div><div className="row-sub">Reference window · 500</div></div></div><div className="badge">No alert</div></div>
-          <div className="row"><div className="row-main"><div className="icon-box"><Sparkles size={14} /></div><div><div className="row-title">Studio</div><div className="row-sub">Local API connection</div></div></div><div className="badge">Ready</div></div>
+          <div className="row"><div className="row-main"><div className="icon-box"><CircleGauge size={14} /></div><div><div className="row-title">Studio API</div><div className="row-sub">Python / FastAPI adapter</div></div></div><div className="badge"><span className={`status-dot ${apiHealthy ? "" : "offline-dot"}`} />{apiHealthy ? "Healthy" : "Offline"}</div></div>
+          <div className="row"><div className="row-main"><div className="icon-box"><SlidersHorizontal size={14} /></div><div><div className="row-title">Data drift</div><div className="row-sub">Existing observer-only monitor</div></div></div><div className="badge">Available</div></div>
+          <div className="row"><div className="row-main"><div className="icon-box"><Sparkles size={14} /></div><div><div className="row-title">AnomaVision core</div><div className="row-sub">Training and inference engine</div></div></div><div className="badge">Ready</div></div>
         </div>
       </section>
     </>
@@ -156,8 +270,8 @@ function Placeholder({ page }: { page: Page }) {
       <div className="card" style={{ minHeight: 260, display: "grid", placeItems: "center" }}>
         <div style={{ textAlign: "center", maxWidth: 420 }}>
           <div className="icon-box" style={{ margin: "0 auto 14px", width: 42, height: 42 }}><Sparkles size={18} /></div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>This workspace is ready for the API</div>
-          <div className="subtitle">The React/Next.js shell is now separate from the Python ML engine. The next step is wiring these views to the existing Studio services.</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Connected to the Studio architecture</div>
+          <div className="subtitle">This view is ready to consume the same Python services through the Studio API. No ML logic is duplicated in the frontend.</div>
         </div>
       </div>
     </>
