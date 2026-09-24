@@ -201,11 +201,119 @@ function ProjectsPage({ projects, selectedProject, onSelect, onCreated }: { proj
 }
 
 function DatasetsPage({ project }: { project?: Project }) {
-  const [path,setPath]=useState(""); const [report,setReport]=useState<DatasetReport|null>(null); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
-  async function inspect(){if(!project){setError("Select a project first.");return;}if(!path.trim()){setError("Dataset path is required.");return;}setBusy(true);setError("");try{const r=await fetch(`${API_BASE}/api/projects/${project.id}/datasets/inspect`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path,recursive:true})});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Dataset inspection failed");setReport(d);}catch(e){setError(e instanceof Error?e.message:"Dataset inspection failed");}finally{setBusy(false);}}
-  return <><div className="page-head"><div><div className="eyebrow">Data</div><h1>Datasets</h1><p className="subtitle">Inspect an existing local image folder before training. Images are not copied.</p></div></div>
-    {!project?<div className="card empty">Select or create a project first.</div>:<><div className="card dataset-form"><div><label>Local dataset path<input value={path} onChange={e=>setPath(e.target.value)} placeholder="C:\data\bottle"/></label></div><button className="primary" onClick={inspect} disabled={busy}>{busy?"Inspecting…":"Inspect dataset"}</button></div>
-    {error&&<div className="form-error">{error}</div>}{report&&<><div className="grid-4 section"><Stat icon={<Database size={15}/>} label="Images" value={String(report.image_count)} meta={`${report.valid_count} valid`}/><Stat icon={<ShieldCheck size={15}/>} label="Failed" value={String(report.failed_count)} meta="image read failures"/><Stat icon={<Sparkles size={15}/>} label="Duplicates" value={String(report.duplicate_count)} meta="duplicate images"/><Stat icon={<Box size={15}/>} label="Resolutions" value={String(Object.keys(report.resolutions).length)} meta="unique sizes"/></div><div className="card section"><div className="section-title">Resolution distribution</div>{Object.keys(report.resolutions).length?Object.entries(report.resolutions).map(([resolution,count])=><div className="resolution-row" key={resolution}><span>{resolution}</span><b>{count}</b></div>):<div className="empty">No valid images found.</div>}</div></>}</>}</>;
+  const [path,setPath]=useState("");
+  const [report,setReport]=useState<DatasetReport|null>(null);
+  const [error,setError]=useState("");
+  const [busy,setBusy]=useState(false);
+
+  async function inspect(){
+    if(!project){setError("Select a project first.");return;}
+    if(!path.trim()){setError("Choose a local image folder first.");return;}
+    setBusy(true);setError("");
+    try{
+      const r=await fetch(`${API_BASE}/api/projects/${project.id}/datasets/inspect`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({path,recursive:true})
+      });
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.detail||"Dataset inspection failed");
+      setReport(d);
+    }catch(e){
+      setError(e instanceof Error?e.message:"Dataset inspection failed");
+    }finally{setBusy(false);}
+  }
+
+  const issueCount=(report?.failed_count||0)+(report?.duplicate_count||0);
+  const ready=Boolean(report && report.image_count>0 && report.failed_count===0);
+  const resolutionEntries=report?Object.entries(report.resolutions).sort((a,b)=>b[1]-a[1]):[];
+  const commonResolution=resolutionEntries[0]?.[0]||"—";
+
+  return <>
+    <div className="page-head">
+      <div>
+        <div className="eyebrow">Data readiness</div>
+        <h1>Dataset</h1>
+        <p className="subtitle">Check your images before training. Studio only inspects the folder — your images stay where they are.</p>
+      </div>
+    </div>
+
+    {!project
+      ? <div className="card empty-state dataset-empty">
+          <div className="dataset-empty-icon"><Database size={20}/></div>
+          <strong>Create or select a project first</strong>
+          <span>Your dataset will be linked to the selected project.</span>
+        </div>
+      : <>
+        <section className="card dataset-hero">
+          <div className="dataset-hero-copy">
+            <div className="dataset-icon"><Database size={18}/></div>
+            <div>
+              <div className="section-title">Check a local image folder</div>
+              <p>Studio looks at image count, readable files, duplicates and image sizes before you start training.</p>
+            </div>
+          </div>
+          <div className="dataset-input-row">
+            <label>
+              Dataset folder
+              <input value={path} onChange={e=>setPath(e.target.value)} placeholder="C:\data\bottle"/>
+            </label>
+            <button className="primary" onClick={inspect} disabled={busy}>
+              <ShieldCheck size={13}/>{busy?"Checking…":"Check dataset"}
+            </button>
+          </div>
+          <div className="dataset-tip">Tip: use the folder that contains your training images. Subfolders are included automatically.</div>
+        </section>
+
+        {error&&<div className="form-error">{error}</div>}
+
+        {!report && !error && <div className="card dataset-guide">
+          <div className="dataset-guide-step"><span>1</span><div><strong>Choose your image folder</strong><p>Use a local path such as <code>C:\data\bottle</code>.</p></div></div>
+          <div className="dataset-guide-step"><span>2</span><div><strong>Check readiness</strong><p>Studio will scan the images without copying or modifying them.</p></div></div>
+          <div className="dataset-guide-step"><span>3</span><div><strong>Start training</strong><p>Once the data looks good, continue to the Training step.</p></div></div>
+        </div>}
+
+        {report&&<>
+          <div className={`dataset-readiness ${ready?"ready":"review"}`}>
+            <div className="dataset-readiness-icon">{ready?<ShieldCheck size={19}/>:<CircleGauge size={19}/>}</div>
+            <div>
+              <strong>{ready?"Ready for training":"Review your dataset first"}</strong>
+              <span>{ready
+                ? `${report.valid_count} readable images found. You can continue to training.`
+                : report.image_count===0
+                  ? "No readable images were found in this folder."
+                  : `${report.failed_count} image(s) could not be read. Fix those files and check again.`}</span>
+            </div>
+          </div>
+
+          <div className="grid-4 section">
+            <Stat icon={<Database size={15}/>} label="Images" value={String(report.image_count)} meta={`${report.valid_count} readable`}/>
+            <Stat icon={<ShieldCheck size={15}/>} label="Issues" value={String(report.failed_count)} meta={report.failed_count?"files need attention":"no read failures"} green={!report.failed_count}/>
+            <Stat icon={<Sparkles size={15}/>} label="Duplicates" value={String(report.duplicate_count)} meta={report.duplicate_count?"review before training":"none found"} green={!report.duplicate_count}/>
+            <Stat icon={<Box size={15}/>} label="Main size" value={commonResolution} meta={`${resolutionEntries.length} unique sizes`}/>
+          </div>
+
+          <div className="dataset-details section">
+            <div className="section-head">
+              <div><div className="section-title">Dataset details</div><div className="subtitle">A quick look at what Studio found.</div></div>
+              <div className="section-link">{issueCount ? `${issueCount} item(s) to review` : "Looks clean"}</div>
+            </div>
+            <div className="card">
+              {resolutionEntries.length
+                ? <div className="resolution-list">
+                    {resolutionEntries.map(([resolution,count])=><div className="resolution-row" key={resolution}><span>{resolution}</span><b>{count}</b></div>)}
+                  </div>
+                : <div className="empty">No valid images found.</div>}
+              {report.failures&&report.failures.length>0&&<div className="dataset-failures">
+                <div className="dataset-subtitle">Files that could not be read</div>
+                {report.failures.slice(0,5).map((failure)=><div className="failure-row" key={failure.path}><span title={failure.path}>{failure.path}</span><small>{failure.error}</small></div>)}
+                {report.failures.length>5&&<div className="dataset-more">+ {report.failures.length-5} more</div>}
+              </div>}
+            </div>
+          </div>
+        </>}
+      </>}
+  </>;
 }
 
 function TrainingPage({ project, onFinished }: { project?: Project; onFinished:()=>Promise<void> }) {
