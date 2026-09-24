@@ -115,3 +115,18 @@ h1 { font-size: 25px; line-height: 1.15; letter-spacing: -.035em; margin: 0; }
   .grid-4, .workflow { grid-template-columns: 1fr; }
   .page-head { align-items: flex-start; flex-direction: column; }
 }
+
+
+.project-switcher {
+  appearance: none;
+  min-width: 170px;
+  color: #dfe3e9;
+  outline: none;
+}
+.project-switcher option { background: #11141a; color: #f5f7fa; }
+.api-warning {
+  display: flex; align-items: center; gap: 9px; border: 1px solid #4b3510;
+  background: rgba(251,191,36,.07); color: #e9c878; border-radius: 9px;
+  padding: 10px 12px; font-size: 11px; margin-bottom: 14px;
+}
+.offline-dot { background: var(--red); }
