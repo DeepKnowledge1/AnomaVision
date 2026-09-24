@@ -49,6 +49,19 @@ anomavision export --config config.yml --format onnx
 
 ## 🛡️ Deployment validation
 
+Validate exported models before deployment without changing the anomaly-detection algorithm.
+
+It checks **model integrity, inference, performance, backend compatibility, and output consistency** against a reference model.
+
+```powershell
+anomavision validate `
+  --model model.onnx `
+  --reference-model model.pt `
+  --config config.yml
+  ```
+
+## 🛡️ Deployment validation
+
 Before moving an exported model into production, AnomaVision can validate the deployment artifact without changing the underlying anomaly-detection algorithm.
 
 It checks model integrity, inference, performance, supported backend availability, and—when a reference model is supplied—output consistency.
@@ -58,7 +71,6 @@ It checks model integrity, inference, performance, supported backend availabilit
 ```powershell
 anomavision validate `
   --model distributions\\padim\\bottle\\anomav_exp\\model.onnx `
-  --reference-model distributions\\padim\\bottle\\anomav_exp\\model.pt `
   --config config.yml `
   --runs 20
 ```
@@ -66,24 +78,16 @@ anomavision validate `
 Typical output includes:
 
 ```text
-Output consistency
-  Score max abs diff:  ...
-  Score mean abs diff: ...
-  Map max abs diff:    ...
-  Map mean abs diff:   ...
-  Tolerance:           0.0001
-
-Backend compatibility
-  pytorch: available
-  torchscript: available
-  onnxruntime: available
-  openvino: available
-  tensorrt: not installed
-  hailo: not installed
-  vitis_ai_vart: available
-  vitis_ai_xir: available
-  vitis_ai_library: not installed
-  kv260: available
+AnomaVision Deployment Validation
+────────────────────────────────────
+Model: distributions\padim\bottle\anomav_exp\model.onnx
+✓ File Exists
+✓ Onnx Valid
+✓ Onnxruntime Inference
+✓ Static Input Shape
+Latency: 11.020 ms
+FPS:     90.75
+....
 ```
 
 Supported deployment artifacts include PyTorch, TorchScript, ONNX, TensorRT, OpenVINO, Hailo HEF, and Vitis AI/KV260 XModel.
