@@ -178,3 +178,6 @@ input:focus, label select:focus { border-color:#6650a8; box-shadow:0 0 0 2px rgb
 .warning-chip { padding:6px 8px; border-radius:999px; border:1px solid #63402c; background:rgba(245,158,11,.08); color:#f5c77b; font-size:9px; text-transform:capitalize; }
 
 .live-result-image { display:block; width:min(100%,520px); margin-top:16px; border-radius:10px; border:1px solid var(--border); }
+
+
+.live-charts{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.spark-bars{height:150px;display:flex;align-items:flex-end;gap:8px;padding:18px 4px 4px}.spark-column{height:100%;flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;min-width:12px}.spark-bar{width:100%;min-height:4px;border-radius:4px 4px 2px 2px;background:var(--accent);opacity:.82}.spark-column span{font-size:10px;color:var(--muted)}@media(max-width:800px){.live-charts{grid-template-columns:1fr}}
