@@ -26,7 +26,9 @@ def normalize_dataset_source(source: str, class_name: str = "default") -> tuple[
         raise ValueError(f"Dataset folder does not exist: {source_path}")
 
     if (source_path / "train" / "good").is_dir():
-        return source_path.parent if source_path.name else source_path, source_path.name or class_name
+        # The existing train.py already supports dataset roots that directly
+        # contain train/good, so keep this source untouched.
+        return source_path, class_name
 
     if source_path.name.lower() == "good" and source_path.parent.name.lower() == "train":
         train_root = source_path.parent.parent
