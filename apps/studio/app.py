@@ -16,6 +16,7 @@ import streamlit as st
 
 from apps.studio.services.catalog import ALGORITHMS, DEPLOYMENT_TARGETS
 from apps.studio.services.project_store import ProjectStore
+from apps.studio.training_page import render_training_page
 
 st.set_page_config(
     page_title="AnomaVision Studio",
@@ -64,7 +65,7 @@ def sidebar() -> str:
         st.caption("Train · Validate · Deploy · Inspect · Monitor")
         page = st.radio(
             "Workspace",
-            ["Dashboard", "Projects", "Datasets", "Models", "Deployments", "Live", "Monitoring", "Settings"],
+            ["Dashboard", "Projects", "Datasets", "Training", "Models", "Deployments", "Live", "Monitoring", "Settings"],
             label_visibility="collapsed",
         )
         st.divider()
@@ -296,6 +297,7 @@ page = sidebar()
 if page == "Dashboard": dashboard()
 elif page == "Projects": projects_page()
 elif page == "Datasets": datasets_page()
+elif page == "Training": render_training_page(store, STORE_ROOT, ALGORITHMS)
 elif page == "Models": models_page()
 elif page == "Deployments": deployments_page()
 elif page == "Live": live_page()
