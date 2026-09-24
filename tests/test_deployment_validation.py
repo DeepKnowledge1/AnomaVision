@@ -19,6 +19,7 @@ def _make_model(path: Path) -> None:
         graph,
         producer_name="anomavision-test",
         opset_imports=[helper.make_opsetid("", 17)],
+        ir_version=11,
     )
     onnx.save(model, path)
 
