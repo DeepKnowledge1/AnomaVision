@@ -638,7 +638,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
           </section>
         )}
       </div>
-  </div>;
+  </div>
 }
 
 function ModelsPage({models,onRefresh,onNavigate,onDeploy}:{models:Model[];onRefresh:()=>Promise<void>;onNavigate:(p:Page)=>void;onDeploy:(id:string)=>void}) {
