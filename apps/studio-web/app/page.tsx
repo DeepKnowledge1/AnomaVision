@@ -549,98 +549,113 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
     finally{setBusy(false)}
   }
 
-  return <div className="training-page">
-    <div className="page-head">
-      <div>
-        <div className="eyebrow">Build a model</div>
-        <h1>Training</h1>
-        <p className="subtitle">Set up your experiment, then let the existing AnomaVision engine do the training.</p>
-      </div>
-    </div>
-    {!project
-      ? <div className="card empty-state"><strong>Select a project first</strong><span>Your training run will be saved inside the selected project.</span></div>
-      : <div className="training-content">
-        <div className="training-steps">
-          <div className="training-step active"><span>1</span><div><strong>Data</strong><small>Choose images</small></div></div>
-          <div className="training-line"/>
-          <div className="training-step active"><span>2</span><div><strong>Method</strong><small>Choose detector</small></div></div>
-          <div className="training-line"/>
-          <div className="training-step"><span>3</span><div><strong>Run</strong><small>Start training</small></div></div>
+  return (
+    <div className="training-page">
+      <div className="page-head">
+        <div>
+          <div className="eyebrow">Build a model</div>
+          <h1>Training</h1>
+          <p className="subtitle">Set up your experiment, then let the existing AnomaVision engine do the training.</p>
         </div>
+      </div>
 
-        <div className="two-column training-layout">
-          <section className="card">
-            <div className="section-title">1. Training data</div>
-            <p className="form-help">Point Studio to the same local image folder you checked in Data Readiness.</p>
-            <label>Dataset path<input value={dataset} onChange={e=>setDataset(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
-            <label>Class name<input value={className} onChange={e=>setClassName(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
-            <div className="config-field-note">{className ? <span>Using <strong>{className}</strong> from {configLoaded ? "config.yml" : "the current setup"}.</span> : <span>Class name will be taken from <strong>config.yml</strong> if you leave it empty.</span>}</div>
-          </section>
+      {!project && (
+        <div className="card empty-state">
+          <strong>Select a project first</strong>
+          <span>Your training run will be saved inside the selected project.</span>
+        </div>
+      )}
 
-          <section className="card">
-            <div className="section-title">2. Detection method</div>
-            <p className="form-help">Choose the anomaly detector for this experiment.</p>
-            <div className="algorithm-options">
-              {[
-                ["patchcore","PatchCore","Strong local-feature baseline"],
-                ["padim","PaDiM","Fast statistical baseline"],
-                ["efficientad","EfficientAD","Lightweight industrial detector"]
-              ].map(([value,title,desc])=>
-                <button key={value} type="button" className={`algorithm-option ${algorithm===value?"selected":""}`} onClick={()=>setAlgorithm(value)}>
-                  <span className="algorithm-radio">{algorithm===value?"✓":""}</span>
-                  <span><strong>{title}</strong><small>{desc}</small></span>
-                </button>
-              )}
+      {project && (
+        <div className="training-content">
+          <div className="training-steps">
+            <div className="training-step active"><span>1</span><div><strong>Data</strong><small>Choose images</small></div></div>
+            <div className="training-line"/>
+            <div className="training-step active"><span>2</span><div><strong>Method</strong><small>Choose detector</small></div></div>
+            <div className="training-line"/>
+            <div className="training-step"><span>3</span><div><strong>Run</strong><small>Start training</small></div></div>
+          </div>
+
+          <div className="two-column training-layout">
+            <section className="card">
+              <div className="section-title">1. Training data</div>
+              <p className="form-help">Point Studio to the same local image folder you checked in Data Readiness.</p>
+              <label>Dataset path<input value={dataset} onChange={e=>setDataset(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
+              <label>Class name<input value={className} onChange={e=>setClassName(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
+              <div className="config-field-note">{className ? <span>Using <strong>{className}</strong> from {configLoaded ? "config.yml" : "the current setup"}.</span> : <span>Class name will be taken from <strong>config.yml</strong> if you leave it empty.</span>}</div>
+            </section>
+
+            <section className="card">
+              <div className="section-title">2. Detection method</div>
+              <p className="form-help">Choose the anomaly detector for this experiment.</p>
+              <div className="algorithm-options">
+                {[
+                  ["patchcore","PatchCore","Strong local-feature baseline"],
+                  ["padim","PaDiM","Fast statistical baseline"],
+                  ["efficientad","EfficientAD","Lightweight industrial detector"]
+                ].map(([value,title,desc])=>
+                  <button key={value} type="button" className={`algorithm-option ${algorithm===value?"selected":""}`} onClick={()=>setAlgorithm(value)}>
+                    <span className="algorithm-radio">{algorithm===value?"✓":""}</span>
+                    <span><strong>{title}</strong><small>{desc}</small></span>
+                  </button>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <section className="card training-advanced">
+            <div className="section-head">
+              <div><div className="section-title">Optional settings</div><div className="subtitle">Leave these empty to use the canonical config.yml values.</div></div>
+              <div className="section-link">Config-aware</div>
+            </div>
+            <div className="form-grid">
+              <label>Image size<input value={resize} onChange={e=>setResize(e.target.value)} placeholder="From config.yml"/></label>
+              <label>Batch size<input value={batch} onChange={e=>setBatch(e.target.value)} placeholder="Use config default"/></label>
+              <label>Backbone<input value={backbone} onChange={e=>setBackbone(e.target.value)} placeholder="Use config default"/></label>
             </div>
           </section>
+
+          <div className="training-action">
+            <div><strong>Ready to train?</strong><span>{algorithm.toUpperCase()} · {resize || "config.yml"} · {className || "config.yml class"}</span></div>
+            <button className="primary" onClick={train} disabled={busy}><Play size={13}/>{busy?"Training…":"Start training"}</button>
+          </div>
+
+          {error && <div className="form-error">{error}</div>}
+
+          {result && (
+            <section className="card training-result">
+              <div className="section-head">
+                <div><div className="section-title">Training completed</div><div className="subtitle">The model is now available in Models.</div></div>
+                <div className="badge success-badge">Completed</div>
+              </div>
+              <div className="training-success">
+                <div className="training-success-icon"><ShieldCheck size={18}/></div>
+                <div><strong>Your model was created successfully.</strong><span>Open Models to review the artifact or continue to validation.</span></div>
+                <button className="secondary" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}>Continue</button>
+              </div>
+              <div className="training-result-grid">
+                <div><span>Algorithm</span><b>{String(result.algorithm ?? algorithm).toUpperCase()}</b></div>
+                <div><span>Class</span><b>{String(result.class_name ?? className ?? "From config")}</b></div>
+                <div><span>Run</span><b>{String(result.run_name ?? result.model_id ?? "Created")}</b></div>
+                <div><span>Status</span><b>{String(result.status ?? "trained")}</b></div>
+              </div>
+              {(result.model_path || result.path) && (
+                <div className="artifact-box">
+                  <span>Model artifact</span>
+                  <code>{String(result.model_path ?? result.path)}</code>
+                </div>
+              )}
+              <details className="technical-details">
+                <summary>Technical details</summary>
+                <pre className="result-box">{JSON.stringify(result,null,2)}</pre>
+              </details>
+            </section>
+          )}
         </div>
-
-        <section className="card training-advanced">
-          <div className="section-head">
-            <div><div className="section-title">Optional settings</div><div className="subtitle">Leave these empty to use the canonical config.yml values.</div></div>
-            <div className="section-link">Config-aware</div>
-          </div>
-          <div className="form-grid">
-            <label>Image size<input value={resize} onChange={e=>setResize(e.target.value)} placeholder="From config.yml"/></label>
-            <label>Batch size<input value={batch} onChange={e=>setBatch(e.target.value)} placeholder="Use config default"/></label>
-            <label>Backbone<input value={backbone} onChange={e=>setBackbone(e.target.value)} placeholder="Use config default"/></label>
-          </div>
-        </section>
-
-        <div className="training-action">
-          <div><strong>Ready to train?</strong><span>{algorithm.toUpperCase()} · {resize || "config.yml"} · {className || "config.yml class"}</span></div>
-          <button className="primary" onClick={train} disabled={busy}><Play size={13}/>{busy?"Training…":"Start training"}</button>
-        </div>
-
-        {error&&<div className="form-error">{error}</div>}
-        {result && (
-          <section className="card training-result">
-          <div className="section-head">
-            <div><div className="section-title">Training completed</div><div className="subtitle">The model is now available in Models.</div></div>
-            <div className="badge success-badge">Completed</div>
-          </div>
-          <div className="training-success">
-            <div className="training-success-icon"><ShieldCheck size={18}/></div>
-            <div><strong>Your model was created successfully.</strong><span>Open Models to review the artifact or continue to validation.</span></div>
-            <button className="secondary" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}>Continue</button>
-          </div>
-          <div className="training-result-grid">
-            <div><span>Algorithm</span><b>{String(result.algorithm ?? algorithm).toUpperCase()}</b></div>
-            <div><span>Class</span><b>{String(result.class_name ?? className ?? "From config")}</b></div>
-            <div><span>Run</span><b>{String(result.run_name ?? result.model_id ?? "Created")}</b></div>
-            <div><span>Status</span><b>{String(result.status ?? "trained")}</b></div>
-          </div>
-          {(result.model_path || result.path) && <div className="artifact-box"><span>Model artifact</span><code>{String(result.model_path ?? result.path)}</code></div>}
-          <details className="technical-details">
-            <summary>Technical details</summary>
-            <pre className="result-box">{JSON.stringify(result,null,2)}</pre>
-          </details>
-          </section>
-        )}
-      </div>
-  </div>
+      )}
+    </div>
+  );
 }
-
 function ModelsPage({models,onRefresh,onNavigate,onDeploy}:{models:Model[];onRefresh:()=>Promise<void>;onNavigate:(p:Page)=>void;onDeploy:(id:string)=>void}) {
   const trainedCount=models.filter(m=>m.status==="trained").length;
   const latest=models[0];
