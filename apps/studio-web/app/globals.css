@@ -807,3 +807,49 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .training-success .secondary { margin-left:42px; }
   .training-result-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
+
+
+/* Phase 4 — inference and results */
+.results-cta { margin-top:10px; }
+.result-hero { overflow:hidden; }
+.result-status {
+  display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px;
+  font-size:8px; font-weight:750; letter-spacing:.06em;
+}
+.result-status.normal { border:1px solid rgba(80,190,130,.22); }
+.result-status.anomaly { border:1px solid rgba(220,120,120,.28); }
+.result-score { padding:18px 0 14px; text-align:center; }
+.result-score strong { display:block; font-size:32px; letter-spacing:-.04em; }
+.result-score span,.result-score small { display:block; color:var(--muted); }
+.result-score span { margin-top:3px; font-size:10px; }
+.result-score small { margin-top:7px; font-size:9px; }
+.result-visual-grid {
+  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px;
+}
+.result-visual {
+  overflow:hidden; border:1px solid var(--border); border-radius:9px; background:#090b0f;
+}
+.result-visual span {
+  display:block; padding:8px 9px; color:var(--muted); font-size:8px;
+  text-transform:uppercase; letter-spacing:.06em;
+}
+.result-visual img { display:block; width:100%; aspect-ratio:1/1; object-fit:contain; }
+.result-no-visual {
+  grid-column:1/-1; padding:22px; border:1px dashed var(--border);
+  border-radius:9px; color:var(--muted); text-align:center; font-size:9px;
+}
+.technical-details.card { padding:14px; }
+.technical-grid {
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:12px;
+}
+.technical-grid>div { padding:9px; border:1px solid var(--border); border-radius:8px; }
+.technical-grid span,.technical-grid b { display:block; }
+.technical-grid span { color:var(--muted); font-size:8px; text-transform:uppercase; }
+.technical-grid b { margin-top:4px; font-size:10px; }
+@media(max-width:800px) {
+  .result-visual-grid { grid-template-columns:1fr 1fr; }
+  .technical-grid { grid-template-columns:1fr 1fr; }
+}
+@media(max-width:520px) {
+  .result-visual-grid,.technical-grid { grid-template-columns:1fr; }
+}
