@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 
 from apps.studio.services.catalog import ALGORITHMS, DEPLOYMENT_TARGETS
 from apps.studio.services.dataset_service import inspect_dataset, save_dataset_manifest
-from apps.studio.services.model_registry import list_models
+from apps.studio.services.deployment_service import deploy_model, TARGET_DESCRIPTIONS
+from apps.studio.services.model_registry import list_models, get_model
 from apps.studio.services.project_store import ProjectStore
 from apps.studio.services.training_service import train_project
 
@@ -179,3 +180,46 @@ def start_training(
             status_code=500,
             detail=f"Training failed: {exc}",
         ) from exc
+
+
+class DeploymentRequest(BaseModel):
+    model_id: str = Field(min_length=1)
+    target: str = "onnx"
+    runs: int = Field(default=5, ge=1, le=100)
+    warmup_runs: int = Field(default=1, ge=0, le=20)
+
+
+@app.get("/api/deployments/targets")
+def deployment_targets() -> dict[str, str]:
+    return TARGET_DESCRIPTIONS
+
+
+@app.get("/api/projects/{project_id}/deployments")
+def deployments(project_id: str) -> list[dict[str, Any]]:
+    _project_or_404(project_id)
+    root = _project_dir(project_id) / "deployments"
+    results: list[dict[str, Any]] = []
+    for path in root.glob("*/**/deployment.json"):
+        try:
+            results.append(__import__("json").loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    return sorted(results, key=lambda item: item.get("elapsed_seconds", 0), reverse=True)
+
+
+@app.post("/api/projects/{project_id}/deployments")
+def start_deployment(project_id: str, request: DeploymentRequest) -> dict[str, Any]:
+    _project_or_404(project_id)
+    try:
+        model = get_model(_project_dir(project_id), request.model_id)
+        return deploy_model(
+            _project_dir(project_id),
+            model,
+            request.target,
+            runs=request.runs,
+            warmup_runs=request.warmup_runs,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Deployment failed: {exc}") from exc
