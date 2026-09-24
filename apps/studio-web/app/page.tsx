@@ -48,7 +48,8 @@ export default function StudioPage() {
   const [selectedProject, setSelectedProject] = useState("");
   const [models, setModels] = useState<Model[]>([]);
   const [deploymentModelId, setDeploymentModelId] = useState("");
-  const [apiHealthy, setApiHealthy] = useState(false);\n  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [apiHealthy, setApiHealthy] = useState(false);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [inferenceSession, setInferenceSession] = useState<{result:any;history:any[];config:any}|null>(null);
 
@@ -197,7 +198,8 @@ export default function StudioPage() {
           {page === "Training" && <TrainingPage project={project} onFinished={() => loadModels(selectedProject)}/>}
           {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={navigate} onDeploy={(id) => { setDeploymentModelId(id); navigate("Deployments"); }}/>}
           {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>}
-          {page === "Performance" && <PerformancePage project={project} session={inferenceSession}/>}\n          {page === "Monitoring" && <MonitoringPage project={project}/>}
+          {page === "Performance" && <PerformancePage project={project} session={inferenceSession}/>}
+          {page === "Monitoring" && <MonitoringPage project={project}/>}
           {page === "Inference" && <LivePage apiHealthy={apiHealthy} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
           {page === "Results" && <ResultsPage session={inferenceSession} onNavigate={navigate}/>}
           {page === "Live" && <LivePage apiHealthy={apiHealthy} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
@@ -745,7 +747,8 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
       <strong>Select a project first</strong>
       <span>Your project contains the models and deployment artifacts for this workflow.</span>
     </div> : <>
-      <div className="deployment-readiness"><ShieldCheck size={16}/><div><strong>Validate before you deploy</strong><span>Studio runs the existing checks against the selected artifact. A failed check means the result needs review before deployment.</span></div></div>\n      <div className="deployment-steps">
+      <div className="deployment-readiness"><ShieldCheck size={16}/><div><strong>Validate before you deploy</strong><span>Studio runs the existing checks against the selected artifact. A failed check means the result needs review before deployment.</span></div></div>
+      <div className="deployment-steps">
         <div className="deployment-step active"><span>1</span><div><b>Select model</b><small>Choose a trained artifact</small></div></div>
         <div className="deployment-step"><span>2</span><div><b>Choose target</b><small>Pick the runtime format</small></div></div>
         <div className="deployment-step"><span>3</span><div><b>Validate</b><small>Check integrity and performance</small></div></div>
