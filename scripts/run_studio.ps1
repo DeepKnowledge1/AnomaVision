@@ -31,27 +31,31 @@ $inferenceApiCommand = "Set-Location '$Root'; " + $envLine + " uv run python api
 $webCommand = "Set-Location '$Web'; npm run dev"
 
 Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $studioApiCommand)
-Write-Host "Waiting for Studio API on 8000..." -ForegroundColor Yellow
-if (-not (Wait-ForUrl "http://127.0.0.1:8000/docs" 30)) {
-    throw "Studio API did not start on port 8000."
-}
-
 Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $inferenceApiCommand)
-Write-Host "Waiting for inference API on 8001..." -ForegroundColor Yellow
-if (-not (Wait-ForUrl "http://127.0.0.1:8001/health" 90)) {
-    throw "Inference API did not start on port 8001. Check the inference PowerShell window for the startup error."
-}
-
 Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $webCommand)
+
 Write-Host "Waiting for Studio Web on 3000..." -ForegroundColor Yellow
-if (-not (Wait-ForUrl "http://127.0.0.1:3000" 60)) {
+if (-not (Wait-ForUrl "http://127.0.0.1:3000" 90)) {
     throw "Studio Web did not start on port 3000. Check the Next.js PowerShell window."
 }
 
+Write-Host "Studio API: waiting on 8000..." -ForegroundColor Yellow
+$studioReady = Wait-ForUrl "http://127.0.0.1:8000/docs" 60
+
+Write-Host "Inference API: waiting on 8001..." -ForegroundColor Yellow
+$inferenceReady = Wait-ForUrl "http://127.0.0.1:8001/health" 90
+
 Write-Host ""
-Write-Host "AnomaVision Studio is ready." -ForegroundColor Green
-Write-Host "Studio API:     http://localhost:8000" -ForegroundColor Green
-Write-Host "Inference API:  http://localhost:8001" -ForegroundColor Green
 Write-Host "Studio Web:     http://localhost:3000" -ForegroundColor Green
+if ($studioReady) {
+    Write-Host "Studio API:     http://localhost:8000" -ForegroundColor Green
+} else {
+    Write-Host "Studio API:     NOT READY" -ForegroundColor Red
+}
+if ($inferenceReady) {
+    Write-Host "Inference API:  http://localhost:8001" -ForegroundColor Green
+} else {
+    Write-Host "Inference API:  NOT READY" -ForegroundColor Red
+}
 
 Start-Process "http://localhost:3000"
