@@ -28,7 +28,7 @@ Write-Host "Starting AnomaVision Studio..." -ForegroundColor Cyan
 
 $studioApiCommand = "Set-Location '$Root'; uv run uvicorn apps.studio.api.app:app --host 127.0.0.1 --port 8000"
 $inferenceApiCommand = "Set-Location '$Root'; " + $envLine + " uv run python api.py"
-$webCommand = "Set-Location '$Web'; npm run dev"
+$webCommand = "Set-Location '$Web'; $env:PORT='3000'; npm run dev"
 
 Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $studioApiCommand)
 Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $inferenceApiCommand)
