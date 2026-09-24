@@ -52,6 +52,7 @@ def create_parser() -> argparse.ArgumentParser:
     _add_validate_parser(subparsers)
     return parser
 
+
 def _add_validate_parser(subparsers) -> None:
     from anomavision.deployment_validation import create_parser as _cp
 
@@ -60,7 +61,6 @@ def _add_validate_parser(subparsers) -> None:
         parents=[_cp(add_help=False)],
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     ).set_defaults(func=_dispatch_validate)
-
 
 
 def _add_train_parser(subparsers) -> None:

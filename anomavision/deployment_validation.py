@@ -23,8 +23,14 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         description="Validate an exported model for deployment without changing inference logic.",
         add_help=add_help,
     )
-    parser.add_argument("--model", required=True, help="Path to a trained/exported model.")
-    parser.add_argument("--config", default=None, help="Existing AnomaVision config used for input shape.")
+    parser.add_argument(
+        "--model", required=True, help="Path to a trained/exported model."
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Existing AnomaVision config used for input shape.",
+    )
     parser.add_argument(
         "--reference-model",
         default=None,
@@ -37,13 +43,22 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="Maximum allowed absolute output difference for consistency validation.",
     )
     parser.add_argument(
-        "--runs", type=int, default=10, help="Number of inference runs for the latency check."
+        "--runs",
+        type=int,
+        default=10,
+        help="Number of inference runs for the latency check.",
     )
     parser.add_argument(
-        "--warmup-runs", type=int, default=2, help="Number of warm-up runs excluded from latency."
+        "--warmup-runs",
+        type=int,
+        default=2,
+        help="Number of warm-up runs excluded from latency.",
     )
     parser.add_argument(
-        "--json", dest="json_output", action="store_true", help="Print the report as JSON."
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print the report as JSON.",
     )
     return parser
 
@@ -79,9 +94,7 @@ def _backend_status() -> dict[str, str]:
             "available" if _installed("vitis_ai_library") else "not installed"
         ),
         "kv260": (
-            "available"
-            if _installed("vart") and _installed("xir")
-            else "not installed"
+            "available" if _installed("vart") and _installed("xir") else "not installed"
         ),
     }
 
@@ -91,8 +104,12 @@ def _compare_outputs(
     candidate: tuple[np.ndarray, np.ndarray],
     tolerance: float,
 ) -> dict[str, Any]:
-    reference_scores, reference_maps = np.asarray(reference[0]), np.asarray(reference[1])
-    candidate_scores, candidate_maps = np.asarray(candidate[0]), np.asarray(candidate[1])
+    reference_scores, reference_maps = np.asarray(reference[0]), np.asarray(
+        reference[1]
+    )
+    candidate_scores, candidate_maps = np.asarray(candidate[0]), np.asarray(
+        candidate[1]
+    )
 
     if reference_scores.shape != candidate_scores.shape:
         raise ValueError(
@@ -105,8 +122,12 @@ def _compare_outputs(
             f"candidate={candidate_maps.shape}"
         )
 
-    score_diff = np.abs(reference_scores.astype(np.float64) - candidate_scores.astype(np.float64))
-    map_diff = np.abs(reference_maps.astype(np.float64) - candidate_maps.astype(np.float64))
+    score_diff = np.abs(
+        reference_scores.astype(np.float64) - candidate_scores.astype(np.float64)
+    )
+    map_diff = np.abs(
+        reference_maps.astype(np.float64) - candidate_maps.astype(np.float64)
+    )
 
     max_score_diff = float(np.max(score_diff))
     mean_score_diff = float(np.mean(score_diff))
@@ -125,15 +146,15 @@ def _compare_outputs(
             "mean_abs_diff": mean_map_diff,
             "within_tolerance": max_map_diff <= tolerance,
         },
-        "within_tolerance": (
-            max_score_diff <= tolerance and max_map_diff <= tolerance
-        ),
+        "within_tolerance": (max_score_diff <= tolerance and max_map_diff <= tolerance),
     }
 
 
 def _build_validation_batch(config_path: str | Path):
-    from anomavision.config import _shape as config_shape, load_config
     import torch
+
+    from anomavision.config import _shape as config_shape
+    from anomavision.config import load_config
 
     cfg = load_config(str(config_path))
     size = config_shape(cfg["resize"])
@@ -179,14 +200,24 @@ def validate_model(
     if suffix == ".onnx":
         model = onnx.load(str(path))
         onnx.checker.check_model(model)
-        inputs = [{"name": v.name, "shape": _shape(v), "type": v.type.tensor_type.elem_type} for v in model.graph.input]
-        outputs = [{"name": v.name, "shape": _shape(v), "type": v.type.tensor_type.elem_type} for v in model.graph.output]
+        inputs = [
+            {"name": v.name, "shape": _shape(v), "type": v.type.tensor_type.elem_type}
+            for v in model.graph.input
+        ]
+        outputs = [
+            {"name": v.name, "shape": _shape(v), "type": v.type.tensor_type.elem_type}
+            for v in model.graph.output
+        ]
         session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
         feed = {}
         for item in session.get_inputs():
-            shape = [dim if isinstance(dim, int) and dim > 0 else 1 for dim in item.shape]
+            shape = [
+                dim if isinstance(dim, int) and dim > 0 else 1 for dim in item.shape
+            ]
             if item.type != "tensor(float)":
-                raise ValueError(f"Unsupported validation input type for {item.name}: {item.type}")
+                raise ValueError(
+                    f"Unsupported validation input type for {item.name}: {item.type}"
+                )
             feed[item.name] = np.zeros(shape, dtype=np.float32)
         for _ in range(warmup_runs):
             session.run(None, feed)
@@ -203,17 +234,21 @@ def validate_model(
             ),
         }
         model_format = "onnx"
-    elif suffix in {
-        ".pt",
-        ".pth",
-        ".torchscript",
-        ".engine",
-        ".trt",
-        ".hef",
-        ".xmodel",
-        ".xml",
-        ".bin",
-    } or path.is_dir():
+    elif (
+        suffix
+        in {
+            ".pt",
+            ".pth",
+            ".torchscript",
+            ".engine",
+            ".trt",
+            ".hef",
+            ".xmodel",
+            ".xml",
+            ".bin",
+        }
+        or path.is_dir()
+    ):
         from anomavision.inference.model.wrapper import ModelWrapper
 
         wrapper = ModelWrapper(str(path), "cpu")
@@ -226,7 +261,9 @@ def validate_model(
                 for _ in range(runs):
                     wrapper.predict(batch)
                 latency_ms = (time.perf_counter() - start_time) / runs * 1000.0
-                inputs = [{"name": "input", "shape": list(batch.shape), "type": "float32"}]
+                inputs = [
+                    {"name": "input", "shape": list(batch.shape), "type": "float32"}
+                ]
             checks = {
                 "file_exists": True,
                 "model_load": True,
