@@ -43,6 +43,18 @@ def normalize_dataset_source(source: str, class_name: str = "default") -> tuple[
     )
 
 
+def _load_base_config() -> dict[str, Any]:
+    """Load AnomaVision's canonical repository config as the Studio template."""
+    repo_config = Path(__file__).resolve().parents[3] / "config.yml"
+    if not repo_config.is_file():
+        raise FileNotFoundError(f"Canonical AnomaVision config not found: {repo_config}")
+
+    config = yaml.safe_load(repo_config.read_text(encoding="utf-8")) or {}
+    if not isinstance(config, dict):
+        raise ValueError(f"Canonical config must contain a YAML mapping: {repo_config}")
+    return config
+
+
 def create_training_config(
     project_dir: Path | str,
     dataset_source: str,
@@ -50,7 +62,11 @@ def create_training_config(
     class_name: str = "default",
     **overrides: Any,
 ) -> Path:
-    """Persist a project-local training config without changing the core config."""
+    """Create a Studio run config from AnomaVision's canonical config.
+
+    Studio only overrides values selected by the UI. The core configuration
+    schema stays owned by the main AnomaVision config.yml.
+    """
     dataset_path, detected_class = normalize_dataset_source(dataset_source, class_name)
     effective_class = detected_class if detected_class != "default" else class_name
 
@@ -58,30 +74,18 @@ def create_training_config(
     run_dir = Path(project_dir) / "experiments" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    config: dict[str, Any] = {
-        "dataset_path": str(dataset_path),
-        "class_name": effective_class,
-        "algorithm": algorithm.lower(),
-        "model_data_path": str(Path(project_dir) / "models"),
-        "run_name": run_id,
-        "output_model": "model.pt",
-        "batch_size": 2,
-        "resize": [224, 224],
-        "normalize": True,
-        "norm_mean": [0.485, 0.456, 0.406],
-        "norm_std": [0.229, 0.224, 0.225],
-        "backbone": "resnet18",
-        "feat_dim": 50,
-        "layer_indices": [0],
-        "coreset_ratio": 0.02,
-        "max_memory_patches": 2048,
-        "patch_grid": 14,
-        "search_chunk_size": 1024,
-        "coreset_method": "kcenter",
-        "coreset_seed": 42,
-        "log_level": "INFO",
-    }
+    config = _load_base_config()
+    config.update(
+        {
+            "dataset_path": str(dataset_path),
+            "class_name": effective_class,
+            "algorithm": algorithm.lower(),
+            "model_data_path": str(Path(project_dir) / "models"),
+            "run_name": run_id,
+        }
+    )
     config.update(overrides)
+
     config_path = run_dir / "config.yml"
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     return config_path
