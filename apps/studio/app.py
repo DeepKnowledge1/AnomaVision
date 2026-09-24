@@ -148,13 +148,103 @@ def projects_page() -> None:
 
 def datasets_page() -> None:
     st.title("Datasets")
-    st.caption("Dataset management will connect here to AnomaVision's existing dataset loaders.")
-    st.info("MVP foundation: project storage is ready. Dataset import and quality analysis are the next implementation step.")
-    st.subheader("Supported sources")
+    st.caption("Inspect an image folder before it enters the training workflow.")
+
+    selected = st.session_state.get("selected_project")
+    projects = store.list_projects()
+    if not selected and projects:
+        selected = projects[0]["id"]
+    if projects:
+        ids = [p["id"] for p in projects]
+        selected = st.selectbox(
+            "Project",
+            ids,
+            index=ids.index(selected) if selected in ids else 0,
+            format_func=lambda pid: next(p["name"] for p in projects if p["id"] == pid),
+        )
+        st.session_state["selected_project"] = selected
+
+    source = st.text_input(
+        "Image folder",
+        placeholder=r"C:\datasets\bottle\train\good",
+        help="A local folder containing PNG, JPG, JPEG, BMP or WebP images. Subfolders are included.",
+    )
+    analyze = st.button("Analyze dataset", type="primary", disabled=not source.strip())
+
+    if analyze:
+        from apps.studio.services.dataset_service import inspect_dataset, save_dataset_manifest
+        try:
+            report = inspect_dataset(source)
+            if selected:
+                manifest = STORE_ROOT / selected / "datasets" / "dataset_report.json"
+                save_dataset_manifest(manifest, report)
+            st.session_state["dataset_report"] = report
+            st.success(f'Analyzed {report["image_count"]} image(s).')
+        except ValueError as exc:
+            st.error(str(exc))
+
+    report = st.session_state.get("dataset_report")
+    if not report:
+        st.info("Enter an image folder and analyze it. The report is saved inside the selected project.")
+        return
+
     cols = st.columns(4)
-    for col, label in zip(cols, ["Image folder", "Uploaded images", "Camera", "Video"]):
-        with col:
-            st.markdown(f'<div class="studio-card"><b>{label}</b><div class="studio-muted">Planned Studio source</div></div>', unsafe_allow_html=True)
+    with cols[0]:
+        metric_card("Images", str(report["image_count"]), "valid images")
+    with cols[1]:
+        metric_card("Duplicates", str(report["duplicate_count"]), "extra copies")
+    with cols[2]:
+        metric_card("Failed", str(report["failed_count"]), "could not be opened")
+    with cols[3]:
+        resolution = next(iter(report["resolutions"]), "—")
+        metric_card("Top resolution", resolution, "most common")
+
+    st.subheader("Dataset quality")
+    if report["failed_count"] == 0 and report["duplicate_count"] == 0:
+        st.success("No duplicate or unreadable images detected.")
+    else:
+        if report["failed_count"]:
+            st.warning(f'{report["failed_count"]} image(s) could not be opened.')
+        if report["duplicate_count"]:
+            st.warning(f'{report["duplicate_count"]} duplicate image(s) detected.')
+
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Resolutions")
+        st.dataframe(
+            [{"resolution": key, "images": count} for key, count in report["resolutions"].items()],
+            use_container_width=True,
+            hide_index=True,
+        )
+    with right:
+        st.subheader("Image preview")
+        records = report["records"][:12]
+        if records:
+            preview_root = Path(report["root"])
+            preview_paths = [preview_root / record["path"] for record in records]
+            st.image([str(path) for path in preview_paths], width=150)
+        else:
+            st.caption("No readable images to preview.")
+
+    if report["duplicate_groups"]:
+        with st.expander("Duplicate groups"):
+            for group in report["duplicate_groups"]:
+                st.write(group)
+
+    with st.expander("Image inventory"):
+        st.dataframe(
+            [
+                {
+                    "file": record["path"],
+                    "size": f'{record["width"]} × {record["height"]}',
+                    "MB": round(record["bytes"] / (1024 * 1024), 2),
+                    "brightness": record["brightness"],
+                }
+                for record in report["records"]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def models_page() -> None:
