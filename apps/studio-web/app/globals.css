@@ -872,3 +872,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 /* Phase 5 — drift metrics */
 .drift-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:-4px 0 12px}.drift-metric-grid>div{padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.015)}.drift-metric-grid span,.drift-metric-grid b{display:block}.drift-metric-grid span{color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.06em}.drift-metric-grid b{margin-top:4px;font-size:11px}@media(max-width:700px){.drift-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Phase 6 — deployment readiness */
+.deployment-readiness{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.018)}.deployment-readiness svg{flex:0 0 auto;margin-top:1px}.deployment-readiness strong,.deployment-readiness span{display:block}.deployment-readiness strong{font-size:10px}.deployment-readiness span{margin-top:3px;color:var(--muted);font-size:9px;line-height:1.45}.deployment-technical{margin-top:12px}.deployment-technical .artifact-box{margin-top:10px}
