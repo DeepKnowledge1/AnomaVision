@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, Box, BrainCircuit, CircleGauge, Database, FlaskConical,
   LayoutDashboard, MonitorCog, Play, Rocket, Settings2, ShieldCheck,
-  SlidersHorizontal, Sparkles, Wifi, FolderOpen
+  SlidersHorizontal, Sparkles, Wifi, FolderOpen, Menu, X, ChevronDown,
+  HelpCircle
 } from "lucide-react";
 
 type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Monitoring" | "Settings";
@@ -17,11 +18,21 @@ type DatasetReport = {
 type Catalog = { algorithms: Record<string, unknown>; deployment_targets: Record<string, unknown> };
 
 const API_BASE = process.env.NEXT_PUBLIC_STUDIO_API_URL ?? "http://localhost:8000";
-const nav: { label: Page; icon: React.ElementType }[] = [
-  { label: "Overview", icon: LayoutDashboard }, { label: "Projects", icon: Box },
-  { label: "Datasets", icon: Database }, { label: "Training", icon: BrainCircuit },
-  { label: "Models", icon: FlaskConical }, { label: "Deployments", icon: Rocket },
-  { label: "Live", icon: Wifi }, { label: "Monitoring", icon: Activity },
+const navGroups: { label: string; items: { label: Page; icon: React.ElementType }[] }[] = [
+  { label: "Workspace", items: [
+    { label: "Overview", icon: LayoutDashboard },
+    { label: "Projects", icon: Box },
+  ]},
+  { label: "Build & test", items: [
+    { label: "Datasets", icon: Database },
+    { label: "Training", icon: BrainCircuit },
+    { label: "Models", icon: FlaskConical },
+    { label: "Deployments", icon: Rocket },
+    { label: "Live", icon: Wifi },
+  ]},
+  { label: "Operate", items: [
+    { label: "Monitoring", icon: Activity },
+  ]},
 ];
 const workflows = [
   ["01", "Dataset", "Inspect image quality before training."], ["02", "Train", "Run PaDiM or PatchCore with the existing engine."],
@@ -36,6 +47,7 @@ export default function StudioPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [deploymentModelId, setDeploymentModelId] = useState("");
   const [apiHealthy, setApiHealthy] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   async function loadProjects() {
     try {
@@ -45,50 +57,150 @@ export default function StudioPage() {
       ]);
       if (!health.ok || !response.ok) throw new Error();
       const data = (await response.json()) as Project[];
-      setProjects(data); setSelectedProject((current) => data.some((item) => item.id === current) ? current : (data[0]?.id || "")); setApiHealthy(true);
-    } catch { setApiHealthy(false); }
+      setProjects(data);
+      setSelectedProject((current) =>
+        data.some((item) => item.id === current) ? current : (data[0]?.id || "")
+      );
+      setApiHealthy(true);
+    } catch {
+      setApiHealthy(false);
+    }
   }
+
   async function loadModels(projectId: string) {
     try {
       const response = await fetch(`${API_BASE}/api/projects/${projectId}/models`, { cache: "no-store" });
       setModels(response.ok ? ((await response.json()) as Model[]) : []);
-    } catch { setModels([]); }
+    } catch {
+      setModels([]);
+    }
   }
+
   useEffect(() => { void loadProjects(); }, []);
-  useEffect(() => { if (selectedProject) void loadModels(selectedProject); else setModels([]); }, [selectedProject]);
+  useEffect(() => {
+    if (selectedProject) void loadModels(selectedProject);
+    else setModels([]);
+  }, [selectedProject]);
 
-  const project = useMemo(() => projects.find((item) => item.id === selectedProject), [projects, selectedProject]);
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [page]);
 
-  return <div className="studio-shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-mark">AV</div><div><div className="brand-name">AnomaVision</div><div className="brand-sub">Studio · 0.1</div></div></div>
-      <div className="nav-label">WORKSPACE</div>
-      {nav.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${page === label ? "active" : ""}`} onClick={() => setPage(label)}><Icon size={15} strokeWidth={1.8}/><span>{label}</span></button>)}
-      <div className="nav-label">SYSTEM</div>
-      <button className={`nav-item ${page === "Settings" ? "active" : ""}`} onClick={() => setPage("Settings")}><Settings2 size={15} strokeWidth={1.8}/><span>Settings</span></button>
-      <div className="sidebar-bottom"><div className="storage"><strong>Studio API</strong><span className={`status-dot ${apiHealthy ? "" : "offline-dot"}`}/>{apiHealthy ? "Connected" : "Offline"}</div></div>
-    </aside>
+  const project = useMemo(
+    () => projects.find((item) => item.id === selectedProject),
+    [projects, selectedProject]
+  );
 
-    <main className="main">
-      <header className="topbar">
-        <div className="crumb">Studio / {page}</div>
-        <div className="topbar-actions">
-          <select className="project-switcher" value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} aria-label="Select project">
-            {projects.length === 0 && <option value="">No projects</option>}
-            {projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select><div className="avatar">AR</div>
+  function navigate(next: Page) {
+    setPage(next);
+    setMobileNavOpen(false);
+  }
+
+  return (
+    <div className="studio-shell">
+      {mobileNavOpen && <button className="mobile-nav-backdrop" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />}
+
+      <aside className={`sidebar ${mobileNavOpen ? "mobile-open" : ""}`}>
+        <div className="brand">
+          <div className="brand-mark">AV</div>
+          <div>
+            <div className="brand-name">AnomaVision</div>
+            <div className="brand-sub">Studio · workspace</div>
+          </div>
+          <button className="mobile-close" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)}>
+            <X size={17}/>
+          </button>
         </div>
-      </header>
-      <div className="content">
-        {page === "Overview" && <Overview project={project} projects={projects} models={models} apiHealthy={apiHealthy} onNavigate={setPage}/>}
-        {page === "Projects" && <ProjectsPage projects={projects} selectedProject={selectedProject} onSelect={setSelectedProject} onCreated={loadProjects}/>}
-        {page === "Datasets" && <DatasetsPage project={project}/>}
-        {page === "Training" && <TrainingPage project={project} onFinished={() => loadModels(selectedProject)}/>}
-        {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={setPage} onDeploy={(id) => { setDeploymentModelId(id); setPage("Deployments"); }}/>} 
-        {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>} {page === "Monitoring" && <MonitoringPage project={project}/>} {page === "Live" && <LivePage apiHealthy={apiHealthy}/>} {page === "Settings" && <SettingsPage apiHealthy={apiHealthy}/>}
-      </div>
-    </main>
-  </div>;
+
+        <div className="workspace-context">
+          <span>ACTIVE PROJECT</span>
+          <strong title={project?.name}>{project?.name || "No project selected"}</strong>
+          <small>{project ? "Ready to work" : "Create a project to begin"}</small>
+        </div>
+
+        <nav aria-label="Studio navigation">
+          {navGroups.map((group) => (
+            <div key={group.label}>
+              <div className="nav-label">{group.label}</div>
+              {group.items.map(({ label, icon: Icon }) => (
+                <button
+                  key={label}
+                  className={`nav-item ${page === label ? "active" : ""}`}
+                  onClick={() => navigate(label)}
+                  aria-current={page === label ? "page" : undefined}
+                >
+                  <Icon size={15} strokeWidth={1.8}/>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+          <div className="nav-label">System</div>
+          <button className={`nav-item ${page === "Settings" ? "active" : ""}`} onClick={() => navigate("Settings")} aria-current={page === "Settings" ? "page" : undefined}>
+            <Settings2 size={15} strokeWidth={1.8}/><span>Settings</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="storage">
+            <strong><span className={`status-dot ${apiHealthy ? "" : "offline-dot"}`}/>{apiHealthy ? "Studio connected" : "Studio offline"}</strong>
+            <span>{apiHealthy ? "Workspace services are available." : "Start the Studio API to continue."}</span>
+          </div>
+        </div>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <div className="topbar-left">
+            <button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileNavOpen(true)}>
+              <Menu size={18}/>
+            </button>
+            <div className="breadcrumbs">
+              <span>AnomaVision</span><b>/</b><strong>{page}</strong>
+            </div>
+          </div>
+
+          <div className="topbar-actions">
+            <label className="project-select-wrap">
+              <span className="sr-only">Active project</span>
+              <select className="project-switcher" value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} aria-label="Select active project">
+                {projects.length === 0 && <option value="">No projects</option>}
+                {projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+              <ChevronDown size={13} aria-hidden="true"/>
+            </label>
+            <div className={`connection-pill ${apiHealthy ? "online" : "offline"}`}>
+              <span className="status-dot"/>{apiHealthy ? "Connected" : "Offline"}
+            </div>
+            <button className="help-button" aria-label="Studio help" title="Studio help"><HelpCircle size={16}/></button>
+          </div>
+        </header>
+
+        <div className="content">
+          <div className="workspace-strip">
+            <div>
+              <span>ACTIVE WORKSPACE</span>
+              <strong>{project?.name || "No project selected"}</strong>
+            </div>
+            <div className="workspace-strip-status">
+              <span className={`status-dot ${apiHealthy ? "" : "offline-dot"}`}/>
+              {apiHealthy ? "Studio ready" : "API unavailable"}
+            </div>
+          </div>
+
+          {page === "Overview" && <Overview project={project} projects={projects} models={models} apiHealthy={apiHealthy} onNavigate={navigate}/>}
+          {page === "Projects" && <ProjectsPage projects={projects} selectedProject={selectedProject} onSelect={setSelectedProject} onCreated={loadProjects}/>}
+          {page === "Datasets" && <DatasetsPage project={project}/>}
+          {page === "Training" && <TrainingPage project={project} onFinished={() => loadModels(selectedProject)}/>}
+          {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={navigate} onDeploy={(id) => { setDeploymentModelId(id); navigate("Deployments"); }}/>}
+          {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>}
+          {page === "Monitoring" && <MonitoringPage project={project}/>}
+          {page === "Live" && <LivePage apiHealthy={apiHealthy}/>}
+          {page === "Settings" && <SettingsPage apiHealthy={apiHealthy}/>}
+        </div>
+      </main>
+    </div>
+  );
 }
 
 function Overview({ project, projects, models, apiHealthy, onNavigate }: { project?: Project; projects: Project[]; models: Model[]; apiHealthy: boolean; onNavigate: (p: Page) => void }) {
