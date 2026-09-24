@@ -126,6 +126,44 @@ def config() -> dict[str, Any]:
     }
 
 
+def _choose_dataset_folder(initial_dir: str = "") -> str:
+    """Open a native folder picker on the machine running the local Studio API."""
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        root.update()
+        return filedialog.askdirectory(
+            initialdir=initial_dir or None,
+            title="Select AnomaVision dataset folder",
+        ) or ""
+    finally:
+        root.destroy()
+
+
+@app.get("/api/dataset/pick-folder")
+def pick_dataset_folder() -> dict[str, str]:
+    """Open the local OS folder picker and return the selected absolute path."""
+    config_path = Path(os.getenv("ANOMAVISION_CONFIG", "config.yml"))
+    initial_dir = ""
+    try:
+        data = load_config(str(config_path)) or {}
+        initial_dir = str(data.get("dataset_path", "") or "")
+    except (FileNotFoundError, ValueError):
+        pass
+
+    try:
+        return {"path": _choose_dataset_folder(initial_dir)}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Native folder picker unavailable: {exc}",
+        ) from exc
+
+
 @app.get("/api/catalog")
 def catalog() -> dict[str, Any]:
     return {
