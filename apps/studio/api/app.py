@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from apps.studio.services.catalog import ALGORITHMS, DEPLOYMENT_TARGETS
 from apps.studio.services.dataset_service import inspect_dataset, save_dataset_manifest
 from apps.studio.services.deployment_service import deploy_model, TARGET_DESCRIPTIONS
+from apps.studio.services.monitoring_service import list_monitoring_reports, monitoring_summary
 from apps.studio.services.model_registry import list_models, get_model
 from apps.studio.services.project_store import ProjectStore
 from apps.studio.services.training_service import train_project
@@ -223,3 +224,14 @@ def start_deployment(project_id: str, request: DeploymentRequest) -> dict[str, A
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Deployment failed: {exc}") from exc
+
+
+@app.get("/api/projects/{project_id}/monitoring")
+def monitoring(project_id: str) -> dict[str, Any]:
+    _project_or_404(project_id)
+    return monitoring_summary(_project_dir(project_id))
+
+@app.get("/api/projects/{project_id}/monitoring/reports")
+def monitoring_reports(project_id: str) -> list[dict[str, Any]]:
+    _project_or_404(project_id)
+    return list_monitoring_reports(_project_dir(project_id))
