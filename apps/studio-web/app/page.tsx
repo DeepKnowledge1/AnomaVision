@@ -8,7 +8,7 @@ import {
   HelpCircle
 } from "lucide-react";
 
-type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Monitoring" | "Settings";
+type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Inference" | "Results" | "Monitoring" | "Settings";
 type Project = { id: string; name: string; description?: string; algorithm: string; status: string; };
 type Model = { id: string; algorithm: string; class_name: string; run_name: string; status: string; path?: string; };
 type DatasetReport = {
@@ -28,7 +28,8 @@ const navGroups: { label: string; items: { label: Page; icon: React.ElementType 
     { label: "Training", icon: BrainCircuit },
     { label: "Models", icon: FlaskConical },
     { label: "Deployments", icon: Rocket },
-    { label: "Live", icon: Wifi },
+    { label: "Inference", icon: Wifi },
+    { label: "Results", icon: ShieldCheck },
   ]},
   { label: "Operate", items: [
     { label: "Monitoring", icon: Activity },
@@ -48,6 +49,7 @@ export default function StudioPage() {
   const [deploymentModelId, setDeploymentModelId] = useState("");
   const [apiHealthy, setApiHealthy] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [inferenceSession, setInferenceSession] = useState<{result:any;history:any[];config:any}|null>(null);
 
   async function loadProjects() {
     try {
@@ -195,7 +197,9 @@ export default function StudioPage() {
           {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={navigate} onDeploy={(id) => { setDeploymentModelId(id); navigate("Deployments"); }}/>}
           {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>}
           {page === "Monitoring" && <MonitoringPage project={project}/>}
-          {page === "Live" && <LivePage apiHealthy={apiHealthy}/>}
+          {page === "Inference" && <LivePage apiHealthy={apiHealthy} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
+          {page === "Results" && <ResultsPage session={inferenceSession} onNavigate={navigate}/>}
+          {page === "Live" && <LivePage apiHealthy={apiHealthy} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
           {page === "Settings" && <SettingsPage apiHealthy={apiHealthy}/>}
         </div>
       </main>
@@ -909,11 +913,12 @@ function MonitoringPage({project}:{project?:Project}) {
   </>;
 }
 
-function LivePage({apiHealthy}:{apiHealthy:boolean}) {
+function LivePage({apiHealthy,onResult,onResults}:{apiHealthy:boolean;onResult:(result:any,history:any[],config:any)=>void;onResults:()=>void}) {
   const [files,setFiles]=useState<File[]>([]); const [camera,setCamera]=useState(false); const [cameraBusy,setCameraBusy]=useState(false); const [cameraAuto,setCameraAuto]=useState(false); const [cameraError,setCameraError]=useState(""); const [cameraFps,setCameraFps]=useState(0); const [cameraFrames,setCameraFrames]=useState(0); const [cameraInterval,setCameraInterval]=useState(500); const videoRef=useRef<HTMLVideoElement>(null); const streamRef=useRef<MediaStream|null>(null); const cameraLoopRef=useRef<number|null>(null); const cameraBusyRef=useRef(false); const fpsTimesRef=useRef<number[]>([]); const [result,setResult]=useState<any>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const [history,setHistory]=useState<any[]>([]); const [totalMs,setTotalMs]=useState(0);
   const inferenceUrl=process.env.NEXT_PUBLIC_ANOMAVISION_INFERENCE_URL ?? "http://localhost:8001";
   const [studioConfig,setStudioConfig]=useState<any>(null); const activeThreshold=studioConfig?.thresholds?.[studioConfig?.algorithm]??null;
   useEffect(()=>{fetch(`${API_BASE}/api/config`,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(setStudioConfig).catch(()=>setStudioConfig(null))},[]);
+  useEffect(()=>{if(result) onResult(result,history,studioConfig)},[result,history,studioConfig,onResult]);
   useEffect(()=>()=>{if(cameraLoopRef.current!==null)window.clearInterval(cameraLoopRef.current);streamRef.current?.getTracks().forEach(t=>t.stop())},[]);
   async function startCamera(){setCameraError("");try{const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});streamRef.current=stream;setCamera(true);if(videoRef.current)videoRef.current.srcObject=stream;}catch(e){setCameraError(e instanceof Error?e.message:"Camera access denied");}}
   function stopAutoInference(){if(cameraLoopRef.current!==null)window.clearInterval(cameraLoopRef.current);cameraLoopRef.current=null;setCameraAuto(false);}
@@ -921,7 +926,7 @@ function LivePage({apiHealthy}:{apiHealthy:boolean}) {
   async function predictFrame(){if(!videoRef.current||cameraBusyRef.current)return;cameraBusyRef.current=true;setCameraBusy(true);setCameraError("");try{const video=videoRef.current;if(video.readyState<2||!video.videoWidth||!video.videoHeight)throw new Error("Camera frame is not ready");const canvas=document.createElement("canvas");const [targetW,targetH]=studioConfig?.resize||[224,224];canvas.width=targetW;canvas.height=targetH;canvas.getContext("2d")?.drawImage(video,0,0);const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));if(!blob)throw new Error("Could not capture camera frame");const body=new FormData();body.append("files",blob,"camera.jpg");const started=performance.now();const r=await fetch(`${inferenceUrl}/predict-batch`,{method:"POST",body});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Camera inference failed");const rows=(d.batch_results||[]).map((x:any)=>({filename:"camera.jpg",...(x.result||{}),error:x.error}));setResult(d);setHistory(prev=>[...rows,...prev].slice(0,20));const elapsed=performance.now()-started;setTotalMs(rows.reduce((sum:number,x:any)=>sum+(Number(x.latency_ms)||0),0)||elapsed);setCameraFrames(prev=>prev+rows.length);const now=Date.now();fpsTimesRef.current=[...fpsTimesRef.current.filter(t=>now-t<5000),now];setCameraFps(fpsTimesRef.current.length/5);}catch(e){setCameraError(e instanceof Error?e.message:"Camera inference failed")}finally{cameraBusyRef.current=false;setCameraBusy(false)}}
   function startAutoInference(){if(!camera||cameraLoopRef.current!==null)return;setCameraAuto(true);void predictFrame();cameraLoopRef.current=window.setInterval(()=>void predictFrame(),cameraInterval);}
   async function predictBatch(){if(!files.length)return;setBusy(true);setError("");setResult(null);try{const body=new FormData();files.slice(0,10).forEach(f=>body.append("files",f,f.name));const r=await fetch(`${inferenceUrl}/predict-batch`,{method:"POST",body});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Batch inference failed");setResult(d);const rows=(d.batch_results||[]).map((x:any)=>({filename:x.filename,...(x.result||{}),error:x.error}));setHistory(prev=>[...rows,...prev].slice(0,20));setTotalMs(rows.reduce((sum:number,x:any)=>sum+(Number(x.latency_ms)||0),0))}catch(e){setError(e instanceof Error?e.message:"Batch inference failed")}finally{setBusy(false)}}
-  return <><div className="page-head"><div><div className="eyebrow">Inference</div><h1>Live</h1><p className="subtitle">Run images or a local folder through the existing AnomaVision inference runtime.</p></div></div>
+  return <><div className="page-head"><div><div className="eyebrow">Test & inference</div><h1>Inference</h1><p className="subtitle">Test images with the existing AnomaVision inference runtime. Camera mode stays available when you need continuous inspection.</p></div></div>
     <div className="live-top-stats"><Stat icon={<Wifi size={15}/>} label="Studio API" value={apiHealthy?"Online":"Offline"} meta="FastAPI connection"/><Stat icon={<CircleGauge size={15}/>} label="Inference API" value="External" meta="existing runtime"/><Stat icon={<BrainCircuit size={15}/>} label="Method" value={String(studioConfig?.algorithm||"—").toUpperCase()} meta={studioConfig?.resize?`${studioConfig.resize[0]}×${studioConfig.resize[1]} input`:"config.yml"}/><Stat icon={<ShieldCheck size={15}/>} label="Threshold" value={activeThreshold!=null?Number(activeThreshold).toFixed(3):"—"} meta="canonical config.yml"/><Stat icon={<CircleGauge size={15}/>} label="Batch latency" value={totalMs?`${totalMs.toFixed(0)} ms`:"—"} meta={totalMs?`${(1000/(totalMs/Math.max(1,files.length))).toFixed(1)} img/s`:"waiting"}/></div>
     <div className="card camera-panel"><div className="section-head"><div><div className="section-title">Camera stream</div><div className="subtitle">Continuous browser-camera inference using the existing runtime.</div></div><div className="badge">{cameraAuto?"Live inference":camera?"Camera on":"Off"}</div></div>{camera?<><div className="camera-frame"><video ref={videoRef} autoPlay playsInline muted className="camera-preview"/>{history[0]&&!history[0].error&&<div className={`camera-result ${(activeThreshold!=null?Number(history[0].anomaly_score)>=Number(activeThreshold):history[0].is_anomaly)?"anomaly":"normal"}`}><strong>{(activeThreshold!=null?Number(history[0].anomaly_score)>=Number(activeThreshold):history[0].is_anomaly)?"ANOMALY":"NORMAL"}</strong><span>Score {Number(history[0].anomaly_score||0).toFixed(3)}</span><small>Threshold {activeThreshold!=null?Number(activeThreshold).toFixed(3):"—"}</small></div>}</div><div className="grid-4"><Stat icon={<Activity size={15}/>} label="Live FPS" value={cameraFps.toFixed(1)} meta="processed frames / sec"/><Stat icon={<CircleGauge size={15}/>} label="Last latency" value={totalMs?totalMs.toFixed(0)+" ms":"—"} meta="latest frame"/><Stat icon={<ShieldCheck size={15}/>} label="Frames" value={String(cameraFrames)} meta="camera frames processed"/><Stat icon={<Wifi size={15}/>} label="Drift" value={history[0]?.drift_report?.drift_score!=null?Number(history[0].drift_report.drift_score).toFixed(3):"—"} meta={history[0]?.drift_report?.status||"not enabled"}/></div><div className="form-actions"><button className="primary" onClick={cameraAuto?stopAutoInference:startAutoInference} disabled={cameraBusy&&!cameraAuto}><Play size={13}/>{cameraAuto?"Stop live inference":"Start live inference"}</button><button className="secondary" onClick={predictFrame} disabled={cameraBusy||cameraAuto}>{cameraBusy?"Analyzing…":"Analyze frame"}</button><label className="compact-control">Interval<select value={cameraInterval} onChange={e=>setCameraInterval(Number(e.target.value))} disabled={cameraAuto}><option value={250}>250 ms</option><option value={500}>500 ms</option><option value={1000}>1000 ms</option></select></label><button className="secondary" onClick={stopCamera}>Stop camera</button></div></>:<button className="secondary" onClick={startCamera}><Wifi size={13}/> Start camera</button>}{cameraError&&<div className="form-error">{cameraError}</div>}</div>
     <div className="card"><div className="section-head"><div><div className="section-title">Run inference</div><div className="subtitle">Select images or a folder. Results come from the existing <code>/predict-batch</code> runtime.</div></div></div>
@@ -929,6 +934,7 @@ function LivePage({apiHealthy}:{apiHealthy:boolean}) {
       {files.length>0&&<div className="file-list">{files.map((f,i)=><span key={i} className="status-chip">{f.name}</span>)}</div>}
       <button className="primary" onClick={predictBatch} disabled={!files.length||busy}><Play size={13}/>{busy?"Running…":"Run batch inference"}</button>{error&&<div className="form-error">{error}</div>}
       {result&&<div className="deployment-result"><div className="performance-grid"><div><span>Processed</span><b>{result.batch_results?.length??0}</b></div><div><span>Anomalies</span><b>{history.slice(0,result.batch_results?.length??0).filter(x=>!x.error&&(activeThreshold!=null?Number(x.anomaly_score||0)>=Number(activeThreshold):x.is_anomaly)).length}</b></div><div><span>Threshold</span><b>{activeThreshold!=null?Number(activeThreshold).toFixed(3):"—"}</b></div><div><span>Drift</span><b>{history.some(x=>x.drift_report)?"Observed":"Not enabled"}</b></div></div></div>}
+      {result&&<button className="secondary results-cta" onClick={onResults}><ShieldCheck size={13}/> Open detailed results</button>}
     </div>
     {history.length>0&&<div className="live-charts">
       <div className="card"><div className="section-head"><div><div className="section-title">Anomaly score</div><div className="subtitle">Latest session · threshold {activeThreshold!=null?Number(activeThreshold).toFixed(3):"not available"}.</div></div></div><div className="spark-bars">{history.slice(0,12).reverse().map((x,i)=>{const v=x.error?0:Math.min(1,Math.max(0,Number(x.anomaly_score)||0)/Math.max(Number(activeThreshold)||1,...history.slice(0,12).map(y=>Number(y.anomaly_score)||0),1));return <div className="spark-column" key={i} title={x.filename}><div className="spark-bar" style={{height:`${Math.max(4,v*100)}%`}}/><span>{i+1}</span></div>})}</div></div>
@@ -938,6 +944,63 @@ function LivePage({apiHealthy}:{apiHealthy:boolean}) {
       {history.length===0?<div className="empty-state">No inference events yet.</div>:<div className="table-wrap"><table className="data-table"><thead><tr><th>Image</th><th>Score</th><th>Latency</th><th>Drift</th><th>Status</th><th>Result</th></tr></thead><tbody>{history.map((x,i)=><tr key={i}><td>{x.filename}</td><td>{x.error?"—":Number(x.anomaly_score).toFixed(4)}</td><td>{x.error?"—":`${Number(x.latency_ms||0).toFixed(1)} ms`}</td><td>{x.drift_report?`${Number(x.drift_report.drift_score||0).toFixed(3)} · ${x.drift_report.status||"observed"}`:"—"}</td><td>{x.error?"Error":activeThreshold!=null?(Number(x.anomaly_score||0)>=Number(activeThreshold)?"Anomaly":"Normal"):(x.is_anomaly?"Anomaly":"Normal")}</td><td>{x.error||"Completed"}</td></tr>)}</tbody></table></div>}
     </div></>;
 }
+function ResultsPage({session,onNavigate}:{session:{result:any;history:any[];config:any}|null;onNavigate:(p:Page)=>void}) {
+  const result=session?.result;
+  const history=session?.history||[];
+  const config=session?.config;
+  const threshold=config?.thresholds?.[config?.algorithm] ?? null;
+  const rows=history.filter(x=>!x.error);
+  const anomalies=rows.filter(x=>threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly));
+  const latest=rows[0];
+
+  if(!session || !result) return <div className="page-head">
+    <div><div className="eyebrow">Results</div><h1>No results yet</h1><p className="subtitle">Run an image or batch inference first. Your latest session will appear here.</p></div>
+    <button className="primary" onClick={()=>onNavigate("Inference")}><Play size={13}/> Run inference</button>
+  </div>;
+
+  return <>
+    <div className="page-head">
+      <div><div className="eyebrow">Inference results</div><h1>Results</h1><p className="subtitle">A clear view of the latest anomaly decisions, scores and visual evidence.</p></div>
+      <button className="secondary" onClick={()=>onNavigate("Inference")}><Play size={13}/> New inference</button>
+    </div>
+
+    <div className="grid-4 section">
+      <Stat icon={<Database size={15}/>} label="Processed" value={String(rows.length)} meta="images completed"/>
+      <Stat icon={<ShieldCheck size={15}/>} label="Anomalies" value={String(anomalies.length)} meta={anomalies.length?"review required":"no anomalies detected"} green={!anomalies.length}/>
+      <Stat icon={<CircleGauge size={15}/>} label="Threshold" value={threshold!=null?Number(threshold).toFixed(3):"—"} meta="from config.yml"/>
+      <Stat icon={<Activity size={15}/>} label="Latest score" value={latest?Number(latest.anomaly_score).toFixed(3):"—"} meta={latest?(threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"Anomaly":"Normal"):"waiting"}/>
+    </div>
+
+    {latest && <section className="card result-hero">
+      <div className="section-head"><div><div className="section-title">Latest result</div><div className="subtitle">{latest.filename}</div></div><span className={`result-status ${threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"anomaly":"normal"}`}>{threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"ANOMALY":"NORMAL"}</span></div>
+      <div className="result-score"><strong>{Number(latest.anomaly_score).toFixed(4)}</strong><span>Anomaly score</span><small>Decision threshold: {threshold!=null?Number(threshold).toFixed(4):"not available"}</small></div>
+      <div className="result-visual-grid">
+        {result.heatmap_image_base64 && <div className="result-visual"><span>Heatmap</span><img src={`data:image/png;base64,${result.heatmap_image_base64}`} alt="Anomaly heatmap"/></div>}
+        {result.boundary_image_base64 && <div className="result-visual"><span>Boundary</span><img src={`data:image/png;base64,${result.boundary_image_base64}`} alt="Anomaly boundary visualization"/></div>}
+        {result.highlighted_image_base64 && <div className="result-visual"><span>Highlighted regions</span><img src={`data:image/png;base64,${result.highlighted_image_base64}`} alt="Highlighted anomaly regions"/></div>}
+        {!result.heatmap_image_base64&&!result.boundary_image_base64&&!result.highlighted_image_base64&&<div className="result-no-visual">Detailed visualizations are not available for this batch response. Run a single-image test when visual evidence is needed.</div>}
+      </div>
+    </section>}
+
+    <section className="card">
+      <div className="section-head"><div><div className="section-title">Inference history</div><div className="subtitle">Results from the current Studio session.</div></div></div>
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>Image</th><th>Score</th><th>Latency</th><th>Decision</th><th>Status</th></tr></thead><tbody>
+        {history.map((x,i)=>{const anomaly=!x.error&&(threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly));return <tr key={i}><td>{x.filename}</td><td>{x.error?"—":Number(x.anomaly_score).toFixed(4)}</td><td>{x.error?"—":`${Number(x.latency_ms||0).toFixed(1)} ms`}</td><td>{x.error?"—":anomaly?"Anomaly":"Normal"}</td><td>{x.error?"Error":"Completed"}</td></tr>})}
+      </tbody></table></div>
+    </section>
+
+    <details className="technical-details card">
+      <summary>Technical details</summary>
+      <div className="technical-grid">
+        <div><span>Algorithm</span><b>{String(config?.algorithm||"—").toUpperCase()}</b></div>
+        <div><span>Input size</span><b>{config?.resize?.join(" × ")||"—"}</b></div>
+        <div><span>Threshold</span><b>{threshold!=null?Number(threshold).toFixed(4):"—"}</b></div>
+        <div><span>Drift</span><b>{history.some(x=>x.drift_report)?"Observed":"Not enabled"}</b></div>
+      </div>
+    </details>
+  </>;
+}
+
 function SettingsPage({apiHealthy}:{apiHealthy:boolean}) {
   const [config,setConfig]=useState<any>(null); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
   async function load(){
@@ -966,7 +1029,7 @@ function SettingsPage({apiHealthy}:{apiHealthy:boolean}) {
   </>;
 }
 
-function Placeholder({page}:{page:Page}) { const descriptions:Record<Page,string>={Overview:"",Projects:"",Datasets:"",Training:"",Models:"",Deployments:"Export and validate models for production targets without changing the algorithm core.",Live:"Inspect camera or stream inference using the existing AnomaVision runtime.",Monitoring:"Track runtime health, latency and production data drift.",Settings:"View the canonical Studio configuration."};return <><div className="page-head"><div><div className="eyebrow">Workspace</div><h1>{page}</h1><p className="subtitle">{descriptions[page]}</p></div><button className="secondary"><SlidersHorizontal size={13}/> Configure</button></div><div className="card placeholder"><div className="icon-box"><Sparkles size={18}/></div><div><b>Connected to the Studio architecture</b><p className="subtitle">This view is ready to consume the same Python services through the Studio API. No ML logic is duplicated in the frontend.</p></div></div></>; }
+function Placeholder({page}:{page:Page}) { const descriptions:Record<Page,string>={Overview:"",Projects:"",Datasets:"",Training:"",Models:"",Deployments:"Export and validate models for production targets without changing the algorithm core.",Live:"Run continuous camera inference using the existing AnomaVision runtime.",Inference:"Test images and camera frames with the existing inference runtime.",Results:"Review anomaly scores, decisions and visual evidence.",Monitoring:"Track runtime health, latency and production data drift.",Settings:"View the canonical Studio configuration."};return <><div className="page-head"><div><div className="eyebrow">Workspace</div><h1>{page}</h1><p className="subtitle">{descriptions[page]}</p></div><button className="secondary"><SlidersHorizontal size={13}/> Configure</button></div><div className="card placeholder"><div className="icon-box"><Sparkles size={18}/></div><div><b>Connected to the Studio architecture</b><p className="subtitle">This view is ready to consume the same Python services through the Studio API. No ML logic is duplicated in the frontend.</p></div></div></>; }
 
 function Stat({icon,label,value,meta,green}:{icon:React.ReactNode;label:string;value:string;meta:string;green?:boolean}){return <div className="card"><div className="stat-label">{icon}<span>{label}</span></div><div className="stat-value">{value}</div><div className="stat-meta">{green&&<span className="status-dot"/>}{meta}</div></div>}
 function ActivityRow({icon,title,sub,badge}:{icon:React.ReactNode;title:string;sub:string;badge:string}){return <div className="row"><div className="row-main"><div className="icon-box">{icon}</div><div><div className="row-title">{title}</div><div className="row-sub">{sub}</div></div></div><div className="badge">{badge}</div></div>}
