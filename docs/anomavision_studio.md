@@ -46,7 +46,8 @@ streamlit run apps/studio/app.py
 ## Implementation roadmap
 
 1. Studio shell + project lifecycle — implemented.
-2. Dataset import and dataset-quality checks.
+2. Dataset discovery and dataset-quality checks — implemented.
+3. Dataset import/curation and training integration.
 3. Training jobs using the existing PaDiM/PatchCore APIs.
 4. Model artifacts + evaluation results.
 5. Deployment orchestration using existing validation/export code.
