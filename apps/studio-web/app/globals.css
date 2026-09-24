@@ -876,3 +876,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 /* Phase 6 — deployment readiness */
 .deployment-readiness{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.018)}.deployment-readiness svg{flex:0 0 auto;margin-top:1px}.deployment-readiness strong,.deployment-readiness span{display:block}.deployment-readiness strong{font-size:10px}.deployment-readiness span{margin-top:3px;color:var(--muted);font-size:9px;line-height:1.45}.deployment-technical{margin-top:12px}.deployment-technical .artifact-box{margin-top:10px}
+
+
+/* Phase 7 — global loading and recovery states */
+.global-loading,.global-api-error{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.018)}.global-loading>div,.global-api-error>div{display:flex;flex-direction:column;gap:2px}.global-loading strong,.global-api-error strong{font-size:10px}.global-loading span,.global-api-error span{font-size:9px;color:var(--muted);line-height:1.4}.loading-spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:currentColor;border-radius:50%;animation:studio-spin .8s linear infinite;flex:0 0 auto}@keyframes studio-spin{to{transform:rotate(360deg)}}.global-api-error{border-color:rgba(255,120,120,.22);background:rgba(255,80,80,.035)}
+@media(max-width:700px){.global-loading,.global-api-error{align-items:flex-start}.global-api-error{flex-direction:column}.global-api-error .secondary{width:100%}}
