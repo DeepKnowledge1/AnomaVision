@@ -369,3 +369,17 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .artifact-box{margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,.12)}.artifact-box span{display:block;color:var(--muted);font-size:9px;margin-bottom:5px}.artifact-box code{display:block;font-size:9px;overflow-wrap:anywhere}
 .success-badge{border-color:rgba(80,190,130,.25)}.failure-badge{border-color:rgba(220,100,100,.25)}
 @media(max-width:760px){.deployment-steps{grid-template-columns:1fr}.target-grid{grid-template-columns:1fr}.deployment-step{padding:10px}}
+
+
+.monitor-status{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--border);border-radius:11px;margin-bottom:18px;background:rgba(255,255,255,.018)}
+.monitor-status.healthy{border-color:rgba(80,190,130,.2)}.monitor-status.attention{border-color:rgba(220,170,80,.25)}
+.monitor-status-icon{width:32px;height:32px;border:1px solid var(--border);border-radius:9px;display:grid;place-items:center;flex:0 0 auto}
+.monitor-status-icon .status-dot{margin:0}
+.monitor-status>div:nth-child(2){min-width:0;flex:1}.monitor-status strong,.monitor-status span{display:block}.monitor-status strong{font-size:12px}.monitor-status span{font-size:10px;color:var(--muted);margin-top:3px}
+.monitor-status-value{font-size:10px;text-transform:capitalize;color:var(--muted);white-space:nowrap}
+.monitor-empty{min-height:210px;display:grid;place-content:center;justify-items:center;text-align:center;gap:6px;color:var(--muted)}
+.monitor-empty svg{opacity:.65;margin-bottom:3px}.monitor-empty strong{font-size:12px;color:var(--text)}.monitor-empty span{font-size:10px;max-width:270px;line-height:1.5}
+.monitor-warnings{min-height:210px;align-content:start;padding-top:8px}
+.monitoring-note{display:flex;align-items:flex-start;gap:10px;color:var(--muted);font-size:10px}
+.monitoring-note svg{margin-top:1px;flex:0 0 auto}.monitoring-note strong,.monitoring-note span{display:block}.monitoring-note strong{color:var(--text);font-size:11px}.monitoring-note span{margin-top:3px;line-height:1.5}
+@media(max-width:760px){.monitor-status{align-items:flex-start}.monitor-status-value{display:none}}
