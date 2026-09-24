@@ -353,11 +353,16 @@ function DatasetsPage({ project }: { project?: Project }) {
     setPickerBusy(true);setError("");
     try{
       const r=await fetch(API_BASE+"/api/dataset/pick-folder",{cache:"no-store"});
-      const d=await r.json();
+      const d=await r.json().catch(()=>({}));
       if(!r.ok)throw new Error(d.detail||"Could not open the folder dialog");
-      if(d.path){setPath(String(d.path));setReport(null);}
-    }catch(e){setError(e instanceof Error?e.message:"Could not open the folder dialog");}
-    finally{setPickerBusy(false);}
+      if(!d.path){
+        setError("No folder was selected. Choose a dataset folder and try again.");
+        return;
+      }
+      setPath(String(d.path));setReport(null);
+    }catch(e){
+      setError(e instanceof Error?e.message:"Could not open the folder dialog");
+    }finally{setPickerBusy(false);}
   }
 
   async function inspect(){
@@ -407,14 +412,24 @@ function DatasetsPage({ project }: { project?: Project }) {
               <p>Studio looks at image count, readable files, duplicates and image sizes before you start training.</p>
             </div>
           </div>
+          <div className="dataset-config-card">
+            <div>
+              <span className="dataset-config-label">CONFIGURED DATASET</span>
+              <strong>{configPath || (configLoaded ? "No dataset_path configured" : "Loading config…")}</strong>
+              {configClass && <small>Class: <b>{configClass}</b> · source: config.yml</small>}
+            </div>
+            <div className="dataset-config-actions">
+              {configPath && path!==configPath && <button className="secondary" onClick={()=>{setPath(configPath);setReport(null);}}>Use config folder</button>}
+              <button className="secondary" onClick={chooseFolder} disabled={pickerBusy}>
+                <FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose another folder"}
+              </button>
+            </div>
+          </div>
           <div className="dataset-input-row">
             <label>
               Dataset folder
               <div className="dataset-path-control">
-                <input value={path} onChange={e=>setPath(e.target.value)} placeholder={configLoaded?"Enter a local dataset folder":"Loading config…"} />
-                <button className="secondary" onClick={chooseFolder} disabled={pickerBusy}>
-                  <FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose folder"}
-                </button>
+                <input value={path} onChange={e=>{setPath(e.target.value);setReport(null)}} placeholder={configLoaded?"Enter or select a local dataset folder":"Loading config…"} />
               </div>
             </label>
             <button className="primary" onClick={inspect} disabled={busy||!path.trim()}>
@@ -423,10 +438,10 @@ function DatasetsPage({ project }: { project?: Project }) {
           </div>
           <div className="dataset-source">
             <span className="badge">{configPath && path===configPath ? "From config.yml" : "Custom folder"}</span>
-            <span>{configPath ? "Canonical dataset: "+configPath : "No dataset_path is configured; enter a local folder above."}</span>
+            <span>{path ? "Selected: "+path : "Choose a folder to continue."}</span>
             {configClass && <span>Class: <strong>{configClass}</strong></span>}
           </div>
-          <div className="dataset-tip">The default folder comes from config.yml. You can replace it with another local path when needed.</div>
+          <div className="dataset-tip">Studio uses the canonical dataset_path from config.yml by default. Choose another folder only when you intentionally want to override it for this check.</div>
         </section>
 
         {error&&<div className="form-error">{error}</div>}
@@ -512,7 +527,9 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
     if(!dataset.trim()){setError("Add your dataset path first.");return;}
     setBusy(true);setError("");setResult(null);
     try{
-      const body:{dataset_path:string;algorithm:string;class_name:string;batch_size?:number;resize?:number[];backbone?:string}={dataset_path:dataset,algorithm,class_name};
+      const body:{dataset_path:string;algorithm:string;class_name?:string;batch_size?:number;resize?:number[];backbone?:string}={dataset_path:dataset,algorithm};
+      const selectedClass=className.trim();
+      if(selectedClass) body.class_name=selectedClass;
       if(batch)body.batch_size=Number(batch);
       if(backbone)body.backbone=backbone;
       const dims=resize.split(",").map(Number);
@@ -550,6 +567,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
             <p className="form-help">Point Studio to the same local image folder you checked in Data Readiness.</p>
             <label>Dataset path<input value={dataset} onChange={e=>setDataset(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
             <label>Class name<input value={className} onChange={e=>setClassName(e.target.value)} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
+            <div className="config-field-note">{className ? <>Using <strong>{className}</strong> from {configLoaded ? "config.yml" : "the current setup"}.</> : <>Class name will be taken from <strong>config.yml</strong> if you leave it empty.</>}</div>
           </section>
 
           <section className="card">
