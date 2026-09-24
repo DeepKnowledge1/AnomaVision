@@ -21,6 +21,7 @@ from apps.studio.services.monitoring_service import list_monitoring_reports, mon
 from apps.studio.services.model_registry import list_models, get_model
 from apps.studio.services.project_store import ProjectStore
 from apps.studio.services.training_service import train_project
+from anomavision.config import load_config
 
 
 STORE_ROOT = Path(
@@ -86,6 +87,41 @@ def _project_dir(project_id: str) -> Path:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "anomavision-studio"}
+
+
+@app.get("/api/config")
+def config() -> dict[str, Any]:
+    """Expose the relevant canonical config.yml values to Studio."""
+    config_path = Path(os.getenv("ANOMAVISION_CONFIG", "config.yml"))
+    try:
+        data = load_config(str(config_path)) or {}
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    algorithm = str(data.get("algorithm", "patchcore")).lower()
+    thresholds = {
+        "padim": float(data.get("thresh_padim", 13.0)),
+        "patchcore": float(data.get("thresh_patchcore", 0.25)),
+        "efficientad": float(data.get("thresh_efficientad", 1.0)),
+    }
+    resize = data.get("resize", [224, 224])
+    return {
+        "algorithm": algorithm,
+        "resize": resize,
+        "normalize": bool(data.get("normalize", True)),
+        "thresholds": thresholds,
+        "stream": {
+            "display_fps": bool(data.get("stream_display_fps", True)),
+            "max_frames": data.get("stream_max_frames"),
+        },
+        "drift": {
+            "enabled": bool(data.get("enable_drift_monitoring", False)),
+            "window": int(data.get("drift_window", 50)),
+            "min_samples": int(data.get("drift_min_samples", 5)),
+            "threshold": float(data.get("drift_threshold", 0.20)),
+            "evaluation_interval": int(data.get("drift_evaluation_interval", 25)),
+        },
+    }
 
 
 @app.get("/api/catalog")
