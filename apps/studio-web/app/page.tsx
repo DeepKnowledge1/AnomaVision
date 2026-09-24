@@ -48,7 +48,7 @@ export default function StudioPage() {
   const [selectedProject, setSelectedProject] = useState("");
   const [models, setModels] = useState<Model[]>([]);
   const [deploymentModelId, setDeploymentModelId] = useState("");
-  const [apiHealthy, setApiHealthy] = useState(false);
+  const [apiHealthy, setApiHealthy] = useState(false);\n  const [projectsLoading, setProjectsLoading] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [inferenceSession, setInferenceSession] = useState<{result:any;history:any[];config:any}|null>(null);
 
