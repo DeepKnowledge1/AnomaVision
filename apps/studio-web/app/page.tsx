@@ -1055,11 +1055,40 @@ function LivePage({apiHealthy,onResult,onResults}:{apiHealthy:boolean;onResult:(
   const [studioConfig,setStudioConfig]=useState<any>(null); const activeThreshold=studioConfig?.thresholds?.[studioConfig?.algorithm]??null;
   useEffect(()=>{fetch(`${API_BASE}/api/config`,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(setStudioConfig).catch(()=>setStudioConfig(null))},[]);
   useEffect(()=>{if(result) onResult(result,history,studioConfig)},[result,history,studioConfig]);
+  useEffect(()=>{
+    if(!camera || !streamRef.current || !videoRef.current)return;
+    const video=videoRef.current;
+    video.srcObject=streamRef.current;
+    void video.play().catch(()=>{});
+  },[camera]);
   useEffect(()=>()=>{if(cameraLoopRef.current!==null)window.clearInterval(cameraLoopRef.current);streamRef.current?.getTracks().forEach(t=>t.stop())},[]);
-  async function startCamera(){setCameraError("");try{const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});streamRef.current=stream;setCamera(true);if(videoRef.current)videoRef.current.srcObject=stream;}catch(e){setCameraError(e instanceof Error?e.message:"Camera access denied");}}
+  async function startCamera(){
+    setCameraError("");
+    try{
+      if(!navigator.mediaDevices?.getUserMedia)throw new Error("Camera access is not available in this browser.");
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
+      streamRef.current=stream;
+      setCamera(true);
+    }catch(e){setCameraError(e instanceof Error?e.message:"Camera access denied");}
+  }
   function stopAutoInference(){if(cameraLoopRef.current!==null)window.clearInterval(cameraLoopRef.current);cameraLoopRef.current=null;setCameraAuto(false);}
   function stopCamera(){stopAutoInference();streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;setCamera(false);setCameraFps(0);}
-  async function predictFrame(){if(!videoRef.current||cameraBusyRef.current)return;cameraBusyRef.current=true;setCameraBusy(true);setCameraError("");try{const video=videoRef.current;if(video.readyState<2||!video.videoWidth||!video.videoHeight)throw new Error("Camera frame is not ready");const canvas=document.createElement("canvas");const [targetW,targetH]=studioConfig?.resize||[224,224];canvas.width=targetW;canvas.height=targetH;canvas.getContext("2d")?.drawImage(video,0,0);const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));if(!blob)throw new Error("Could not capture camera frame");const body=new FormData();body.append("files",blob,"camera.jpg");const started=performance.now();const r=await fetch(`${inferenceUrl}/predict-batch`,{method:"POST",body});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Camera inference failed");const rows=(d.batch_results||[]).map((x:any)=>({filename:"camera.jpg",...(x.result||{}),error:x.error}));setResult(d);setHistory(prev=>[...rows,...prev].slice(0,20));const elapsed=performance.now()-started;setTotalMs(rows.reduce((sum:number,x:any)=>sum+(Number(x.latency_ms)||0),0)||elapsed);setCameraFrames(prev=>prev+rows.length);const now=Date.now();fpsTimesRef.current=[...fpsTimesRef.current.filter(t=>now-t<5000),now];setCameraFps(fpsTimesRef.current.length/5);}catch(e){setCameraError(e instanceof Error?e.message:"Camera inference failed")}finally{cameraBusyRef.current=false;setCameraBusy(false)}}
+  async function waitForCameraFrame(video:HTMLVideoElement){
+    if(video.readyState<2 || !video.videoWidth || !video.videoHeight){
+      await new Promise<void>((resolve,reject)=>{
+        const timeout=window.setTimeout(()=>{cleanup();reject(new Error("Camera frame is not ready. Please wait a moment and try again."));},3000);
+        const cleanup=()=>{window.clearTimeout(timeout);video.removeEventListener("loadeddata",ready);video.removeEventListener("canplay",ready);};
+        const ready=()=>{if(video.videoWidth&&video.videoHeight){cleanup();resolve();}};
+        video.addEventListener("loadeddata",ready);
+        video.addEventListener("canplay",ready);
+        if(video.readyState>=2&&video.videoWidth&&video.videoHeight)ready();
+      });
+    }
+    if("requestVideoFrameCallback" in video){
+      await new Promise<void>(resolve=>(video as HTMLVideoElement & {requestVideoFrameCallback:(cb:()=>void)=>number}).requestVideoFrameCallback(()=>resolve()));
+    }
+  }
+  async function predictFrame(){if(!videoRef.current||cameraBusyRef.current)return;cameraBusyRef.current=true;setCameraBusy(true);setCameraError("");try{const video=videoRef.current;await waitForCameraFrame(video);const canvas=document.createElement("canvas");const [targetW,targetH]=studioConfig?.resize||[224,224];canvas.width=targetW;canvas.height=targetH;canvas.getContext("2d")?.drawImage(video,0,0);const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));if(!blob)throw new Error("Could not capture camera frame");const body=new FormData();body.append("files",blob,"camera.jpg");const started=performance.now();const r=await fetch(`${inferenceUrl}/predict-batch`,{method:"POST",body});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Camera inference failed");const rows=(d.batch_results||[]).map((x:any)=>({filename:"camera.jpg",...(x.result||{}),error:x.error}));setResult(d);setHistory(prev=>[...rows,...prev].slice(0,20));const elapsed=performance.now()-started;setTotalMs(rows.reduce((sum:number,x:any)=>sum+(Number(x.latency_ms)||0),0)||elapsed);setCameraFrames(prev=>prev+rows.length);const now=Date.now();fpsTimesRef.current=[...fpsTimesRef.current.filter(t=>now-t<5000),now];setCameraFps(fpsTimesRef.current.length/5);}catch(e){setCameraError(e instanceof Error?e.message:"Camera inference failed")}finally{cameraBusyRef.current=false;setCameraBusy(false)}}
   function startAutoInference(){if(!camera||cameraLoopRef.current!==null)return;setCameraAuto(true);void predictFrame();cameraLoopRef.current=window.setInterval(()=>void predictFrame(),cameraInterval);}
   async function predictBatch(){
     if(!files.length)return;
