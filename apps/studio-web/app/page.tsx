@@ -218,7 +218,20 @@ function ProjectsPage({ projects, selectedProject, onSelect, onCreated }: { proj
 }
 function DatasetsPage({ project }: { project?: Project }) {
   const [path,setPath]=useState("");
+  const [configPath,setConfigPath]=useState("");
+  const [configClass,setConfigClass]=useState("default");
+  const [configLoaded,setConfigLoaded]=useState(false);
   const [report,setReport]=useState<DatasetReport|null>(null);
+  useEffect(()=>{
+    fetch(API_BASE+"/api/config",{cache:"no-store"})
+      .then(r=>r.ok?r.json():null)
+      .then(d=>{
+        if(d?.dataset_path){setConfigPath(String(d.dataset_path));setPath(current=>current||String(d.dataset_path));}
+        if(d?.class_name)setConfigClass(String(d.class_name));
+      })
+      .catch(()=>{})
+      .finally(()=>setConfigLoaded(true));
+  },[]);
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
 
@@ -272,13 +285,18 @@ function DatasetsPage({ project }: { project?: Project }) {
           <div className="dataset-input-row">
             <label>
               Dataset folder
-              <input value={path} onChange={e=>setPath(e.target.value)} placeholder="C:\data\bottle"/>
+              <input value={path} onChange={e=>setPath(e.target.value)} placeholder={configLoaded?"Enter a local dataset folder":"Loading config…"} />
             </label>
-            <button className="primary" onClick={inspect} disabled={busy}>
+            <button className="primary" onClick={inspect} disabled={busy||!path.trim()}>
               <ShieldCheck size={13}/>{busy?"Checking…":"Check dataset"}
             </button>
           </div>
-          <div className="dataset-tip">Tip: use the folder that contains your training images. Subfolders are included automatically.</div>
+          <div className="dataset-source">
+            <span className="badge">{configPath && path===configPath ? "From config.yml" : "Custom folder"}</span>
+            <span>{configPath ? "Canonical dataset: "+configPath : "No dataset_path is configured; enter a local folder above."}</span>
+            {configClass && <span>Class: <strong>{configClass}</strong></span>}
+          </div>
+          <div className="dataset-tip">The default folder comes from config.yml. You can replace it with another local path when needed.</div>
         </section>
 
         {error&&<div className="form-error">{error}</div>}
