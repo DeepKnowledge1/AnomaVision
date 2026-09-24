@@ -427,3 +427,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .data-table td{color:#c8ced8}
 .data-table tbody tr:hover{background:rgba(255,255,255,.015)}
 @media(max-width:700px){.performance-grid{grid-template-columns:repeat(2,1fr)}}
+
+.dataset-source{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px;color:var(--muted);font-size:9px}
+.dataset-source .badge{flex:0 0 auto}
+.dataset-source strong{color:var(--text);font-weight:600}
