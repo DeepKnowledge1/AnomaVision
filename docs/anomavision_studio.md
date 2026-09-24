@@ -53,3 +53,18 @@ streamlit run apps/studio/app.py
 5. Deployment orchestration using existing validation/export code.
 6. Live inference using existing runtime/backends.
 7. Production monitoring and drift visualization.
+
+
+### Training integration
+
+Studio now exposes a **Training** workspace. It accepts a dataset root/class folder containing
+`train/good`, writes a project-local experiment config, and calls the existing
+`anomavision.train.run_training()` implementation.
+
+Studio does not duplicate PaDiM or PatchCore training logic. Training artifacts are written
+under the selected project's `models/` area and the latest run metadata is recorded in
+`models/latest_training.json`.
+
+The first Studio training controls are intentionally small: algorithm, backbone, batch size,
+image size, PaDiM feature dimensions, and PatchCore coreset ratio. More advanced controls can
+be added without changing the core training implementation.
