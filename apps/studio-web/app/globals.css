@@ -173,3 +173,6 @@ input:focus, label select:focus { border-color:#6650a8; box-shadow:0 0 0 2px rgb
 .check-row { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid #20252e; font-size:11px; text-transform:capitalize; }
 .check-row b { font-size:9px; color:#7de4b5; }
 .perf-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:12px; }
+
+.warning-list { display:flex; flex-wrap:wrap; gap:7px; margin-top:14px; }
+.warning-chip { padding:6px 8px; border-radius:999px; border:1px solid #63402c; background:rgba(245,158,11,.08); color:#f5c77b; font-size:9px; text-transform:capitalize; }
