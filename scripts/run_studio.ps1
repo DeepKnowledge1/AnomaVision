@@ -9,7 +9,7 @@ Write-Host "Starting AnomaVision Studio..." -ForegroundColor Cyan
 $studioApiCommand = "Set-Location '$Root'; uv run uvicorn apps.studio.api.app:app --host 127.0.0.1 --port 8000"
 
 # Existing AnomaVision inference API
-$inferenceApiCommand = "Set-Location '$Root'; uv run python api.py"
+$inferenceApiCommand = "Set-Location '$Root'; $env:PORT=8001; uv run python api.py"
 
 # Studio web application
 $webCommand = "Set-Location '$Web'; npm run dev"
