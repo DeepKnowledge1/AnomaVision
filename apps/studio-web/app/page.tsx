@@ -184,23 +184,38 @@ function Overview({ project, projects, models, apiHealthy, onNavigate }: { proje
 function ProjectsPage({ projects, selectedProject, onSelect, onCreated }: { projects: Project[]; selectedProject: string; onSelect: (id:string)=>void; onCreated:()=>Promise<void> }) {
   const [name,setName]=useState(""); const [description,setDescription]=useState(""); const [algorithm,setAlgorithm]=useState("patchcore"); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
   async function create() {
-    setError(""); if (!name.trim()) { setError("Project name is required."); return; }
+    setError(""); if (!name.trim()) { setError("Give your project a name first."); return; }
     setBusy(true); try {
-      const r=await fetch(`${API_BASE}/api/projects`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,description,algorithm})});
+      const r=await fetch(`${API_BASE}/api/projects`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),description:description.trim(),algorithm})});
       const data=await r.json(); if(!r.ok) throw new Error(data.detail || "Could not create project");
       setName("");setDescription("");await onCreated();onSelect(data.id);
     } catch(e){setError(e instanceof Error?e.message:"Could not create project");} finally{setBusy(false);}
   }
-  return <><div className="page-head"><div><div className="eyebrow">Workspace</div><h1>Projects</h1><p className="subtitle">Create and manage isolated anomaly-detection workspaces.</p></div></div>
-    <div className="two-column"><section className="card"><div className="section-title">Create project</div><p className="form-help">A project keeps datasets, models, experiments and deployments together.</p>
-      <label>Project name<input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Bottle Inspection"/></label>
-      <label>Algorithm<select value={algorithm} onChange={e=>setAlgorithm(e.target.value)}><option value="patchcore">PatchCore</option><option value="padim">PaDiM</option><option value="efficientad">EfficientAD</option></select></label>
-      <label>Description<input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Optional project description"/></label>
-      {error && <div className="form-error">{error}</div>}<button className="primary full" onClick={create} disabled={busy}>{busy?"Creating…":"Create project"}</button>
-    </section><section><div className="section-head"><div className="section-title">Your projects</div><div className="section-link">{projects.length} total</div></div>
-      {projects.length===0?<div className="card empty">No projects yet. Create your first workspace.</div>:projects.map(p=><button key={p.id} className={`project-card ${p.id===selectedProject?"selected":""}`} onClick={()=>onSelect(p.id)}><div><strong>{p.name}</strong><span>{p.description || "No description"}</span></div><div className="project-meta"><b>{p.algorithm}</b><small>{p.status}</small></div></button>)}</section></div></>;
+  return <>
+    <div className="page-head"><div><div className="eyebrow">Workspace</div><h1>Projects</h1><p className="subtitle">Each project keeps its data, models and deployments together.</p></div></div>
+    <div className="project-intro"><div><strong>{projects.length ? "Choose a workspace or create a new one." : "Your first project starts here."}</strong><span>{projects.length ? "Select a project to make it the active workspace." : "Set the method now — you can continue with the existing AnomaVision workflow."}</span></div><div className="project-count"><b>{projects.length}</b><span>{projects.length===1?"project":"projects"}</span></div></div>
+    <div className="two-column project-layout">
+      <section className="card project-create-card">
+        <div className="project-create-head"><div className="icon-box"><Sparkles size={16}/></div><div><div className="section-title">Create project</div><p className="form-help">Start a clean workspace for one inspection task or product.</p></div></div>
+        <label>Project name<input autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Bottle Inspection" onKeyDown={e=>{if(e.key==="Enter"&&!busy)void create()}}/></label>
+        <label>Algorithm<select value={algorithm} onChange={e=>setAlgorithm(e.target.value)}><option value="patchcore">PatchCore · fast industrial baseline</option><option value="padim">PaDiM · feature distribution</option><option value="efficientad">EfficientAD · efficient detection</option></select></label>
+        <label>Description<input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Optional · e.g. bottle surface inspection"/></label>
+        {error && <div className="form-error">{error}</div>}
+        <button className="primary full" onClick={create} disabled={busy}><Play size={13}/>{busy?"Creating…":"Create project"}</button>
+      </section>
+      <section>
+        <div className="section-head"><div><div className="section-title">Your projects</div><div className="subtitle">Select a workspace to continue.</div></div><div className="section-link">{projects.length} total</div></div>
+        {projects.length===0
+          ? <div className="card project-empty"><div className="dataset-empty-icon"><Box size={19}/></div><strong>No projects yet</strong><span>Create your first workspace and then move to Dataset.</span></div>
+          : <div className="project-list">{projects.map(p=><button key={p.id} className={`project-card ${p.id===selectedProject?"selected":""}`} onClick={()=>onSelect(p.id)}>
+              <div className="project-card-main"><div className="project-symbol"><Box size={15}/></div><div><strong>{p.name}</strong><span>{p.description || "No description yet"}</span></div></div>
+              <div className="project-meta"><b>{p.algorithm}</b><small><span className="status-dot"/> {p.id===selectedProject?"Active":"Ready"}</small></div>
+            </button>)}</div>}
+      </section>
+    </div>
+    <div className="card project-next"><div><strong>Next step</strong><span>{selectedProject ? "Your workspace is ready. Check the dataset before training." : "Create or select a project to unlock the workflow."}</span></div><div className="project-flow"><span className={selectedProject?"done":""}>1 · Project</span><span>→</span><span>2 · Dataset</span><span>→</span><span>3 · Train</span></div></div>
+  </>;
 }
-
 function DatasetsPage({ project }: { project?: Project }) {
   const [path,setPath]=useState("");
   const [report,setReport]=useState<DatasetReport|null>(null);
