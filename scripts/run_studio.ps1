@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
 $Web = Join-Path $Root "apps\studio-web"
+$LogDir = Join-Path $Root ".studio-logs"
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 function Stop-PortProcess {
     param([int]$Port)
@@ -37,9 +39,9 @@ $studioApiCommand = "Set-Location '$Root'; uv run uvicorn apps.studio.api.app:ap
 $inferenceApiCommand = "Set-Location '$Root'; [Environment]::SetEnvironmentVariable('PORT','8001','Process'); uv run python apps\api.py"
 $webCommand = "Set-Location '$Web'; [Environment]::SetEnvironmentVariable('PORT','3000','Process'); npm run dev"
 
-Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $studioApiCommand)
-Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $inferenceApiCommand)
-Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $webCommand)
+Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @("-NoProfile", "-Command", $studioApiCommand) -RedirectStandardOutput (Join-Path $LogDir "studio-api.log") -RedirectStandardError (Join-Path $LogDir "studio-api.err.log")
+Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @("-NoProfile", "-Command", $inferenceApiCommand) -RedirectStandardOutput (Join-Path $LogDir "inference-api.log") -RedirectStandardError (Join-Path $LogDir "inference-api.err.log")
+Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @("-NoProfile", "-Command", $webCommand) -RedirectStandardOutput (Join-Path $LogDir "web.log") -RedirectStandardError (Join-Path $LogDir "web.err.log")
 
 Write-Host "Waiting for Studio Web on 3000..." -ForegroundColor Yellow
 $webReady = Wait-ForUrl "http://127.0.0.1:3000" 120
@@ -55,7 +57,7 @@ if ($inferenceReady) {
     Write-Host "Inference API:  http://localhost:8001  READY" -ForegroundColor Green
 } else {
     Write-Host "Inference API:  NOT READY" -ForegroundColor Red
-    Write-Host "Check the Inference API PowerShell window for the startup error." -ForegroundColor Red
+    Write-Host "Check .studio-logs\inference-api.log and inference-api.err.log for details." -ForegroundColor Red
 }
 
 if ($webReady) { Start-Process "http://localhost:3000" } else { throw "Studio Web did not start on port 3000. Check the Next.js PowerShell window." }
