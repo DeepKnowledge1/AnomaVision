@@ -510,7 +510,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
   const [backbone,setBackbone]=useState("");
   const [resize,setResize]=useState("");
   const [configLoaded,setConfigLoaded]=useState(false);
-  const [result,setResult]=useState<Record<string,unknown>|null>(null);
+  const [result,setResult]=useState<Record<string,any>|null>(null);
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
   const [pickerBusy,setPickerBusy]=useState(false);
@@ -1246,7 +1246,7 @@ function SettingsPage({apiHealthy}:{apiHealthy:boolean}) {
   </>;
 }
 
-function Placeholder({page}:{page:Page}) { const descriptions:Record<Page,string>={Overview:"",Projects:"",Datasets:"",Training:"",Models:"",Deployments:"Export and validate models for production targets without changing the algorithm core.",Live:"Run continuous camera inference using the existing AnomaVision runtime.",Inference:"Test images and camera frames with the existing inference runtime.",Results:"Review anomaly scores, decisions and visual evidence.",Monitoring:"Track runtime health, latency and production data drift.",Settings:"View the canonical Studio configuration."};return <><div className="page-head"><div><div className="eyebrow">Workspace</div><h1>{page}</h1><p className="subtitle">{descriptions[page]}</p></div><button className="secondary"><SlidersHorizontal size={13}/> Configure</button></div><div className="card placeholder"><div className="icon-box"><Sparkles size={18}/></div><div><b>Connected to the Studio architecture</b><p className="subtitle">This view is ready to consume the same Python services through the Studio API. No ML logic is duplicated in the frontend.</p></div></div></>; }
+function Placeholder({page}:{page:Page}) { const descriptions:Record<Page,string>={Overview:"",Performance:"",Projects:"",Datasets:"",Training:"",Models:"",Deployments:"Export and validate models for production targets without changing the algorithm core.",Live:"Run continuous camera inference using the existing AnomaVision runtime.",Inference:"Test images and camera frames with the existing inference runtime.",Results:"Review anomaly scores, decisions and visual evidence.",Monitoring:"Track runtime health, latency and production data drift.",Settings:"View the canonical Studio configuration."};return <><div className="page-head"><div><div className="eyebrow">Workspace</div><h1>{page}</h1><p className="subtitle">{descriptions[page]}</p></div><button className="secondary"><SlidersHorizontal size={13}/> Configure</button></div><div className="card placeholder"><div className="icon-box"><Sparkles size={18}/></div><div><b>Connected to the Studio architecture</b><p className="subtitle">This view is ready to consume the same Python services through the Studio API. No ML logic is duplicated in the frontend.</p></div></div></>; }
 
 function Stat({icon,label,value,meta,green}:{icon:React.ReactNode;label:string;value:string;meta:string;green?:boolean}){return <div className="card stat-card" tabIndex={0}><div className="stat-label">{icon}<span>{label}</span></div><div className="stat-value">{value}</div><div className="stat-meta">{green&&<span className="status-dot"/>}{meta}</div></div>}
 function ActivityRow({icon,title,sub,badge}:{icon:React.ReactNode;title:string;sub:string;badge:string}){return <div className="row"><div className="row-main"><div className="icon-box">{icon}</div><div><div className="row-title">{title}</div><div className="row-sub">{sub}</div></div></div><div className="badge">{badge}</div></div>}
