@@ -1051,9 +1051,33 @@ function MonitoringPage({project}:{project?:Project}) {
 
 function LivePage({apiHealthy,onResult,onResults}:{apiHealthy:boolean;onResult:(result:any,history:any[],config:any)=>void;onResults:()=>void}) {
   const [files,setFiles]=useState<File[]>([]); const [camera,setCamera]=useState(false); const [cameraBusy,setCameraBusy]=useState(false); const [cameraAuto,setCameraAuto]=useState(false); const [cameraError,setCameraError]=useState(""); const [cameraFps,setCameraFps]=useState(0); const [cameraFrames,setCameraFrames]=useState(0); const [cameraInterval,setCameraInterval]=useState(500); const videoRef=useRef<HTMLVideoElement>(null); const streamRef=useRef<MediaStream|null>(null); const cameraLoopRef=useRef<number|null>(null); const cameraBusyRef=useRef(false); const fpsTimesRef=useRef<number[]>([]); const [result,setResult]=useState<any>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const [history,setHistory]=useState<any[]>([]); const [totalMs,setTotalMs]=useState(0);
-  const inferenceUrl=process.env.NEXT_PUBLIC_ANOMAVISION_INFERENCE_URL ?? "http://localhost:8001";
-  const [studioConfig,setStudioConfig]=useState<any>(null); const activeThreshold=studioConfig?.thresholds?.[studioConfig?.algorithm]??null;
-  useEffect(()=>{fetch(`${API_BASE}/api/config`,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(setStudioConfig).catch(()=>setStudioConfig(null))},[]);
+  const inferenceUrl=process.env.NEXT_PUBLIC_ANOMAVISION_INFERENCE_URL ?? (typeof window !== "undefined" ? window.location.protocol + "//" + window.location.hostname + ":8001" : "http://localhost:8001");
+  const [studioConfig,setStudioConfig]=useState<any>(null);
+  const [inferenceHealth,setInferenceHealth]=useState<"checking"|"online"|"offline"|"wrong-service">("checking");
+  const [inferenceHealthMessage,setInferenceHealthMessage]=useState(""); const activeThreshold=studioConfig?.thresholds?.[studioConfig?.algorithm]??null;
+  async function checkInferenceApi(){
+    setInferenceHealth("checking"); setInferenceHealthMessage("Checking inference service…");
+    try{
+      const r=await fetch(inferenceUrl+"/health",{cache:"no-store"});
+      const d=await r.json().catch(()=>({}));
+      if(r.ok && (d.status==="healthy" || d.model_loaded===true)){
+        setInferenceHealth("online"); setInferenceHealthMessage("Inference API is connected and the model is loaded."); return true;
+      }
+      if(r.ok && d.service==="anomavision-studio"){
+        setInferenceHealth("wrong-service"); setInferenceHealthMessage("The configured inference URL points to the Studio API. Use port 8001 for inference.");
+      }else{
+        setInferenceHealth("offline"); setInferenceHealthMessage("Inference API responded but the model is not ready (HTTP "+r.status+"). Start inference on port 8001.");
+      }
+      return false;
+    }catch{
+      setInferenceHealth("offline"); setInferenceHealthMessage("Cannot reach the inference API at "+inferenceUrl+". Studio uses port 8000; inference uses port 8001. Start scripts/run_studio.ps1.");
+      return false;
+    }
+  }
+  useEffect(()=>{
+    fetch(`${API_BASE}/api/config`,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(setStudioConfig).catch(()=>setStudioConfig(null));
+    void checkInferenceApi();
+  },[]);
   useEffect(()=>{if(result) onResult(result,history,studioConfig)},[result,history,studioConfig]);
   useEffect(()=>{
     if(!camera || !streamRef.current || !videoRef.current)return;
@@ -1088,7 +1112,7 @@ function LivePage({apiHealthy,onResult,onResults}:{apiHealthy:boolean;onResult:(
       await new Promise<void>(resolve=>(video as HTMLVideoElement & {requestVideoFrameCallback:(cb:()=>void)=>number}).requestVideoFrameCallback(()=>resolve()));
     }
   }
-  async function predictFrame(){if(!videoRef.current||cameraBusyRef.current)return;cameraBusyRef.current=true;setCameraBusy(true);setCameraError("");try{const video=videoRef.current;await waitForCameraFrame(video);const canvas=document.createElement("canvas");const [targetW,targetH]=studioConfig?.resize||[224,224];canvas.width=targetW;canvas.height=targetH;canvas.getContext("2d")?.drawImage(video,0,0);const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));if(!blob)throw new Error("Could not capture camera frame");const body=new FormData();body.append("file",blob,"camera.jpg");const started=performance.now();const r=await fetch(inferenceUrl+"/predict",{method:"POST",body});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"Inference API error ("+r.status+")");const row={filename:"camera.jpg",...d};setResult(d);setHistory(prev=>[row,...prev].slice(0,20));const elapsed=performance.now()-started;setTotalMs(Number(d.latency_ms)||elapsed);setCameraFrames(prev=>prev+1);const now=Date.now();fpsTimesRef.current=[...fpsTimesRef.current.filter(t=>now-t<5000),now];setCameraFps(fpsTimesRef.current.length/5);}catch(e){setCameraError(e instanceof Error?e.message:"Camera inference failed")}finally{cameraBusyRef.current=false;setCameraBusy(false)}}
+  async function predictFrame(){if(!videoRef.current||cameraBusyRef.current)return;cameraBusyRef.current=true;setCameraBusy(true);setCameraError("");try{const video=videoRef.current;await waitForCameraFrame(video);const canvas=document.createElement("canvas");const [targetW,targetH]=studioConfig?.resize||[224,224];canvas.width=targetW;canvas.height=targetH;canvas.getContext("2d")?.drawImage(video,0,0);const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));if(!blob)throw new Error("Could not capture camera frame");const body=new FormData();body.append("file",blob,"camera.jpg");const started=performance.now();const r=await fetch(inferenceUrl+"/predict",{method:"POST",body});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"Inference API error ("+r.status+")");setInferenceHealth("online");setInferenceHealthMessage("Inference API is connected and responding.");const row={filename:"camera.jpg",...d};setResult(d);setHistory(prev=>[row,...prev].slice(0,20));const elapsed=performance.now()-started;setTotalMs(Number(d.latency_ms)||elapsed);setCameraFrames(prev=>prev+1);const now=Date.now();fpsTimesRef.current=[...fpsTimesRef.current.filter(t=>now-t<5000),now];setCameraFps(fpsTimesRef.current.length/5);}catch(e){const message=e instanceof TypeError?"Cannot reach inference API at "+inferenceUrl+". Check that the inference service is running on port 8001.":(e instanceof Error?e.message:"Camera inference failed");setInferenceHealth("offline");setInferenceHealthMessage(message);setCameraError(message)}finally{cameraBusyRef.current=false;setCameraBusy(false)}}
   function startAutoInference(){if(!camera||cameraLoopRef.current!==null)return;setCameraAuto(true);void predictFrame();cameraLoopRef.current=window.setInterval(()=>void predictFrame(),cameraInterval);}
   async function predictBatch(){
     if(!files.length)return;
@@ -1101,17 +1125,20 @@ function LivePage({apiHealthy,onResult,onResults}:{apiHealthy:boolean;onResult:(
         const r=await fetch(inferenceUrl+"/predict",{method:"POST",body});
         const d=await r.json().catch(()=>({}));
         if(!r.ok)throw new Error(d.detail||"Inference API error ("+r.status+")");
+        setInferenceHealth("online");setInferenceHealthMessage("Inference API is connected and responding.");
         rows.push({filename:file.name,...d});
       }
       const d=rows.length===1?rows[0]:{batch_results:rows.map(({filename,...result})=>({filename,result}))};
       setResult(d);
       setHistory(prev=>[...rows,...prev].slice(0,20));
       setTotalMs(rows.reduce((sum:number,x:any)=>sum+(Number(x.latency_ms)||0),0)||performance.now()-started);
-    }catch(e){setError(e instanceof Error?e.message:"Inference failed")}
+    }catch(e){const message=e instanceof TypeError?"Cannot reach inference API at "+inferenceUrl+". Studio API is on port 8000; inference API must be on port 8001. Start scripts/run_studio.ps1.":(e instanceof Error?e.message:"Inference failed");setInferenceHealth("offline");setInferenceHealthMessage(message);setError(message)}
     finally{setBusy(false)}
   }
+  const inferenceStatus = inferenceHealth==="online" ? "Online" : inferenceHealth==="checking" ? "Checking…" : "Unavailable";
   return <><div className="page-head"><div><div className="eyebrow">Test & inference</div><h1>Inference</h1><p className="subtitle">Test images with the existing AnomaVision inference runtime. Camera mode stays available when you need continuous inspection.</p></div></div>
-    <div className="live-top-stats"><Stat icon={<Wifi size={15}/>} label="Studio API" value={apiHealthy?"Online":"Offline"} meta="FastAPI connection"/><Stat icon={<CircleGauge size={15}/>} label="Inference API" value="External" meta="existing runtime"/><Stat icon={<BrainCircuit size={15}/>} label="Method" value={String(studioConfig?.algorithm||"—").toUpperCase()} meta={studioConfig?.resize?`${studioConfig.resize[0]}×${studioConfig.resize[1]} input`:"config.yml"}/><Stat icon={<ShieldCheck size={15}/>} label="Threshold" value={activeThreshold!=null?Number(activeThreshold).toFixed(3):"—"} meta="canonical config.yml"/><Stat icon={<CircleGauge size={15}/>} label="Batch latency" value={totalMs?`${totalMs.toFixed(0)} ms`:"—"} meta={totalMs?`${(1000/(totalMs/Math.max(1,files.length))).toFixed(1)} img/s`:"waiting"}/></div>
+    <div className="live-top-stats"><Stat icon={<Wifi size={15}/>} label="Studio API" value={apiHealthy?"Online":"Offline"} meta="FastAPI connection"/><Stat icon={<CircleGauge size={15}/>} label="Inference API" value={inferenceStatus} meta={inferenceHealth==="online"?"Port 8001 · model ready":inferenceHealth==="checking"?"Checking port 8001…":"Expected port 8001"}/><Stat icon={<BrainCircuit size={15}/>} label="Method" value={String(studioConfig?.algorithm||"—").toUpperCase()} meta={studioConfig?.resize?`${studioConfig.resize[0]}×${studioConfig.resize[1]} input`:"config.yml"}/><Stat icon={<ShieldCheck size={15}/>} label="Threshold" value={activeThreshold!=null?Number(activeThreshold).toFixed(3):"—"} meta="canonical config.yml"/><Stat icon={<CircleGauge size={15}/>} label="Batch latency" value={totalMs?`${totalMs.toFixed(0)} ms`:"—"} meta={totalMs?`${(1000/(totalMs/Math.max(1,files.length))).toFixed(1)} img/s`:"waiting"}/></div>
+    {inferenceHealth!=="online"&&<div className="api-warning"><CircleGauge size={14}/><div><strong>Inference service unavailable</strong><span>{inferenceHealthMessage}</span><button className="text-button" onClick={()=>void checkInferenceApi()}>Check again</button></div></div>}
     <div className="card camera-panel"><div className="section-head"><div><div className="section-title">Camera stream</div><div className="subtitle">Continuous browser-camera inference using the existing runtime.</div></div><div className="badge">{cameraAuto?"Live inference":camera?"Camera on":"Off"}</div></div>{camera?<><div className="camera-frame"><video ref={videoRef} autoPlay playsInline muted className="camera-preview"/>{history[0]&&!history[0].error&&<div className={`camera-result ${(activeThreshold!=null?Number(history[0].anomaly_score)>=Number(activeThreshold):history[0].is_anomaly)?"anomaly":"normal"}`}><strong>{(activeThreshold!=null?Number(history[0].anomaly_score)>=Number(activeThreshold):history[0].is_anomaly)?"ANOMALY":"NORMAL"}</strong><span>Score {Number(history[0].anomaly_score||0).toFixed(3)}</span><small>Threshold {activeThreshold!=null?Number(activeThreshold).toFixed(3):"—"}</small></div>}</div><div className="grid-4"><Stat icon={<Activity size={15}/>} label="Live FPS" value={cameraFps.toFixed(1)} meta="processed frames / sec"/><Stat icon={<CircleGauge size={15}/>} label="Last latency" value={totalMs?totalMs.toFixed(0)+" ms":"—"} meta="latest frame"/><Stat icon={<ShieldCheck size={15}/>} label="Frames" value={String(cameraFrames)} meta="camera frames processed"/><Stat icon={<Wifi size={15}/>} label="Drift" value={history[0]?.drift_report?.drift_score!=null?Number(history[0].drift_report.drift_score).toFixed(3):"—"} meta={history[0]?.drift_report?.status||"not enabled"}/></div><div className="form-actions"><button className="primary" onClick={cameraAuto?stopAutoInference:startAutoInference} disabled={cameraBusy&&!cameraAuto}><Play size={13}/>{cameraAuto?"Stop live inference":"Start live inference"}</button><button className="secondary" onClick={predictFrame} disabled={cameraBusy||cameraAuto}>{cameraBusy?"Analyzing…":"Analyze frame"}</button><label className="compact-control">Interval<select value={cameraInterval} onChange={e=>setCameraInterval(Number(e.target.value))} disabled={cameraAuto}><option value={250}>250 ms</option><option value={500}>500 ms</option><option value={1000}>1000 ms</option></select></label><button className="secondary" onClick={stopCamera}>Stop camera</button></div></>:<button className="secondary" onClick={startCamera}><Wifi size={13}/> Start camera</button>}{cameraError&&<div className="form-error">{cameraError}</div>}</div>
     <div className="card"><div className="section-head"><div><div className="section-title">Run inference</div><div className="subtitle">Select images or a folder. Results come from the existing <code>/predict-batch</code> runtime.</div></div></div>
       <div className="form-grid"><label className="field"><span>Images</span><input type="file" accept="image/*" multiple onChange={e=>setFiles(Array.from(e.target.files||[]).slice(0,10))}/></label><label className="field"><span>Folder</span><input type="file" accept="image/*" multiple {...({webkitdirectory:""} as any)} onChange={e=>setFiles(Array.from(e.target.files||[]).slice(0,10))}/></label></div>
