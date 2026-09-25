@@ -30,6 +30,22 @@ function Wait-ForUrl {
     return $false
 }
 
+function Wait-ForInferenceHealth {
+    param([int]$TimeoutSeconds = 180)
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-WebRequest -Uri "http://127.0.0.1:8001/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+            if ($response.StatusCode -eq 200) {
+                $body = $response.Content | ConvertFrom-Json
+                if ($body.status -eq "healthy" -and $body.model_loaded -eq $true) { return $true }
+            }
+        } catch { }
+        Start-Sleep -Seconds 1
+    }
+    return $false
+}
+
 Write-Host "Starting AnomaVision Studio..." -ForegroundColor Cyan
 Stop-PortProcess 3000
 Stop-PortProcess 8000
@@ -48,7 +64,7 @@ $webReady = Wait-ForUrl "http://127.0.0.1:3000" 120
 Write-Host "Studio API: waiting on 8000..." -ForegroundColor Yellow
 $studioReady = Wait-ForUrl "http://127.0.0.1:8000/docs" 90
 Write-Host "Inference API: waiting on 8001..." -ForegroundColor Yellow
-$inferenceReady = Wait-ForUrl "http://127.0.0.1:8001/health" 180
+$inferenceReady = Wait-ForInferenceHealth 180
 
 Write-Host ""
 if ($webReady) { Write-Host "Studio Web:     http://localhost:3000  READY" -ForegroundColor Green } else { Write-Host "Studio Web:     NOT READY" -ForegroundColor Red }
