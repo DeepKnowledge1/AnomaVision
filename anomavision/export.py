@@ -285,6 +285,7 @@ class ModelExporter:
         calib_samples: int = 0,
         calib_dir: Optional[str] = None,
         force_precision: Optional[str] = None,
+        include_embeddings: bool = False,
     ) -> Optional[Path]:
         """
         Export model to ONNX format (with optional quantization).
@@ -299,15 +300,21 @@ class ModelExporter:
             calib_samples: Number of calibration samples for static quantization
             calib_dir: Directory with calibration images (required if static quantization)
             force_precision: Force specific precision ("fp16" or "fp32"), None for auto-detect
+            include_embeddings: Include PatchCore embeddings as an additional ONNX output.
+                Disabled by default because the production inference graph only needs
+                the score and pixel map outputs.
         Returns:
             Path to exported file or None if failed
         """
         t0 = time.perf_counter()
         try:
             model = self._load_model()
-            # ONNX export includes the model representation used by production
-            # drift monitoring. Keep _load_model() backward compatible.
-            model.include_embeddings = True
+            # Keep the production ONNX graph minimal and stable. PatchCore
+            # embeddings are optional because production inference consumes only
+            # the image score and pixel map outputs. Calling the extractor a
+            # second time can create an invalid ONNX graph with duplicated
+            # backbone parameter references.
+            model.include_embeddings = include_embeddings
             dummy_input = torch.randn(*input_shape, device=self.device)
 
             # Auto-detect precision based on device if not forced
