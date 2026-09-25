@@ -44,6 +44,16 @@ _sess: Optional[ort.InferenceSession] = None
 _input_name: Optional[str] = None
 
 
+def _is_valid_onnx(path: str) -> bool:
+    """Return True only when ONNX Runtime can construct a session for the artifact."""
+    try:
+        ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+        return True
+    except Exception as exc:
+        print(f"[inference] Invalid ONNX artifact {path}: {exc}")
+        return False
+
+
 @dataclass
 class InferenceResult:
     """Everything a caller needs. All arrays are uint8 RGB numpy arrays."""
@@ -96,7 +106,7 @@ def _resolve_model_path(project_id: Optional[str] = None) -> Optional[str]:
                 project_dir, "deployments", os.path.basename(os.path.dirname(model_path)),
                 "onnx", "model.onnx"
             )
-            if os.path.isfile(deployment):
+            if os.path.isfile(deployment) and _is_valid_onnx(deployment):
                 candidates.append((os.path.getmtime(deployment), deployment))
         except (OSError, ValueError, TypeError):
             continue
@@ -134,7 +144,11 @@ def _export_latest_model(project_id: Optional[str] = None) -> Optional[str]:
             output_dir = os.path.join(project_dir, "deployments", run_name, "onnx")
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, "model.onnx")
-            if os.path.isfile(output_path) and os.path.getmtime(output_path) >= os.path.getmtime(model_path):
+            if (
+                os.path.isfile(output_path)
+                and os.path.getmtime(output_path) >= os.path.getmtime(model_path)
+                and _is_valid_onnx(output_path)
+            ):
                 return output_path
 
             from anomavision.config import load_config
@@ -150,8 +164,12 @@ def _export_latest_model(project_id: Optional[str] = None) -> Optional[str]:
                 output_name="model.onnx",
                 dynamic_batch=False,
                 force_precision="fp32",
+                include_embeddings=False,
             )
-            return str(result) if result else None
+            if result and _is_valid_onnx(str(result)):
+                return str(result)
+            print(f"[inference] Exported ONNX artifact failed validation: {result}")
+            return None
         except Exception as exc:
             print(f"[inference] Could not export trained model: {exc}")
     return None
