@@ -140,7 +140,7 @@ async def root():
         "message": "AnomaVision API",
         "ui": "/ui",
         "docs": "/docs",
-        "endpoints": ["/health", "/model-info", "/config", "/predict", "/disconnect"],
+        "endpoints": ["/health", "/model-info", "/reload-model", "/config", "/predict", "/disconnect"],
     }
 
 
@@ -185,6 +185,20 @@ async def health():
         "model_loaded": engine.is_loaded(),
         "threshold": engine.ANOMALY_THRESHOLD,
     }
+
+
+@app.post("/reload-model")
+async def reload_model(project_id: Optional[str] = None):
+    """Load the selected Studio project's latest trained model."""
+    try:
+        status = engine.load_model(project_id=project_id)
+        if not engine.is_loaded():
+            raise HTTPException(status_code=404, detail=status)
+        return {"status": "loaded", "message": status, "model": engine.session_info()}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/model-info")
