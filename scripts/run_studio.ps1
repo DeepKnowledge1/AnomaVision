@@ -27,8 +27,8 @@ function Wait-ForUrl {
 Write-Host "Starting AnomaVision Studio..." -ForegroundColor Cyan
 
 $studioApiCommand = "Set-Location '$Root'; uv run uvicorn apps.studio.api.app:app --host 127.0.0.1 --port 8000"
-$inferenceApiCommand = "Set-Location '$Root'; `$env:PORT='8001'; uv run python api.py"
-$webCommand = "Set-Location '$Web'; $env:PORT='3000'; npm run dev"
+$inferenceApiCommand = "Set-Location '$Root'; `$env:PORT='8001'; uv run python apps\api.py"
+$webCommand = "Set-Location '$Web'; `$env:PORT='3000'; npm run dev"
 
 Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $studioApiCommand)
 Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $inferenceApiCommand)
@@ -56,6 +56,7 @@ if ($inferenceReady) {
     Write-Host "Inference API:  http://localhost:8001" -ForegroundColor Green
 } else {
     Write-Host "Inference API:  NOT READY" -ForegroundColor Red
+    Write-Host "The inference service failed to start. Check its PowerShell window for the startup error." -ForegroundColor Red
 }
 
 Start-Process "http://localhost:3000"
