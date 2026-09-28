@@ -7,6 +7,8 @@ Studio services and AnomaVision engine without duplicating ML logic.
 from __future__ import annotations
 
 import os
+import threading
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +31,31 @@ STORE_ROOT = Path(
 ).expanduser()
 
 store = ProjectStore(STORE_ROOT)
+
+_training_jobs: dict[str, dict[str, Any]] = {}
+_training_lock = threading.Lock()
+
+
+def _training_worker(job_id: str, project_id: str, request: TrainingRequest) -> None:
+    try:
+        with _training_lock:
+            _training_jobs[job_id].update(status="running", message="Training in progress")
+        algorithm = request.algorithm.lower()
+        config_data = load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
+        class_name = str(request.class_name or config_data.get("class_name", "default") or "default")
+        overrides: dict[str, Any] = {}
+        for name in ("batch_size", "backbone", "feat_dim", "coreset_ratio"):
+            value = getattr(request, name)
+            if value is not None:
+                overrides[name] = value
+        if request.resize is not None:
+            overrides["resize"] = request.resize
+        result = train_project(project_dir=_project_dir(project_id), dataset_source=request.dataset_path, algorithm=algorithm, class_name=class_name, **overrides)
+        with _training_lock:
+            _training_jobs[job_id].update(status="completed", message="Training completed", result=result)
+    except Exception as exc:
+        with _training_lock:
+            _training_jobs[job_id].update(status="failed", message=str(exc))
 
 app = FastAPI(
     title="AnomaVision Studio API",
@@ -275,43 +302,27 @@ def resolve_project_dataset(
     }
 
 
-@app.post("/api/projects/{project_id}/training")
-def start_training(
-    project_id: str, request: TrainingRequest
-) -> dict[str, Any]:
+@app.post("/api/projects/{project_id}/training", status_code=202)
+def start_training(project_id: str, request: TrainingRequest) -> dict[str, Any]:
     _project_or_404(project_id)
-
     algorithm = request.algorithm.lower()
     if algorithm not in ALGORITHMS:
         raise HTTPException(status_code=400, detail=f"Unsupported algorithm: {algorithm}")
+    job_id = uuid.uuid4().hex
+    with _training_lock:
+        _training_jobs[job_id] = {"job_id": job_id, "project_id": project_id, "status": "queued", "message": "Training queued", "result": None}
+    threading.Thread(target=_training_worker, args=(job_id, project_id, request), daemon=True).start()
+    return dict(_training_jobs[job_id])
 
-    # Use the canonical config class when the UI does not provide one.
-    config_data = load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
-    class_name = str(request.class_name or config_data.get("class_name", "default") or "default")
 
-    overrides: dict[str, Any] = {}
-    for name in ("batch_size", "backbone", "feat_dim", "coreset_ratio"):
-        value = getattr(request, name)
-        if value is not None:
-            overrides[name] = value
-    if request.resize is not None:
-        overrides["resize"] = request.resize
-
-    try:
-        return train_project(
-            project_dir=_project_dir(project_id),
-            dataset_source=request.dataset_path,
-            algorithm=algorithm,
-            class_name=class_name,
-            **overrides,
-        )
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Training failed: {exc}",
-        ) from exc
+@app.get("/api/projects/{project_id}/training/{job_id}")
+def training_status(project_id: str, job_id: str) -> dict[str, Any]:
+    _project_or_404(project_id)
+    with _training_lock:
+        job = _training_jobs.get(job_id)
+        if not job or job.get("project_id") != project_id:
+            raise HTTPException(status_code=404, detail="Training job not found")
+        return dict(job)
 
 
 class DeploymentRequest(BaseModel):
