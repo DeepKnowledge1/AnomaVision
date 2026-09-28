@@ -199,10 +199,14 @@ def _update_project_drift(project_id: str, image_np) -> None:
     if _drift_monitor is None or _drift_project_id != project_id:
         return
     from anomavision.static.AnomaVision import to_batch
-    _drift_monitor.update(input_drift_features(to_batch([image_np])))
-    status_path = _resolve_drift_path(project_id, _drift_config, "drift_output",
-        _project_root(project_id) / "monitoring" / "drift_status.json")
-    _drift_monitor.save_status(status_path)
+    try:
+        _drift_monitor.update(input_drift_features(to_batch([image_np])))
+        status_path = _resolve_drift_path(project_id, _drift_config, "drift_output",
+            _project_root(project_id) / "monitoring" / "drift_status.json")
+        _drift_monitor.save_status(status_path)
+    except Exception as exc:
+        # Monitoring is an observer and must never break anomaly inference.
+        print(f"[monitoring] Drift update skipped: {exc}")
 
 
 
