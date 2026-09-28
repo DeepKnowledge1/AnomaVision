@@ -26,6 +26,7 @@ import base64
 import io
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 import inference_engine as engine
@@ -43,8 +44,12 @@ from pydantic import BaseModel
 # -----------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    status = engine.load_model()
-    print(f"[startup] {status}")
+    # Start even when no Studio project/model is selected yet.
+    try:
+        status = engine.load_model()
+        print(f"[startup] {status}")
+    except Exception as exc:
+        print(f"[startup] No model loaded yet: {exc}")
     yield
     print("[shutdown] cleaning up")
 
@@ -187,6 +192,40 @@ async def health():
     }
 
 
+def _apply_project_config(project_id: Optional[str]) -> None:
+    """Apply runtime inference settings from the selected Studio training config."""
+    if not project_id:
+        return
+
+    root = Path(
+        os.path.expanduser(
+            os.getenv("ANOMAVISION_STUDIO_ROOT", "~/.anomavision/projects")
+        )
+    )
+    metadata_path = root / project_id / "models" / "latest_training.json"
+    if not metadata_path.is_file():
+        return
+
+    import json
+    from anomavision.config import load_config
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    config_path = Path(str(metadata.get("config", ""))).expanduser()
+    if not config_path.is_file():
+        return
+
+    cfg = load_config(str(config_path)) or {}
+    algorithm = str(cfg.get("algorithm", "padim")).lower()
+    threshold_keys = {
+        "padim": "thresh_padim",
+        "patchcore": "thresh_patchcore",
+        "efficientad": "thresh_efficientad",
+    }
+    key = threshold_keys.get(algorithm)
+    if key and cfg.get(key) is not None:
+        engine.ANOMALY_THRESHOLD = float(cfg[key])
+
+
 @app.post("/reload-model")
 async def reload_model(project_id: Optional[str] = None):
     """Load the selected Studio project's latest trained model."""
@@ -194,11 +233,17 @@ async def reload_model(project_id: Optional[str] = None):
         status = engine.load_model(project_id=project_id)
         if not engine.is_loaded():
             raise HTTPException(status_code=404, detail=status)
-        return {"status": "loaded", "message": status, "model": engine.session_info()}
+        _apply_project_config(project_id)
+        return {
+            "status": "loaded",
+            "message": status,
+            "project_id": project_id,
+            "model": engine.session_info(),
+        }
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=f"Could not load model: {exc}") from exc
 
 
 @app.get("/model-info")
