@@ -200,9 +200,9 @@ export default function StudioPage() {
           {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>}
           {page === "Performance" && <PerformancePage project={project} session={inferenceSession}/>}
           {page === "Monitoring" && <MonitoringPage project={project}/>}
-          {page === "Inference" && <LivePage apiHealthy={apiHealthy} projectId={selectedProject} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
+          {page === "Inference" && <LivePage apiHealthy={apiHealthy} projectId={selectedProject} projectAlgorithm={project?.algorithm} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
           {page === "Results" && <ResultsPage session={inferenceSession} onNavigate={navigate}/>}
-          {page === "Live" && <LivePage apiHealthy={apiHealthy} projectId={selectedProject} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
+          {page === "Live" && <LivePage apiHealthy={apiHealthy} projectId={selectedProject} projectAlgorithm={project?.algorithm} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>}
           {page === "Settings" && <SettingsPage apiHealthy={apiHealthy}/>}
         </div>
       </main>
@@ -1049,12 +1049,12 @@ function MonitoringPage({project}:{project?:Project}) {
   </>;
 }
 
-function LivePage({apiHealthy,projectId,onResult,onResults}:{apiHealthy:boolean;projectId:string;onResult:(result:any,history:any[],config:any)=>void;onResults:()=>void}) {
+function LivePage({apiHealthy,projectId,projectAlgorithm,onResult,onResults}:{apiHealthy:boolean;projectId:string;projectAlgorithm?:string;onResult:(result:any,history:any[],config:any)=>void;onResults:()=>void}) {
   const [files,setFiles]=useState<File[]>([]); const [camera,setCamera]=useState(false); const [cameraBusy,setCameraBusy]=useState(false); const [cameraAuto,setCameraAuto]=useState(false); const [cameraError,setCameraError]=useState(""); const [cameraFps,setCameraFps]=useState(0); const [cameraFrames,setCameraFrames]=useState(0); const [cameraInterval,setCameraInterval]=useState(500); const videoRef=useRef<HTMLVideoElement>(null); const streamRef=useRef<MediaStream|null>(null); const cameraLoopRef=useRef<number|null>(null); const cameraBusyRef=useRef(false); const fpsTimesRef=useRef<number[]>([]); const [result,setResult]=useState<any>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const [history,setHistory]=useState<any[]>([]); const [totalMs,setTotalMs]=useState(0);
   const inferenceUrl=process.env.NEXT_PUBLIC_ANOMAVISION_INFERENCE_URL ?? (typeof window !== "undefined" ? window.location.protocol + "//" + window.location.hostname + ":8001" : "http://localhost:8001");
   const [studioConfig,setStudioConfig]=useState<any>(null);
   const [inferenceHealth,setInferenceHealth]=useState<"checking"|"online"|"offline"|"wrong-service">("checking");
-  const [inferenceHealthMessage,setInferenceHealthMessage]=useState(""); const activeThreshold=studioConfig?.thresholds?.[studioConfig?.algorithm]??null;
+  const [inferenceHealthMessage,setInferenceHealthMessage]=useState(""); const activeThreshold=studioConfig?.thresholds?.[projectAlgorithm || studioConfig?.algorithm]??null;
   async function checkInferenceApi(){
     setInferenceHealth("checking"); setInferenceHealthMessage("Checking inference service…");
     try{
