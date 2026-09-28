@@ -521,6 +521,32 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
   useEffect(()=>{if(project)setAlgorithm(project.algorithm)},[project]);
 
   useEffect(()=>{
+    if(!project || typeof window==="undefined") return;
+    const key="anomavision:training-job:"+project.id;
+    const saved=window.localStorage.getItem(key);
+    if(!saved) return;
+    let cancelled=false;
+    let job:any;
+    try{job=JSON.parse(saved)}catch{window.localStorage.removeItem(key);return}
+    setJobId(String(job.job_id||"")); setBusy(true); setJobStatus("Resuming training…");
+    const poll=async()=>{
+      try{
+        const r=await fetch(`${API_BASE}/api/projects/${project.id}/training/${job.job_id}`,{cache:"no-store"});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(d.detail||"Could not restore training job");
+        if(cancelled)return;
+        setJobStatus(d.message||d.status||"Training…");
+        if(d.status==="completed"){setResult(d.result||{});setBusy(false);window.localStorage.removeItem(key);await onFinished();return}
+        if(d.status==="failed"){setError(d.message||"Training failed");setBusy(false);window.localStorage.removeItem(key);return}
+        window.setTimeout(poll,1200);
+      }catch(e){if(!cancelled){setError(e instanceof Error?e.message:"Could not restore training job");setBusy(false)}}
+    };
+    void poll();
+    return()=>{cancelled=true};
+  },[project?.id]);
+
+
+  useEffect(()=>{
     fetch(`${API_BASE}/api/config`,{cache:"no-store"})
       .then(r=>r.ok?r.json():null)
       .then(d=>{
@@ -582,14 +608,15 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
       if(!r.ok)throw new Error(d.detail||"Could not start training");
       if(!d.job_id){setResult(d);await onFinished();return;}
       setJobId(d.job_id);setJobStatus("Training queued…");
+      if(typeof window!=="undefined") window.localStorage.setItem("anomavision:training-job:"+project.id,JSON.stringify({job_id:d.job_id}));
       for(;;){
         await new Promise(resolve=>window.setTimeout(resolve,1200));
         const statusResponse=await fetch(`${API_BASE}/api/projects/${project.id}/training/${d.job_id}`,{cache:"no-store"});
         const status=await statusResponse.json().catch(()=>({}));
         if(!statusResponse.ok)throw new Error(status.detail||"Could not read training status");
         setJobStatus(status.message||status.status||"Training…");
-        if(status.status==="completed"){setResult(status.result||{});setJobStatus("Training completed");await onFinished();break;}
-        if(status.status==="failed")throw new Error(status.message||"Training failed");
+        if(status.status==="completed"){setResult(status.result||{});setJobStatus("Training completed");if(typeof window!=="undefined")window.localStorage.removeItem("anomavision:training-job:"+project.id);await onFinished();break;}
+        if(status.status==="failed"){if(typeof window!=="undefined")window.localStorage.removeItem("anomavision:training-job:"+project.id);throw new Error(status.message||"Training failed");}
       }
     }catch(e){setError(e instanceof Error?e.message:"Training failed");setJobStatus("Training stopped")}
     finally{setBusy(false)}
