@@ -915,3 +915,8 @@ html{scroll-behavior:smooth}button,input,select{font:inherit}button:focus-visibl
 /* Keep inference mounted while navigating so camera/live inference continues. */
 .inference-session-background { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .inference-page-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+
+
+/* Keep live inference controls dimensionally stable while frames are processed. */
+.live-control-button { min-width: 156px; justify-content: center; }
+.compact-control { min-width: 128px; }
