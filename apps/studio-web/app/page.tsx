@@ -979,7 +979,8 @@ function MonitoringPage({project}:{project?:Project}) {
   const warnings=(latest?.warnings||[]) as string[];
   const driftScore=latest?.drift_score!=null?Number(latest.drift_score):null;
   const psi=latest?.psi!=null?Number(latest.psi):null;
-  const healthy=status==="ok" || status==="healthy" || status==="no_data";
+  const driftDetected=status==="drift" || (latest?.threshold!=null && driftScore!=null && driftScore>=Number(latest.threshold));
+  const healthy=!driftDetected && (status==="ok" || status==="healthy" || status==="stable" || status==="no_data");
   const statusLabel=status==="no_data"?"No data":status.replaceAll("_"," ");
 
   return <>
@@ -997,16 +998,31 @@ function MonitoringPage({project}:{project?:Project}) {
       <strong>Select a project first</strong>
       <span>Monitoring reports are stored inside each Studio project.</span>
     </div> : <>
-      <div className={`monitor-status ${healthy?"healthy":"attention"}`}>
+      <div className={`monitor-status ${driftDetected?"drift":healthy?"healthy":"attention"}`}>
         <div className="monitor-status-icon"><span className="status-dot"/></div>
         <div>
-          <strong>{latest ? (healthy?"Monitoring is healthy":"Review drift signals") : "Monitoring is ready"}</strong>
+          <strong>{latest ? (driftDetected?"Drift detected":healthy?"Monitoring is healthy":"Review drift signals") : "Monitoring is ready"}</strong>
           <span>{latest ? `Latest report · ${warnings.length} warning${warnings.length===1?"":"s"} · ${summary?.report_count||0} stored reports` : "No monitoring state yet. Start inference to begin collecting production samples."}</span>
         </div>
         <div className="monitor-status-value">{statusLabel}</div>
       </div>
 
       {error&&<div className="form-error">{error}</div>}
+
+      {driftDetected && (
+        <div className="drift-alarm" role="alert">
+          <div className="drift-alarm-icon"><Activity size={19}/></div>
+          <div className="drift-alarm-copy">
+            <strong>DRIFT DETECTED</strong>
+            <span>Production data distribution has changed. Investigate the input data before treating current inference results as normal production behavior.</span>
+          </div>
+          <div className="drift-alarm-metric">
+            <span>Drift score</span>
+            <b>{driftScore!=null?driftScore.toFixed(3):"—"}</b>
+            <small>Threshold {latest?.threshold!=null?Number(latest.threshold).toFixed(3):"—"}</small>
+          </div>
+        </div>
+      )}
 
       <div className="grid-4 section">
         <Stat icon={<Activity size={15}/>} label="Drift score" value={driftScore!=null?driftScore.toFixed(3):"—"} meta="combined drift signal"/>
@@ -1015,7 +1031,7 @@ function MonitoringPage({project}:{project?:Project}) {
         <Stat icon={<CircleGauge size={15}/>} label="Reports" value={String(summary?.report_count||0)} meta="stored monitoring reports"/>
       </div>
       {latest && (
-        <div className="drift-metric-grid">
+        <div className={`drift-metric-grid ${driftDetected?"drift-metric-alert":""}`}>
           <div><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div>
           <div><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div>
           <div><span>Cosine shift</span><b>{Number(latest.cosine_shift).toFixed(4)}</b></div>
