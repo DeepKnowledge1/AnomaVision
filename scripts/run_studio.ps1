@@ -31,14 +31,16 @@ function Wait-ForUrl {
 }
 
 function Wait-ForInferenceHealth {
-    param([int]$TimeoutSeconds = 180)
+    param([int]$TimeoutSeconds = 60)
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         try {
             $response = Invoke-WebRequest -Uri "http://127.0.0.1:8001/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
             if ($response.StatusCode -eq 200) {
                 $body = $response.Content | ConvertFrom-Json
-                if ($body.status -eq "healthy" -and $body.model_loaded -eq $true) { return $true }
+                # The inference service is ready when the HTTP service is alive.
+                # A model is loaded after Studio selects a project via /reload-model.
+                if ($body.status -eq "healthy" -or $body.status -eq "unhealthy") { return $true }
             }
         } catch { }
         Start-Sleep -Seconds 1
@@ -71,6 +73,7 @@ if ($webReady) { Write-Host "Studio Web:     http://localhost:3000  READY" -Fore
 if ($studioReady) { Write-Host "Studio API:     http://localhost:8000  READY" -ForegroundColor Green } else { Write-Host "Studio API:     NOT READY" -ForegroundColor Red }
 if ($inferenceReady) {
     Write-Host "Inference API:  http://localhost:8001  READY" -ForegroundColor Green
+    Write-Host "Inference model: loaded on demand for the active Studio project." -ForegroundColor DarkGray
 } else {
     Write-Host "Inference API:  NOT READY" -ForegroundColor Red
     Write-Host "Check .studio-logs\inference-api.log and inference-api.err.log for details." -ForegroundColor Red
