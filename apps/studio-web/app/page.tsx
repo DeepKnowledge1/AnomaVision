@@ -1075,14 +1075,28 @@ function LivePage({apiHealthy,projectId,onResult,onResults}:{apiHealthy:boolean;
     }
   }
   async function reloadProjectModel(){
-    if(!projectId)return;
+    if(!projectId)return false;
     try{
-      await fetch(inferenceUrl+"/reload-model?project_id="+encodeURIComponent(projectId),{method:"POST"});
-    }catch{}
+      const r=await fetch(inferenceUrl+"/reload-model?project_id="+encodeURIComponent(projectId),{method:"POST"});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(d.detail || "The selected project has no loadable model yet.");
+      setInferenceHealth("online");
+      setInferenceHealthMessage("The selected project's trained model is loaded.");
+      return true;
+    }catch(e){
+      const message=e instanceof TypeError
+        ? "Cannot reach the inference service at "+inferenceUrl+". Studio uses port 8000 and inference uses port 8001."
+        : (e instanceof Error ? e.message : "Could not load the selected project model.");
+      setInferenceHealth("offline");
+      setInferenceHealthMessage(message);
+      return false;
+    }
   }
   useEffect(()=>{
     fetch(`${API_BASE}/api/config`,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(setStudioConfig).catch(()=>setStudioConfig(null));
-    void reloadProjectModel().finally(()=>{void checkInferenceApi()});
+    void reloadProjectModel().then(loaded=>{
+      if(!loaded) void checkInferenceApi();
+    });
   },[projectId]);
   useEffect(()=>{if(result) onResult(result,history,studioConfig)},[result,history,studioConfig]);
   useEffect(()=>{
