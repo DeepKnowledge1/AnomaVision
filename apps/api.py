@@ -36,6 +36,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel
 
+from anomavision.drift_runtime import input_drift_features
+from anomavision.production_monitor import ProductionDriftMonitor
+
 # import ui  # Gradio blocks defined in ui.py
 
 
@@ -103,6 +106,98 @@ class ConfigModel(BaseModel):
 
 # Runtime-mutable config (REST clients can adjust without restart)
 _resize_size: tuple = (224, 224)
+
+_drift_monitor: Optional[ProductionDriftMonitor] = None
+_drift_project_id: Optional[str] = None
+_drift_config: dict = {}
+
+
+def _project_root(project_id: str) -> Path:
+    return Path(os.path.expanduser(
+        os.getenv("ANOMAVISION_STUDIO_ROOT", "~/.anomavision/projects")
+    )) / project_id
+
+
+def _resolve_drift_path(project_id: str, config: dict, key: str, default: Path) -> Path:
+    value = config.get(key)
+    if not value:
+        return default
+    path = Path(str(value)).expanduser()
+    return path if path.is_absolute() else _project_root(project_id) / path
+
+
+def _build_input_drift_reference(project_id: str, config: dict) -> Path:
+    import numpy as np
+    output = _resolve_drift_path(project_id, config, "drift_reference",
+        _project_root(project_id) / "drift" / "reference_embeddings.npy")
+    dataset_path = Path(str(config.get("dataset_path", ""))).expanduser()
+    class_name = str(config.get("class_name", "") or "")
+    healthy = dataset_path / class_name / "train" / "good"
+    if not healthy.is_dir():
+        healthy = dataset_path / "train" / "good"
+    if not healthy.is_dir():
+        raise FileNotFoundError(f"Healthy training images not found: {healthy}")
+    image_files = [p for p in sorted(healthy.rglob("*"))
+        if p.is_file() and p.suffix.lower() in {".png",".jpg",".jpeg",".bmp",".webp"}][:500]
+    if len(image_files) < 2:
+        raise ValueError("At least 2 healthy training images are required for drift monitoring.")
+    from anomavision.static.AnomaVision import to_batch
+    chunks = []
+    for image_path in image_files:
+        try:
+            image = np.array(Image.open(image_path).convert("RGB"))
+            chunks.append(input_drift_features(to_batch([image])))
+        except Exception as exc:
+            print(f"[monitoring] Skipping reference image {image_path}: {exc}")
+    if len(chunks) < 2:
+        raise ValueError("Could not generate enough valid drift reference images.")
+    reference = np.concatenate(chunks, axis=0).astype(np.float64)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    np.save(output, reference)
+    output.with_suffix(output.suffix + ".json").write_text(
+        __import__("json").dumps({
+            "samples": int(reference.shape[0]),
+            "feature_dimensions": int(reference.shape[1]),
+            "representation": "input_statistics",
+            "source": str(healthy),
+            "project_id": project_id,
+        }, indent=2) + "\n", encoding="utf-8")
+    return output
+
+
+def _load_project_drift_monitor(project_id: str, config: dict) -> None:
+    global _drift_monitor, _drift_project_id, _drift_config
+    import numpy as np
+    reference_path = _resolve_drift_path(project_id, config, "drift_reference",
+        _project_root(project_id) / "drift" / "reference_embeddings.npy")
+    if not reference_path.is_file():
+        reference_path = _build_input_drift_reference(project_id, config)
+    reference = np.load(reference_path)
+    if reference.ndim != 2 or reference.shape[0] < 2:
+        raise ValueError(f"Invalid drift reference: {reference_path}")
+    window = int(config.get("drift_window", 50) or 50)
+    min_samples = max(2, min(int(config.get("drift_min_samples", 5) or 5), window))
+    interval = max(1, int(config.get("drift_evaluation_interval", 25) or 25))
+    _drift_monitor = ProductionDriftMonitor(reference, window_size=window,
+        min_samples=min_samples, threshold=float(config.get("drift_threshold", 0.20) or 0.20),
+        evaluation_interval=interval)
+    _drift_project_id = project_id
+    _drift_config = dict(config)
+    status_path = _resolve_drift_path(project_id, config, "drift_output",
+        _project_root(project_id) / "monitoring" / "drift_status.json")
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    _drift_monitor.save_status(status_path)
+
+
+def _update_project_drift(project_id: str, image_np) -> None:
+    if _drift_monitor is None or _drift_project_id != project_id:
+        return
+    from anomavision.static.AnomaVision import to_batch
+    _drift_monitor.update(input_drift_features(to_batch([image_np])))
+    status_path = _resolve_drift_path(project_id, _drift_config, "drift_output",
+        _project_root(project_id) / "monitoring" / "drift_status.json")
+    _drift_monitor.save_status(status_path)
+
 
 
 # -----------------------------------------------------------------------------
@@ -215,6 +310,7 @@ def _apply_project_config(project_id: Optional[str]) -> None:
         return
 
     cfg = load_config(str(config_path)) or {}
+    _load_project_drift_monitor(project_id, cfg)
     algorithm = str(cfg.get("algorithm", "padim")).lower()
     threshold_keys = {
         "padim": "thresh_padim",
@@ -244,6 +340,15 @@ async def reload_model(project_id: Optional[str] = None):
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Could not load model: {exc}") from exc
+
+
+@app.get("/monitoring/status")
+async def monitoring_status(project_id: Optional[str] = None):
+    if not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required")
+    if _drift_project_id != project_id or _drift_monitor is None:
+        raise HTTPException(status_code=404, detail="Monitoring is not initialized for this project")
+    return _drift_monitor.status().to_dict()
 
 
 @app.get("/model-info")
@@ -283,6 +388,7 @@ async def predict(
         contents = await file.read()
         image_np = _load_image_np(contents)
         result = engine.run(image_np, threshold=engine.ANOMALY_THRESHOLD)
+        _update_project_drift(_drift_project_id or "", image_np)
 
         heatmap_b64 = ""
         boundary_b64 = ""
