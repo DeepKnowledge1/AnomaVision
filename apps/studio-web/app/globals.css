@@ -920,3 +920,4 @@ html{scroll-behavior:smooth}button,input,select{font:inherit}button:focus-visibl
 /* Keep live inference controls dimensionally stable while frames are processed. */
 .live-control-button { min-width: 156px; justify-content: center; }
 .compact-control { min-width: 128px; }
+\n.stat-card.drift-alert{border-color:#ef4444;background:#fef2f2}.stat-card.drift-alert .stat-label,.stat-card.drift-alert .stat-value,.stat-card.drift-alert .stat-meta{color:#b91c1c}.stat-card.drift-alert .status-dot{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.14)}
