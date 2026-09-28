@@ -397,7 +397,7 @@ async def predict(
     try:
         contents = await file.read()
         image_np = _load_image_np(contents)
-        result = engine.run(image_np, threshold=engine.ANOMALY_THRESHOLD)
+        result = engine.run(image_np, threshold=engine.ANOMALY_THRESHOLD, include_visualizations=include_visualizations)
         _update_project_drift(_drift_project_id or "", image_np)
 
         heatmap_b64 = ""
