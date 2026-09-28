@@ -952,10 +952,17 @@ function MonitoringPage({project}:{project?:Project}) {
     if(!project){setSummary(null);return}
     setBusy(true);setError("");
     try{
-      const r=await fetch(`${API_BASE}/api/projects/${project.id}/monitoring`,{cache:"no-store"});
-      const d=await r.json();
-      if(!r.ok)throw new Error(d.detail||"Could not load monitoring");
-      setSummary(d);
+      const inferenceUrl=process.env.NEXT_PUBLIC_ANOMAVISION_INFERENCE_URL ?? (typeof window !== "undefined" ? window.location.protocol + "//" + window.location.hostname + ":8001" : "http://localhost:8001");
+      const [summaryResponse, liveResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/projects/${project.id}/monitoring`,{cache:"no-store"}),
+        fetch(`${inferenceUrl}/monitoring/status?project_id=${encodeURIComponent(project.id)}`,{cache:"no-store"}).catch(()=>null),
+      ]);
+      const d=await summaryResponse.json().catch(()=>({}));
+      if(!summaryResponse.ok)throw new Error(d.detail||"Could not load monitoring");
+      const live=liveResponse?.ok ? await liveResponse.json().catch(()=>null) : null;
+      if(live){
+        setSummary({...d,status:live.status||d.status||"no_data",latest:{...(d.latest||{}),...live,current_samples:live.window_fill,reference_samples:d.latest?.reference_samples,feature_dimensions:d.latest?.feature_dimensions},live:true,samples_seen:live.samples_seen,window_fill:live.window_fill,window_size:live.window_size,min_samples:live.min_samples});
+      } else setSummary(d);
     }catch(e){setError(e instanceof Error?e.message:"Could not load monitoring")}
     finally{setBusy(false)}
   }
@@ -994,7 +1001,7 @@ function MonitoringPage({project}:{project?:Project}) {
         <div className="monitor-status-icon"><span className="status-dot"/></div>
         <div>
           <strong>{latest ? (healthy?"Monitoring is healthy":"Review drift signals") : "Monitoring is ready"}</strong>
-          <span>{latest ? `Latest report · ${warnings.length} warning${warnings.length===1?"":"s"} · ${summary?.report_count||0} stored reports` : "No stored drift report yet. Reports will appear here when monitoring produces them."}</span>
+          <span>{latest ? `Latest report · ${warnings.length} warning${warnings.length===1?"":"s"} · ${summary?.report_count||0} stored reports` : "No monitoring state yet. Start inference to begin collecting production samples."}</span>
         </div>
         <div className="monitor-status-value">{statusLabel}</div>
       </div>
@@ -1023,7 +1030,7 @@ function MonitoringPage({project}:{project?:Project}) {
           </div>
           {latest ? <div className="check-list">
             <div className="check-row"><span>Reference samples</span><b>{latest.reference_samples}</b></div>
-            <div className="check-row"><span>Current samples</span><b>{latest.current_samples}</b></div>
+            <div className="check-row"><span>Current samples</span><b>{latest.current_samples ?? latest.samples_seen ?? "—"}</b></div>
             <div className="check-row"><span>Feature dimensions</span><b>{latest.feature_dimensions}</b></div>
             <div className="check-row"><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div>
             <div className="check-row"><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div>
