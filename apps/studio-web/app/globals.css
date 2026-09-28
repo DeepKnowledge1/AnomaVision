@@ -1257,3 +1257,176 @@ label{color:#4b5563}
   .topbar{padding:0 14px}
   .content{padding:20px 16px 32px}
 }
+
+
+/* Phase 10 — product-level UX polish
+   A quieter information architecture with tighter rhythm, stronger hierarchy,
+   and predictable component geometry across every Studio page.
+*/
+:root{
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;
+  --space-5:20px;--space-6:24px;--space-7:32px;
+}
+*{box-sizing:border-box}
+.studio-shell{min-height:100vh}
+.sidebar{width:232px;flex-basis:232px;padding:18px 10px}
+.brand{padding:2px 10px 20px}
+.brand-mark{width:32px;height:32px;border-radius:9px;font-size:11px}
+.brand-name{font-size:13px;letter-spacing:-.01em}
+.brand-sub{font-size:10px}
+.workspace-context{margin:0 4px 14px;padding:10px 11px;border-radius:9px}
+.workspace-context span{font-size:8px}
+.workspace-context strong{font-size:10px;margin-top:4px}
+.workspace-context small{font-size:8px;margin-top:2px}
+.nav-label{padding:13px 10px 5px;font-size:9px}
+.nav-item{height:34px;padding:0 10px;gap:10px;border-radius:7px;font-size:12px}
+.nav-item.active{font-weight:650}
+.sidebar-bottom{padding:12px 10px 2px}
+.storage strong{font-size:10px}
+.storage span:not(.status-dot){font-size:9px;line-height:1.4}
+
+.main{min-width:0}
+.topbar{height:58px;padding:0 26px}
+.breadcrumbs{font-size:11px}
+.topbar-actions{gap:7px}
+.connection-pill{height:28px;padding:0 8px;font-size:8px}
+.project-select-wrap select,.project-switcher{height:32px;min-width:170px;font-size:11px}
+.content{width:100%;max-width:1380px;padding:26px 28px 48px;margin:0 auto}
+.page-head{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
+  min-height:64px;margin-bottom:20px
+}
+.page-head>div:first-child{min-width:0}
+.eyebrow{margin-bottom:5px;font-size:9px;font-weight:750;letter-spacing:.09em;text-transform:uppercase}
+h1{margin:0;font-size:25px;line-height:1.18;letter-spacing:-.025em;font-weight:720}
+.subtitle{margin-top:6px;font-size:12px;line-height:1.5;max-width:720px}
+.page-head>.primary{align-self:flex-end}
+
+.grid-4{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.card{border-radius:10px}
+.stat-card{min-height:104px;padding:14px 15px}
+.stat-card .stat-icon{width:28px;height:28px;border-radius:7px;background:#f5f3ff;color:#6366f1}
+.stat-label{font-size:10px;font-weight:600}
+.stat-value{margin-top:7px;font-size:22px;letter-spacing:-.025em}
+.stat-meta{margin-top:4px;font-size:9px;line-height:1.35}
+.section{margin-top:26px}
+.section-head{margin-bottom:10px}
+.section-title{font-size:13px;font-weight:680;letter-spacing:-.01em}
+.section-head .subtitle{margin-top:3px;font-size:10px}
+.section-link,.text-button{font-size:10px;font-weight:650}
+.workflow{grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}
+.workflow-card{min-height:118px;padding:14px}
+.workflow-action{cursor:pointer}
+.step{font-size:9px;font-weight:750;letter-spacing:.08em}
+.workflow-title{margin-top:18px;font-size:12px;font-weight:680}
+.workflow-arrow{float:right;color:#9ca3af}
+.workflow-text{margin-top:5px;font-size:9px;line-height:1.45}
+.activity{grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:12px}
+.activity>.card{min-width:0}
+.row{padding:11px 0}
+.row-title{font-size:11px}
+.row-sub{margin-top:3px;font-size:9px}
+.badge{font-size:8px;padding:3px 6px;border-radius:999px}
+.empty-state{min-height:150px;padding:24px}
+
+.two-column{gap:14px}
+.project-create-card{padding:16px}
+.form-help{font-size:10px;line-height:1.45}
+label{font-size:10px;font-weight:600}
+input,select{min-height:36px;font-size:11px;border-radius:7px}
+.full{width:100%}
+.project-intro{padding:13px 15px;margin-bottom:14px}
+.project-count b{font-size:17px}
+.project-list{gap:7px}
+.project-card{min-height:58px;padding:10px 11px;border-radius:9px}
+.project-card-main{gap:9px}
+.project-symbol{width:29px;height:29px;border-radius:7px}
+.project-card-main strong{font-size:10px}
+.project-card-main span{font-size:8px}
+.project-meta b,.project-meta small{font-size:8px}
+
+.training-steps{padding:10px 12px;margin-bottom:14px}
+.training-step{gap:7px;font-size:9px}
+.training-step span{width:23px;height:23px}
+.algorithm-option{padding:11px;border-radius:8px}
+.algorithm-option strong{font-size:10px}
+.algorithm-option small{font-size:8px;line-height:1.4}
+.training-action{padding:12px 13px}
+.training-action strong{font-size:10px}
+.training-action span{font-size:9px}
+.training-result-grid{gap:7px}
+.training-result-grid>div{padding:9px}
+
+.model-list{gap:7px}
+.model-card{padding:13px 14px}
+.model-main{gap:10px}
+.model-icon{width:32px;height:32px;border-radius:8px}
+.model-title{font-size:11px}
+.model-run{font-size:9px}
+.model-meta{font-size:8px;margin-top:7px}
+.model-actions{gap:7px}
+
+.deployment-steps{gap:8px;margin-bottom:14px}
+.deployment-step{padding:10px 11px;border-radius:8px}
+.deployment-step b{font-size:10px}
+.deployment-step small{font-size:8px}
+.target-grid{gap:7px}
+.target-card{padding:10px;border-radius:8px}
+.target-card strong{font-size:10px}
+.target-card span{font-size:8px}
+.deployment-outcome{padding:11px 12px}
+
+.monitor-status{padding:12px 13px;margin-bottom:14px;border-radius:9px}
+.monitor-status strong{font-size:11px}
+.monitor-status span{font-size:9px}
+.drift-metric-grid{gap:7px}
+.drift-metric-grid>div{padding:9px}
+.drift-metric-grid span{font-size:7px}
+.drift-metric-grid b{font-size:10px}
+
+.performance-status{padding:13px 14px;margin-bottom:10px}
+.performance-status strong{font-size:11px}
+.performance-status p{font-size:9px}
+.performance-grid{gap:7px}
+.performance-grid>div{padding:9px}
+
+.result-score{padding:20px 0 15px}
+.result-score strong{font-size:34px}
+.result-visual-grid{gap:8px}
+.result-visual{border-radius:8px}
+.result-visual span{padding:7px 8px;font-size:7px}
+.technical-grid{gap:7px}
+
+.live-top-stats{gap:9px}
+.live-control-button{height:36px;min-height:36px}
+.camera-frame{border-radius:10px}
+.camera-preview{border-radius:9px}
+
+.global-loading,.global-api-error{border-radius:9px;padding:10px 12px}
+
+@media(max-width:1100px){
+  .workflow{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .activity{grid-template-columns:1fr}
+}
+@media(max-width:900px){
+  .sidebar{width:248px;flex-basis:248px}
+  .content{padding:22px 20px 40px}
+  .grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .page-head{align-items:flex-start;flex-direction:column}
+  .page-head>.primary{align-self:flex-start}
+}
+@media(max-width:700px){
+  .topbar{padding:0 14px}
+  .content{padding:18px 14px 32px}
+  .workflow{grid-template-columns:1fr 1fr}
+  .page-head{gap:14px}
+  .page-head>.primary{width:100%}
+}
+@media(max-width:520px){
+  .grid-4{grid-template-columns:1fr 1fr;gap:7px}
+  .stat-card{min-height:94px;padding:11px}
+  .stat-value{font-size:19px}
+  .workflow{grid-template-columns:1fr}
+  .workflow-card{min-height:96px}
+  .project-select-wrap select,.project-switcher{min-width:130px;max-width:150px}
+}
