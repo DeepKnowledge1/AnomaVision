@@ -957,7 +957,12 @@ function MonitoringPage({project}:{project?:Project}) {
     finally{setBusy(false)}
   }
 
-  useEffect(()=>{void load()},[project]);
+  useEffect(()=>{
+    void load();
+    if(!project) return;
+    const timer=window.setInterval(()=>void load(),3000);
+    return ()=>window.clearInterval(timer);
+  },[project?.id]);
 
   const latest=summary?.latest;
   const status=String(summary?.status||"no_data");
