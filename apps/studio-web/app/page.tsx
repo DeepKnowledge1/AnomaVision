@@ -5,7 +5,6 @@ import {
   Activity, Box, BrainCircuit, CircleGauge, Database, FlaskConical,
   LayoutDashboard, MonitorCog, Play, Rocket, Settings2, ShieldCheck,
   SlidersHorizontal, Sparkles, Wifi, FolderOpen, Menu, X, ChevronDown,
-  HelpCircle
 } from "lucide-react";
 
 type Page = "Overview" | "Projects" | "Datasets" | "Training" | "Models" | "Deployments" | "Live" | "Inference" | "Results" | "Performance" | "Monitoring" | "Settings";
@@ -176,7 +175,7 @@ export default function StudioPage() {
             <div className={`connection-pill ${apiHealthy ? "online" : "offline"}`}>
               <span className="status-dot"/>{apiHealthy ? "Connected" : "Offline"}
             </div>
-            <button className="help-button" aria-label="Studio help" title="Studio help" onClick={() => window.alert("AnomaVision Studio: use the sidebar to move through Dataset → Training → Validation → Inference → Monitoring.")}><HelpCircle size={16}/></button>
+            <button className="help-button" aria-label="Open settings" title="Settings" onClick={() => navigate("Settings")}><Settings2 size={16}/></button>
           </div>
         </header>
 
