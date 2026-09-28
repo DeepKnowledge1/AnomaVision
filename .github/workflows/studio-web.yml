@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "apps/studio-web/**"
+      - ".github/workflows/studio-web.yml"
   push:
     branches:
       - main
