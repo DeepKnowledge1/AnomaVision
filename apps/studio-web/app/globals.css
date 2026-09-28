@@ -873,6 +873,25 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 /* Phase 5 — drift metrics */
 .drift-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:-4px 0 12px}.drift-metric-grid>div{padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.015)}.drift-metric-grid span,.drift-metric-grid b{display:block}.drift-metric-grid span{color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.06em}.drift-metric-grid b{margin-top:4px;font-size:11px}@media(max-width:700px){.drift-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+/* Production drift alarm */
+.drift-alarm{
+  display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:14px 16px;
+  border:1px solid rgba(239,68,68,.55);border-left:4px solid #ef4444;border-radius:10px;
+  background:linear-gradient(90deg,rgba(239,68,68,.13),rgba(239,68,68,.045));
+  box-shadow:0 0 0 1px rgba(239,68,68,.06),0 8px 24px rgba(127,29,29,.10);
+}
+.drift-alarm-icon{width:38px;height:38px;display:grid;place-items:center;flex:0 0 auto;border-radius:9px;color:#fecaca;background:rgba(239,68,68,.16);border:1px solid rgba(239,68,68,.32)}
+.drift-alarm-copy{min-width:0;flex:1}.drift-alarm-copy strong{display:block;color:#ef4444;font-size:12px;font-weight:850;letter-spacing:.08em}.drift-alarm-copy span{display:block;margin-top:4px;color:#b9a3a7;font-size:10px;line-height:1.5}
+.drift-alarm-metric{flex:0 0 auto;text-align:right;padding-left:14px;border-left:1px solid rgba(239,68,68,.22)}
+.drift-alarm-metric span,.drift-alarm-metric b,.drift-alarm-metric small{display:block}.drift-alarm-metric span{color:#9f7f85;font-size:8px;text-transform:uppercase;letter-spacing:.07em}.drift-alarm-metric b{margin-top:2px;color:#fca5a5;font-size:18px}.drift-alarm-metric small{margin-top:2px;color:#9f7f85;font-size:8px}
+.drift-metric-alert>div{border-color:rgba(239,68,68,.28);background:rgba(239,68,68,.045)}
+.drift-metric-alert>div:first-child b{color:#fca5a5}
+.monitor-status.drift{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.075)}
+.monitor-status.drift .monitor-status-icon{color:#fecaca;background:rgba(239,68,68,.13);border-color:rgba(239,68,68,.3)}
+.monitor-status.drift .status-dot{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.12)}
+.monitor-status.drift .monitor-status-value{color:#fca5a5;background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.28)}
+@media(max-width:700px){.drift-alarm{align-items:flex-start;flex-wrap:wrap}.drift-alarm-metric{margin-left:50px;padding-left:0;border-left:0;text-align:left}.drift-alarm-copy{flex-basis:calc(100% - 52px)}}
+
 
 /* Phase 6 — deployment readiness */
 .deployment-readiness{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.018)}.deployment-readiness svg{flex:0 0 auto;margin-top:1px}.deployment-readiness strong,.deployment-readiness span{display:block}.deployment-readiness strong{font-size:10px}.deployment-readiness span{margin-top:3px;color:var(--muted);font-size:9px;line-height:1.45}.deployment-technical{margin-top:12px}.deployment-technical .artifact-box{margin-top:10px}
