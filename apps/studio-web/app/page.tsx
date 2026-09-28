@@ -303,7 +303,7 @@ function Overview({ project, projects, models, apiHealthy, onNavigate }: { proje
 }
 
 function ProjectsPage({ projects, selectedProject, onSelect, onCreated }: { projects: Project[]; selectedProject: string; onSelect: (id:string)=>void; onCreated:()=>Promise<void> }) {
-  const [name,setName]=useState(""); const [description,setDescription]=useState(""); const [algorithm,setAlgorithm]=useState("patchcore"); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
+  const [name,setName]=useState(""); const [description,setDescription]=useState(""); const [algorithm,setAlgorithm]=useState("patchcore"); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);\n  const [jobId,setJobId]=useState("");\n  const [jobStatus,setJobStatus]=useState("");
   async function create() {
     setError(""); if (!name.trim()) { setError("Give your project a name first."); return; }
     setBusy(true); try {
@@ -566,7 +566,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
   async function train(){
     if(!project){setError("Select a project first.");return;}
     if(!dataset.trim()){setError("Add your dataset path first.");return;}
-    setBusy(true);setError("");setResult(null);
+    setBusy(true);setError("");setResult(null);setJobStatus("Validating dataset…");
     try{
       const canonical=await validateDataset();
       if(!canonical)return;
@@ -579,9 +579,19 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
       if(dims.length===2&&dims.every(Number.isFinite))body.resize=dims;
       const r=await fetch(`${API_BASE}/api/projects/${project.id}/training`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();
-      if(!r.ok)throw new Error(d.detail||"Training failed");
-      setResult(d);await onFinished();
-    }catch(e){setError(e instanceof Error?e.message:"Training failed")}
+      if(!r.ok)throw new Error(d.detail||"Could not start training");
+      if(!d.job_id){setResult(d);await onFinished();return;}
+      setJobId(d.job_id);setJobStatus("Training queued…");
+      for(;;){
+        await new Promise(resolve=>window.setTimeout(resolve,1200));
+        const statusResponse=await fetch(`${API_BASE}/api/projects/${project.id}/training/${d.job_id}`,{cache:"no-store"});
+        const status=await statusResponse.json().catch(()=>({}));
+        if(!statusResponse.ok)throw new Error(status.detail||"Could not read training status");
+        setJobStatus(status.message||status.status||"Training…");
+        if(status.status==="completed"){setResult(status.result||{});setJobStatus("Training completed");await onFinished();break;}
+        if(status.status==="failed")throw new Error(status.message||"Training failed");
+      }
+    }catch(e){setError(e instanceof Error?e.message:"Training failed");setJobStatus("Training stopped")}
     finally{setBusy(false)}
   }
 
@@ -658,7 +668,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
 
           <div className="training-action">
             <div><strong>Ready to train?</strong><span>{algorithm.toUpperCase()} · {resize || "config.yml"} · {className || "config.yml class"}</span></div>
-            <button className="primary" onClick={train} disabled={busy}><Play size={13}/>{busy?"Training…":"Start training"}</button>
+            <button className="primary" onClick={train} disabled={busy}><Play size={13}/>{busy?(jobStatus||"Working…"):"Start training"}</button>
           </div>
 
           {error && <div className="form-error">{error}</div>}
