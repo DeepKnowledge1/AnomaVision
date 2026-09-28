@@ -96,6 +96,7 @@ class PredictionResult(BaseModel):
     latency_ms: float
     heatmap_image_base64: Optional[str] = ""
     boundary_image_base64: Optional[str] = ""
+    drift_report: Optional[dict] = None
 
 
 class ConfigModel(BaseModel):
@@ -195,18 +196,20 @@ def _load_project_drift_monitor(project_id: str, config: dict) -> None:
     _drift_monitor.save_status(status_path)
 
 
-def _update_project_drift(project_id: str, image_np) -> None:
+def _update_project_drift(project_id: str, image_np) -> Optional[dict]:
     if _drift_monitor is None or _drift_project_id != project_id:
-        return
+        return None
     from anomavision.static.AnomaVision import to_batch
     try:
         _drift_monitor.update(input_drift_features(to_batch([image_np])))
         status_path = _resolve_drift_path(project_id, _drift_config, "drift_output",
             _project_root(project_id) / "monitoring" / "drift_status.json")
         _drift_monitor.save_status(status_path)
+        return _drift_monitor.status().to_dict()
     except Exception as exc:
         # Monitoring is an observer and must never break anomaly inference.
         print(f"[monitoring] Drift update skipped: {exc}")
+        return None
 
 
 
@@ -398,7 +401,7 @@ async def predict(
         contents = await file.read()
         image_np = _load_image_np(contents)
         result = engine.run(image_np, threshold=engine.ANOMALY_THRESHOLD, include_visualizations=include_visualizations)
-        _update_project_drift(_drift_project_id or "", image_np)
+        drift_report = _update_project_drift(_drift_project_id or "", image_np)
 
         heatmap_b64 = ""
         boundary_b64 = ""
@@ -415,6 +418,7 @@ async def predict(
             latency_ms=result.latency_ms,
             heatmap_image_base64=heatmap_b64,
             boundary_image_base64=boundary_b64,
+            drift_report=drift_report,
         )
 
     except Exception as e:
