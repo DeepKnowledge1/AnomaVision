@@ -173,8 +173,14 @@ def _load_project_drift_monitor(project_id: str, config: dict) -> None:
     if not reference_path.is_file():
         reference_path = _build_input_drift_reference(project_id, config)
     reference = np.load(reference_path)
-    if reference.ndim != 2 or reference.shape[0] < 2:
-        raise ValueError(f"Invalid drift reference: {reference_path}")
+    if reference.ndim != 2 or reference.shape[0] < 2 or reference.shape[1] != 15:
+        # The Studio runtime intentionally uses the backend-independent
+        # input-statistics representation (3 channels × 5 statistics).
+        reference_path.unlink(missing_ok=True)
+        reference_path = _build_input_drift_reference(project_id, config)
+        reference = np.load(reference_path)
+    if reference.ndim != 2 or reference.shape[0] < 2 or reference.shape[1] != 15:
+        raise ValueError(f"Invalid drift reference representation: {reference_path}")
     window = int(config.get("drift_window", 50) or 50)
     min_samples = max(2, min(int(config.get("drift_min_samples", 5) or 5), window))
     interval = max(1, int(config.get("drift_evaluation_interval", 25) or 25))
