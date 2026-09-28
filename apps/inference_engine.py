@@ -239,7 +239,7 @@ def session_info() -> dict:
 # -----------------------------------------------------------------------------
 # Core inference — called by both FastAPI and Gradio
 # -----------------------------------------------------------------------------
-def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD) -> InferenceResult:
+def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD, include_visualizations: bool = True) -> InferenceResult:
     """
     Run anomaly detection on a single RGB numpy array (H, W, 3) uint8.
 
@@ -264,17 +264,19 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD) -> Inference
     image_score = float(np.squeeze(outputs[0]))
     score_maps = outputs[1]
 
-    # Visualizations
-    score_map_cls = classification(score_maps, threshold)
-    image_cls = classification(np.array([image_score]), threshold)
-    test_images = np.array([image_np])
-
-    boundary_np = visualization.framed_boundary_images(
-        test_images, score_map_cls, image_cls, padding=VIZ_PADDING
-    )[0]
-    heatmap_np = visualization.heatmap_images(test_images, score_maps, alpha=VIZ_ALPHA)[
-        0
-    ]
+    # Visualizations are optional. Live/camera inference does not need them;
+    # skipping this CPU-heavy path keeps latency close to the raw ONNX runtime.
+    if include_visualizations:
+        score_map_cls = classification(score_maps, threshold)
+        image_cls = classification(np.array([image_score]), threshold)
+        test_images = np.array([image_np])
+        boundary_np = visualization.framed_boundary_images(
+            test_images, score_map_cls, image_cls, padding=VIZ_PADDING
+        )[0]
+        heatmap_np = visualization.heatmap_images(test_images, score_maps, alpha=VIZ_ALPHA)[0]
+    else:
+        boundary_np = np.empty((0, 0, 3), dtype=np.uint8)
+        heatmap_np = np.empty((0, 0, 3), dtype=np.uint8)
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
