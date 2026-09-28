@@ -1012,22 +1012,29 @@ function MonitoringPage({project}:{project?:Project}) {
         <div className="drift-alarm" role="alert">
           <div className="drift-alarm-icon"><Activity size={19}/></div>
           <div className="drift-alarm-copy">
-            <strong>DRIFT DETECTED</strong>
-            <span>Production data distribution has changed. Investigate the input data before treating current inference results as normal production behavior.</span>
+            <strong>Significant data change detected</strong>
+            <span>The current images are noticeably different from the reference data used by the model. Check the input data before relying on production results.</span>
           </div>
           <div className="drift-alarm-metric">
-            <span>Drift score</span>
-            <b>{driftScore!=null?driftScore.toFixed(3):"—"}</b>
-            <small>Threshold {latest?.threshold!=null?Number(latest.threshold).toFixed(3):"—"}</small>
+            <span>Drift level</span>
+            <b>{driftScore!=null ? (driftDetected ? "Major" : driftScore >= 0.5 ? "Significant" : driftScore >= 0.2 ? "Slight" : "Normal") : "—"}</b>
+            <small>Technical score {driftScore!=null?driftScore.toFixed(3):"—"} · threshold {latest?.threshold!=null?Number(latest.threshold).toFixed(3):"—"}</small>
           </div>
         </div>
       )}
 
       <div className="grid-4 section">
-        <Stat icon={<Activity size={15}/>} label="Drift score" value={driftScore!=null?driftScore.toFixed(3):"—"} meta="combined drift signal"/>
-        <Stat icon={<Database size={15}/>} label="PSI" value={psi!=null?psi.toFixed(3):"—"} meta="distribution shift"/>
-        <Stat icon={<ShieldCheck size={15}/>} label="Warnings" value={String(warnings.length)} meta={warnings.length?"review latest signals":"no warnings reported"} green={!warnings.length}/>
-        <Stat icon={<CircleGauge size={15}/>} label="Reports" value={String(summary?.report_count||0)} meta="stored monitoring reports"/>
+        <Stat
+          icon={<Activity size={15}/>}
+          label="Data drift"
+          value={driftScore==null ? "No data" : driftDetected ? "Major change" : driftScore >= 0.5 ? "Significant change" : driftScore >= 0.2 ? "Slight change" : "Normal"}
+          meta={driftScore==null ? "Waiting for monitoring data" : `Score ${driftScore.toFixed(3)} · ${driftDetected ? "attention required" : "within expected range"}`}
+          green={driftScore!=null && !driftDetected}
+          alert={driftDetected}
+        />
+        <Stat icon={<Database size={15}/>} label="Distribution change" value={psi!=null?psi.toFixed(3):"—"} meta="PSI · technical detail"/>
+        <Stat icon={<ShieldCheck size={15}/>} label="Warnings" value={String(warnings.length)} meta={warnings.length?"Review latest signals":"No warnings reported"} green={!warnings.length}/>
+        <Stat icon={<CircleGauge size={15}/>} label="Reports" value={String(summary?.report_count||0)} meta="Stored monitoring reports"/>
       </div>
       {latest && (
         <div className={`drift-metric-grid ${driftDetected?"drift-metric-alert":""}`}>
