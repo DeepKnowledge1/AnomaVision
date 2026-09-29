@@ -126,6 +126,8 @@ The benchmark reports **Image AUROC, Pixel AUROC, latency, P95 latency, FPS, mod
 
 ### Quick example
 
+Run a single class:
+
 ```powershell
 python scripts\\benchmarks\\compare_with_anomalib.py `
   --dataset_path D:\\01-DATA `
@@ -133,6 +135,18 @@ python scripts\\benchmarks\\compare_with_anomalib.py `
   --algorithms padim `
   --device cpu
 ```
+
+Run all available MVTec classes:
+
+```powershell
+python scripts\\benchmarks\\compare_with_anomalib.py `
+  --dataset_path D:\\01-DATA `
+  --all_classes `
+  --algorithms padim `
+  --device cpu
+```
+
+With `--all_classes`, the script automatically discovers supported MVTec class directories present under the dataset path and runs the same AnomaVision-vs-Anomalib comparison for each available class. `--class_name` and `--all_classes` are mutually exclusive. Results are written separately under `benchmark_results/<algorithm>/<class_name>/`.
 
 Historical benchmark results are available for **MVTec AD and VisA**, including per-class results and visual comparisons. These results are retained for reference; the corrected benchmark should be rerun before making current performance claims.
 

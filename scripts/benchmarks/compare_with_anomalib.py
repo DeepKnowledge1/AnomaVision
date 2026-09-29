@@ -675,16 +675,76 @@ def main() -> None:
         description="Benchmark AnomaVision against a local Anomalib checkout."
     )
     parser.add_argument("--dataset_path", required=True)
-    parser.add_argument("--class_name", choices=MVTec_CLASSES, required=True)
+    parser.add_argument("--class_name", choices=MVTec_CLASSES)
+    parser.add_argument(
+        "--all_classes",
+        action="store_true",
+        help="Run the benchmark for all available MVTec classes in the dataset.",
+    )
     parser.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda"))
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument(
         "--algorithms", nargs="+", choices=ALGORITHMS, default=list(ALGORITHMS)
     )
     args = parser.parse_args()
-    BenchmarkRunner(args.dataset_path, args.class_name, args.device, args.seed).run(
-        args.algorithms
-    )
+
+    if args.class_name and args.all_classes:
+        parser.error("Use either --class_name or --all_classes, not both.")
+
+    if not args.class_name and not args.all_classes:
+        parser.error("You must specify either --class_name or --all_classes.")
+
+    dataset_path = Path(args.dataset_path)
+    if not dataset_path.is_dir():
+        parser.error(f"Dataset path does not exist: {dataset_path}")
+
+    if args.all_classes:
+        classes = [
+            class_name
+            for class_name in MVTec_CLASSES
+            if (dataset_path / class_name).is_dir()
+        ]
+
+        if not classes:
+            parser.error(f"No supported MVTec classes found under: {dataset_path}")
+
+        print("\n" + "=" * 80)
+        print("AnomaVision vs Anomalib — ALL CLASSES")
+        print("=" * 80)
+        print(f"Dataset  : {dataset_path}")
+        print(f"Classes  : {len(classes)}")
+        print(f"Algorithms: {', '.join(args.algorithms)}")
+        print(f"Device   : {args.device}")
+        print("\nClasses:")
+        for class_name in classes:
+            print(f"  - {class_name}")
+        print("=" * 80)
+
+        for index, class_name in enumerate(classes, start=1):
+            print("\n" + "#" * 80)
+            print(f"CLASS {index}/{len(classes)}: {class_name}")
+            print("#" * 80)
+
+            BenchmarkRunner(
+                str(dataset_path),
+                class_name,
+                args.device,
+                args.seed,
+            ).run(args.algorithms)
+
+            gc.collect()
+            set_seed(args.seed)
+
+        print("\n" + "=" * 80)
+        print("ALL CLASS BENCHMARKS COMPLETED")
+        print("=" * 80)
+    else:
+        BenchmarkRunner(
+            str(dataset_path),
+            args.class_name,
+            args.device,
+            args.seed,
+        ).run(args.algorithms)
 
 
 if __name__ == "__main__":
