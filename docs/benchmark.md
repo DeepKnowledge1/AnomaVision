@@ -24,7 +24,7 @@ python scripts\benchmarks\compare_with_anomalib.py `
   --device cpu
 ```
 
-`--class_name` is required and must be one of the MVTec AD class names. `--algorithms` accepts one or more of `padim`, `patchcore`, `efficientad` (space-separated), and defaults to all three if omitted:
+`--class_name` selects one MVTec AD class. Alternatively, use `--all_classes` to automatically discover and benchmark every supported MVTec class directory present under `--dataset_path`. The two options are mutually exclusive. `--algorithms` accepts one or more of `padim`, `patchcore`, `efficientad` (space-separated), and defaults to all three if omitted:
 
 ```bash
 python scripts/benchmarks/compare_with_anomalib.py `
@@ -34,7 +34,7 @@ python scripts/benchmarks/compare_with_anomalib.py `
   --device cuda
 ```
 
-`--device` defaults to `auto` (`cpu`, `cuda`, or `auto`), and `--seed` defaults to 42. There is currently no `--all_classes` flag — the script benchmarks one class per run; loop over classes yourself (e.g. in a shell script) to cover the full MVTec set.
+`--device` defaults to `auto` (`cpu`, `cuda`, or `auto`), and `--seed` defaults to 42. With `--all_classes`, only class directories that actually exist under the dataset path are run.
 
 The benchmark uses the shared contract defined in the script: 224×224 inputs, ImageNet normalization, batch size 8, ten warm-up iterations, 100 timed iterations, zero data-loader workers, synchronized CUDA timing when applicable, and seed 42 by default. Results are written to `benchmark_results/`, including JSON, CSV, and plots per run.
 
