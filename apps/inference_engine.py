@@ -268,7 +268,16 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD, include_visu
     # skipping this CPU-heavy path keeps latency close to the raw ONNX runtime.
     if include_visualizations:
         score_map_cls = classification(score_maps, threshold)
-        image_cls = classification(np.array([image_score]), threshold)
+        # Use the localized pixel mask as the source of truth. The image-level
+        # score alone must not produce ANOMALY when no pixel is localized.
+        image_cls = (
+            np.any(
+                np.asarray(score_map_cls).reshape(
+                    score_map_cls.shape[0], -1
+                ) > 0,
+                axis=1,
+            )
+        ).astype(np.int64)
         test_images = np.array([image_np])
         boundary_np = visualization.framed_boundary_images(
             test_images, score_map_cls, image_cls, padding=VIZ_PADDING
@@ -280,9 +289,16 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD, include_visu
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
+    pixel_mask = classification(score_maps, threshold)
+    is_anomaly = bool(
+        np.any(
+            np.asarray(pixel_mask).reshape(pixel_mask.shape[0], -1) > 0
+        )
+    )
+
     return InferenceResult(
         anomaly_score=image_score,
-        is_anomaly=image_score >= threshold,
+        is_anomaly=is_anomaly,
         image_np=image_np,
         heatmap_np=heatmap_np,
         boundary_np=boundary_np,
