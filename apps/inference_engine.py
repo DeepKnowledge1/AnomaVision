@@ -28,10 +28,11 @@ from anomavision.static.AnomaVision import classification, to_batch, visualizati
 # Config — all overridable via environment variables
 # -----------------------------------------------------------------------------
 ANOMALY_THRESHOLD = float(os.getenv("ANOMAVISION_THRESHOLD", "13.0"))
-MODEL_DATA_PATH = os.getenv(
-    "ANOMAVISION_MODEL_DATA_PATH", "distributions/padim/bottle/anomav_exp"
-)
+MODEL_DATA_PATH = os.getenv("ANOMAVISION_MODEL_DATA_PATH", "")
 MODEL_FILE = os.getenv("ANOMAVISION_MODEL_FILE", "model.onnx")
+STUDIO_ROOT = os.path.expanduser(
+    os.getenv("ANOMAVISION_STUDIO_ROOT", "~/.anomavision/projects")
+)
 VIZ_PADDING = int(os.getenv("ANOMAVISION_VIZ_PADDING", "40"))
 VIZ_ALPHA = float(os.getenv("ANOMAVISION_VIZ_ALPHA", "0.5"))
 VIZ_COLOR = tuple(map(int, os.getenv("ANOMAVISION_VIZ_COLOR", "128,0,128").split(",")))
@@ -41,6 +42,16 @@ VIZ_COLOR = tuple(map(int, os.getenv("ANOMAVISION_VIZ_COLOR", "128,0,128").split
 # -----------------------------------------------------------------------------
 _sess: Optional[ort.InferenceSession] = None
 _input_name: Optional[str] = None
+
+
+def _is_valid_onnx(path: str) -> bool:
+    """Return True only when ONNX Runtime can construct a session for the artifact."""
+    try:
+        ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+        return True
+    except Exception as exc:
+        print(f"[inference] Invalid ONNX artifact {path}: {exc}")
+        return False
 
 
 @dataclass
@@ -58,17 +69,136 @@ class InferenceResult:
 # -----------------------------------------------------------------------------
 # Lifecycle
 # -----------------------------------------------------------------------------
-def load_model() -> str:
+def _resolve_model_path(project_id: Optional[str] = None) -> Optional[str]:
+    """Resolve the Studio project's latest exported ONNX model."""
+    if MODEL_DATA_PATH:
+        explicit = os.path.realpath(os.path.join(MODEL_DATA_PATH, MODEL_FILE))
+        if os.path.isfile(explicit):
+            return explicit
+        if os.path.isfile(
+            os.path.realpath(MODEL_DATA_PATH)
+        ) and MODEL_DATA_PATH.lower().endswith(".onnx"):
+            return os.path.realpath(MODEL_DATA_PATH)
+
+    root = os.path.realpath(STUDIO_ROOT)
+    projects = []
+    if project_id:
+        projects = [os.path.join(root, project_id)]
+    elif os.path.isdir(root):
+        projects = [
+            os.path.join(root, name)
+            for name in os.listdir(root)
+            if os.path.isdir(os.path.join(root, name))
+        ]
+
+    candidates = []
+    for project_dir in projects:
+        metadata_path = os.path.join(project_dir, "models", "latest_training.json")
+        if not os.path.isfile(metadata_path):
+            continue
+        try:
+            import json
+
+            with open(metadata_path, encoding="utf-8") as handle:
+                metadata = json.load(handle)
+            model_path = os.path.realpath(metadata.get("model", ""))
+            if not os.path.isfile(model_path):
+                continue
+            run_name = os.path.splitext(os.path.basename(model_path))[0]
+            deployment = os.path.join(
+                project_dir,
+                "deployments",
+                os.path.basename(os.path.dirname(model_path)),
+                "onnx",
+                "model.onnx",
+            )
+            if os.path.isfile(deployment) and _is_valid_onnx(deployment):
+                candidates.append((os.path.getmtime(deployment), deployment))
+        except (OSError, ValueError, TypeError):
+            continue
+
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def _export_latest_model(project_id: Optional[str] = None) -> Optional[str]:
+    """Export the project's trained PyTorch artifact to the Studio ONNX location."""
+    root = os.path.realpath(STUDIO_ROOT)
+    if project_id:
+        project_dirs = [os.path.join(root, project_id)]
+    else:
+        project_dirs = (
+            [
+                os.path.join(root, name)
+                for name in os.listdir(root)
+                if os.path.isdir(os.path.join(root, name))
+            ]
+            if os.path.isdir(root)
+            else []
+        )
+
+    for project_dir in project_dirs:
+        metadata_path = os.path.join(project_dir, "models", "latest_training.json")
+        if not os.path.isfile(metadata_path):
+            continue
+        try:
+            import json
+
+            with open(metadata_path, encoding="utf-8") as handle:
+                metadata = json.load(handle)
+            model_path = os.path.realpath(metadata.get("model", ""))
+            config_path = os.path.realpath(metadata.get("config", ""))
+            if not os.path.isfile(model_path) or not os.path.isfile(config_path):
+                continue
+            run_name = os.path.basename(os.path.dirname(model_path))
+            output_dir = os.path.join(project_dir, "deployments", run_name, "onnx")
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, "model.onnx")
+            if (
+                os.path.isfile(output_path)
+                and os.path.getmtime(output_path) >= os.path.getmtime(model_path)
+                and _is_valid_onnx(output_path)
+            ):
+                return output_path
+
+            from anomavision.config import load_config
+            from anomavision.export import ModelExporter
+            from anomavision.utils import get_logger, setup_logging
+
+            cfg = load_config(config_path)
+            size = cfg.get("crop_size") or cfg["resize"]
+            logger = get_logger("anomavision.studio.inference")
+            setup_logging(enabled=True, log_level="INFO", log_to_file=False)
+            exporter = ModelExporter(model_path, output_dir, logger, device="cpu")
+            result = exporter.export_onnx(
+                input_shape=(1, 3, int(size[0]), int(size[1])),
+                output_name="model.onnx",
+                dynamic_batch=False,
+                force_precision="fp32",
+                include_embeddings=False,
+            )
+            if result and _is_valid_onnx(str(result)):
+                return str(result)
+            print(f"[inference] Exported ONNX artifact failed validation: {result}")
+            return None
+        except Exception as exc:
+            print(f"[inference] Could not export trained model: {exc}")
+    return None
+
+
+def load_model(project_id: Optional[str] = None) -> str:
     """
-    Load the ONNX session and run two warmup passes.
-    Call once at application startup.
-    Returns a human-readable status string.
+    Load the selected Studio project's ONNX model and run two warmup passes.
+    If no trained model exists yet, keep the API alive and report that state.
     """
     global _sess, _input_name
 
-    model_path = os.path.realpath(os.path.join(MODEL_DATA_PATH, MODEL_FILE))
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Model not found: {model_path}")
+    model_path = _resolve_model_path(project_id) or _export_latest_model(project_id)
+    if not model_path:
+        _sess = None
+        _input_name = None
+        return "No trained Studio model is available yet."
 
     available = ort.get_available_providers()
     use_gpu = "CUDAExecutionProvider" in available
@@ -121,7 +251,11 @@ def session_info() -> dict:
 # -----------------------------------------------------------------------------
 # Core inference — called by both FastAPI and Gradio
 # -----------------------------------------------------------------------------
-def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD) -> InferenceResult:
+def run(
+    image_np: np.ndarray,
+    threshold: float = ANOMALY_THRESHOLD,
+    include_visualizations: bool = True,
+) -> InferenceResult:
     """
     Run anomaly detection on a single RGB numpy array (H, W, 3) uint8.
 
@@ -146,23 +280,39 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD) -> Inference
     image_score = float(np.squeeze(outputs[0]))
     score_maps = outputs[1]
 
-    # Visualizations
-    score_map_cls = classification(score_maps, threshold)
-    image_cls = classification(np.array([image_score]), threshold)
-    test_images = np.array([image_np])
-
-    boundary_np = visualization.framed_boundary_images(
-        test_images, score_map_cls, image_cls, padding=VIZ_PADDING
-    )[0]
-    heatmap_np = visualization.heatmap_images(test_images, score_maps, alpha=VIZ_ALPHA)[
-        0
-    ]
+    # Visualizations are optional. Live/camera inference does not need them;
+    # skipping this CPU-heavy path keeps latency close to the raw ONNX runtime.
+    if include_visualizations:
+        score_map_cls = classification(score_maps, threshold)
+        # Use the localized pixel mask as the source of truth. The image-level
+        # score alone must not produce ANOMALY when no pixel is localized.
+        image_cls = (
+            np.any(
+                np.asarray(score_map_cls).reshape(score_map_cls.shape[0], -1) > 0,
+                axis=1,
+            )
+        ).astype(np.int64)
+        test_images = np.array([image_np])
+        boundary_np = visualization.framed_boundary_images(
+            test_images, score_map_cls, image_cls, padding=VIZ_PADDING
+        )[0]
+        heatmap_np = visualization.heatmap_images(
+            test_images, score_maps, alpha=VIZ_ALPHA
+        )[0]
+    else:
+        boundary_np = np.empty((0, 0, 3), dtype=np.uint8)
+        heatmap_np = np.empty((0, 0, 3), dtype=np.uint8)
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
+    pixel_mask = classification(score_maps, threshold)
+    is_anomaly = bool(
+        np.any(np.asarray(pixel_mask).reshape(pixel_mask.shape[0], -1) > 0)
+    )
+
     return InferenceResult(
         anomaly_score=image_score,
-        is_anomaly=image_score >= threshold,
+        is_anomaly=is_anomaly,
         image_np=image_np,
         heatmap_np=heatmap_np,
         boundary_np=boundary_np,

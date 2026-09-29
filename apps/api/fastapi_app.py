@@ -1,6 +1,7 @@
 import base64
 import io
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -13,9 +14,12 @@ from PIL import Image
 from pydantic import BaseModel
 
 import anomavision
+from anomavision.drift import load_embeddings
+from anomavision.drift_runtime import InferenceDriftRuntime
 from anomavision.general import determine_device
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.inference.modelType import ModelType
+from anomavision.production_monitor import ProductionDriftMonitor
 
 matplotlib.use("Agg")  # non-interactive backend
 
@@ -24,6 +28,7 @@ matplotlib.use("Agg")  # non-interactive backend
 # -----------------------------
 model: Optional[ModelWrapper] = None
 model_type: Optional[ModelType] = None
+drift_runtime: Optional[InferenceDriftRuntime] = None
 
 ANOMALY_THRESHOLD = 13.0
 RESIZE_SIZE = (224, 224)
@@ -34,6 +39,10 @@ MODEL_DATA_PATH = os.getenv(
 )
 MODEL_FILE = os.getenv("ANOMAVISION_MODEL_FILE", "model.onnx")
 DEVICE = os.getenv("ANOMAVISION_DEVICE", "auto")  # "auto"|"cpu"|"cuda"
+DRIFT_REFERENCE = os.getenv("ANOMAVISION_DRIFT_REFERENCE", "")
+DRIFT_WINDOW = int(os.getenv("ANOMAVISION_DRIFT_WINDOW", "500"))
+DRIFT_MIN_SAMPLES = int(os.getenv("ANOMAVISION_DRIFT_MIN_SAMPLES", "100"))
+DRIFT_THRESHOLD = float(os.getenv("ANOMAVISION_DRIFT_THRESHOLD", "0.20"))
 
 # Visualization parameters (match detect.py defaults)
 VIZ_PADDING = int(os.getenv("ANOMAVISION_VIZ_PADDING", "40"))
@@ -47,7 +56,7 @@ async def load_model():
       model = ModelWrapper(model_path, device_str)
       model_type = ModelType.from_extension(model_path)
     """
-    global model, model_type
+    global model, model_type, drift_runtime
 
     device_str = determine_device(DEVICE)  # "cpu" or "cuda"
     model_path = os.path.realpath(os.path.join(MODEL_DATA_PATH, MODEL_FILE))
@@ -58,6 +67,16 @@ async def load_model():
     # ModelType is inferred from extension (.pt/.onnx/.engine/...)
     model_type = ModelType.from_extension(model_path)
     model = ModelWrapper(model_path, device_str)
+
+    if DRIFT_REFERENCE:
+        reference = load_embeddings(DRIFT_REFERENCE)
+        monitor = ProductionDriftMonitor(
+            reference,
+            window_size=DRIFT_WINDOW,
+            min_samples=DRIFT_MIN_SAMPLES,
+            threshold=DRIFT_THRESHOLD,
+        )
+        drift_runtime = InferenceDriftRuntime(monitor, model)
 
     # Optional warmup (keeps it lightweight; ModelWrapper may implement warmup)
     try:
@@ -81,6 +100,7 @@ async def cleanup():
             pass
     model = None
     model_type = None
+    drift_runtime = None
     print("Model cleanup completed.")
 
 
@@ -101,6 +121,8 @@ class PredictionResult(BaseModel):
     boundary_image_base64: Optional[str] = ""
     heatmap_image_base64: Optional[str] = ""
     highlighted_image_base64: Optional[str] = ""
+    latency_ms: float = 0.0
+    drift_report: Optional[dict] = None
 
 
 class ConfigModel(BaseModel):
@@ -220,6 +242,7 @@ async def predict_anomaly(
         raise HTTPException(status_code=400, detail="File must be an image")
 
     try:
+        started = time.perf_counter()
         contents = await file.read()
         image_np = preprocess_image_from_upload(contents)
 
@@ -242,12 +265,23 @@ async def predict_anomaly(
         score_map_classifications = anomavision.classification(
             score_maps, ANOMALY_THRESHOLD
         )
-        image_classifications = anomavision.classification(
-            image_scores, ANOMALY_THRESHOLD
-        )
+        # Localization is the source of truth: an image is anomalous only when
+        # at least one pixel crosses the configured anomaly threshold.
+        image_classifications = (
+            np.any(
+                np.asarray(score_map_classifications).reshape(
+                    score_map_classifications.shape[0], -1
+                )
+                > 0,
+                axis=1,
+            )
+        ).astype(np.int64)
 
         anomaly_score = float(image_scores[0])
-        is_anomaly = anomaly_score >= ANOMALY_THRESHOLD
+        is_anomaly = bool(image_classifications[0])
+        drift_report = (
+            drift_runtime.update(batch) if drift_runtime is not None else None
+        )
 
         # # Normalized anomaly map
         # score_map_np = score_maps[0].numpy()
