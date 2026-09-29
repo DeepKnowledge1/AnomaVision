@@ -75,7 +75,9 @@ def _resolve_model_path(project_id: Optional[str] = None) -> Optional[str]:
         explicit = os.path.realpath(os.path.join(MODEL_DATA_PATH, MODEL_FILE))
         if os.path.isfile(explicit):
             return explicit
-        if os.path.isfile(os.path.realpath(MODEL_DATA_PATH)) and MODEL_DATA_PATH.lower().endswith(".onnx"):
+        if os.path.isfile(
+            os.path.realpath(MODEL_DATA_PATH)
+        ) and MODEL_DATA_PATH.lower().endswith(".onnx"):
             return os.path.realpath(MODEL_DATA_PATH)
 
     root = os.path.realpath(STUDIO_ROOT)
@@ -96,6 +98,7 @@ def _resolve_model_path(project_id: Optional[str] = None) -> Optional[str]:
             continue
         try:
             import json
+
             with open(metadata_path, encoding="utf-8") as handle:
                 metadata = json.load(handle)
             model_path = os.path.realpath(metadata.get("model", ""))
@@ -103,8 +106,11 @@ def _resolve_model_path(project_id: Optional[str] = None) -> Optional[str]:
                 continue
             run_name = os.path.splitext(os.path.basename(model_path))[0]
             deployment = os.path.join(
-                project_dir, "deployments", os.path.basename(os.path.dirname(model_path)),
-                "onnx", "model.onnx"
+                project_dir,
+                "deployments",
+                os.path.basename(os.path.dirname(model_path)),
+                "onnx",
+                "model.onnx",
             )
             if os.path.isfile(deployment) and _is_valid_onnx(deployment):
                 candidates.append((os.path.getmtime(deployment), deployment))
@@ -122,11 +128,15 @@ def _export_latest_model(project_id: Optional[str] = None) -> Optional[str]:
     if project_id:
         project_dirs = [os.path.join(root, project_id)]
     else:
-        project_dirs = [
-            os.path.join(root, name)
-            for name in os.listdir(root)
-            if os.path.isdir(os.path.join(root, name))
-        ] if os.path.isdir(root) else []
+        project_dirs = (
+            [
+                os.path.join(root, name)
+                for name in os.listdir(root)
+                if os.path.isdir(os.path.join(root, name))
+            ]
+            if os.path.isdir(root)
+            else []
+        )
 
     for project_dir in project_dirs:
         metadata_path = os.path.join(project_dir, "models", "latest_training.json")
@@ -134,6 +144,7 @@ def _export_latest_model(project_id: Optional[str] = None) -> Optional[str]:
             continue
         try:
             import json
+
             with open(metadata_path, encoding="utf-8") as handle:
                 metadata = json.load(handle)
             model_path = os.path.realpath(metadata.get("model", ""))
@@ -154,6 +165,7 @@ def _export_latest_model(project_id: Optional[str] = None) -> Optional[str]:
             from anomavision.config import load_config
             from anomavision.export import ModelExporter
             from anomavision.utils import get_logger, setup_logging
+
             cfg = load_config(config_path)
             size = cfg.get("crop_size") or cfg["resize"]
             logger = get_logger("anomavision.studio.inference")
@@ -239,7 +251,11 @@ def session_info() -> dict:
 # -----------------------------------------------------------------------------
 # Core inference — called by both FastAPI and Gradio
 # -----------------------------------------------------------------------------
-def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD, include_visualizations: bool = True) -> InferenceResult:
+def run(
+    image_np: np.ndarray,
+    threshold: float = ANOMALY_THRESHOLD,
+    include_visualizations: bool = True,
+) -> InferenceResult:
     """
     Run anomaly detection on a single RGB numpy array (H, W, 3) uint8.
 
@@ -272,9 +288,7 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD, include_visu
         # score alone must not produce ANOMALY when no pixel is localized.
         image_cls = (
             np.any(
-                np.asarray(score_map_cls).reshape(
-                    score_map_cls.shape[0], -1
-                ) > 0,
+                np.asarray(score_map_cls).reshape(score_map_cls.shape[0], -1) > 0,
                 axis=1,
             )
         ).astype(np.int64)
@@ -282,7 +296,9 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD, include_visu
         boundary_np = visualization.framed_boundary_images(
             test_images, score_map_cls, image_cls, padding=VIZ_PADDING
         )[0]
-        heatmap_np = visualization.heatmap_images(test_images, score_maps, alpha=VIZ_ALPHA)[0]
+        heatmap_np = visualization.heatmap_images(
+            test_images, score_maps, alpha=VIZ_ALPHA
+        )[0]
     else:
         boundary_np = np.empty((0, 0, 3), dtype=np.uint8)
         heatmap_np = np.empty((0, 0, 3), dtype=np.uint8)
@@ -291,9 +307,7 @@ def run(image_np: np.ndarray, threshold: float = ANOMALY_THRESHOLD, include_visu
 
     pixel_mask = classification(score_maps, threshold)
     is_anomaly = bool(
-        np.any(
-            np.asarray(pixel_mask).reshape(pixel_mask.shape[0], -1) > 0
-        )
+        np.any(np.asarray(pixel_mask).reshape(pixel_mask.shape[0], -1) > 0)
     )
 
     return InferenceResult(

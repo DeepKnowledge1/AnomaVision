@@ -14,11 +14,11 @@ from PIL import Image
 from pydantic import BaseModel
 
 import anomavision
+from anomavision.drift import load_embeddings
+from anomavision.drift_runtime import InferenceDriftRuntime
 from anomavision.general import determine_device
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.inference.modelType import ModelType
-from anomavision.drift import load_embeddings
-from anomavision.drift_runtime import InferenceDriftRuntime
 from anomavision.production_monitor import ProductionDriftMonitor
 
 matplotlib.use("Agg")  # non-interactive backend
@@ -70,7 +70,12 @@ async def load_model():
 
     if DRIFT_REFERENCE:
         reference = load_embeddings(DRIFT_REFERENCE)
-        monitor = ProductionDriftMonitor(reference, window_size=DRIFT_WINDOW, min_samples=DRIFT_MIN_SAMPLES, threshold=DRIFT_THRESHOLD)
+        monitor = ProductionDriftMonitor(
+            reference,
+            window_size=DRIFT_WINDOW,
+            min_samples=DRIFT_MIN_SAMPLES,
+            threshold=DRIFT_THRESHOLD,
+        )
         drift_runtime = InferenceDriftRuntime(monitor, model)
 
     # Optional warmup (keeps it lightweight; ModelWrapper may implement warmup)
@@ -266,14 +271,17 @@ async def predict_anomaly(
             np.any(
                 np.asarray(score_map_classifications).reshape(
                     score_map_classifications.shape[0], -1
-                ) > 0,
+                )
+                > 0,
                 axis=1,
             )
         ).astype(np.int64)
 
         anomaly_score = float(image_scores[0])
         is_anomaly = bool(image_classifications[0])
-        drift_report = drift_runtime.update(batch) if drift_runtime is not None else None
+        drift_report = (
+            drift_runtime.update(batch) if drift_runtime is not None else None
+        )
 
         # # Normalized anomaly map
         # score_map_np = score_maps[0].numpy()

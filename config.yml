@@ -66,8 +66,8 @@ detailed_timing: false                     # Enable detailed timing information
 # =========================
 # Visualization (detect/eval)
 # =========================
-enable_visualization: false                 # Enable anomaly visualization
-save_visualizations: false                  # Save generated visualizations to disk
+enable_visualization: true                 # Enable anomaly visualization
+save_visualizations: true                  # Save generated visualizations to disk
 viz_output_dir: "./visualizations/"        # Directory for visualization output
 viz_alpha: 0.5                             # Heatmap overlay transparency
 viz_padding: 40                            # Extra visualization border/padding
@@ -76,7 +76,7 @@ viz_color: "128,0,128"                     # RGB color used for anomaly overlays
 # =========================
 # Inference (detect)
 # =========================
-img_path: "D:\\01-DATA\\VisA_pytorch\\candle\\train\\good"         # Input image or directory for detection
+img_path: "D:/01-DATA/sample_images"       # Input image or directory for detection
 thresh: null                               # Generic legacy threshold fallback
 thresh_padim: 13.0                         # Fixed PaDiM anomaly threshold
 thresh_patchcore: 0.25                     # Fixed PatchCore anomaly threshold
