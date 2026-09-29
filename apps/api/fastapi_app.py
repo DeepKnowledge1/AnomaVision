@@ -260,12 +260,19 @@ async def predict_anomaly(
         score_map_classifications = anomavision.classification(
             score_maps, ANOMALY_THRESHOLD
         )
-        image_classifications = anomavision.classification(
-            image_scores, ANOMALY_THRESHOLD
-        )
+        # Localization is the source of truth: an image is anomalous only when
+        # at least one pixel crosses the configured anomaly threshold.
+        image_classifications = (
+            np.any(
+                np.asarray(score_map_classifications).reshape(
+                    score_map_classifications.shape[0], -1
+                ) > 0,
+                axis=1,
+            )
+        ).astype(np.int64)
 
         anomaly_score = float(image_scores[0])
-        is_anomaly = anomaly_score >= ANOMALY_THRESHOLD
+        is_anomaly = bool(image_classifications[0])
         drift_report = drift_runtime.update(batch) if drift_runtime is not None else None
 
         # # Normalized anomaly map
