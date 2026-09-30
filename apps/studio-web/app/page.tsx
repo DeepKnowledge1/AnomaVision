@@ -213,95 +213,12 @@ export default function StudioPage() {
 }
 
 function Overview({ project, projects, models, apiHealthy, onNavigate }: { project?: Project; projects: Project[]; models: Model[]; apiHealthy: boolean; onNavigate: (p: Page) => void }) {
-  const latest = models[0];
-  const workflowPages: Record<string, Page | undefined> = {
-    Dataset: "Datasets",
-    Train: "Training",
-    Deploy: "Deployments",
-    Monitor: "Monitoring",
-  };
-  return <>
-    <div className="page-head">
-      <div>
-        <div className="eyebrow">Workspace overview</div>
-        <h1>{project?.name ?? "Welcome to AnomaVision Studio"}</h1>
-        <p className="subtitle">{project?.description || "Build, validate and run industrial anomaly detection from one place."}</p>
-      </div>
-      <button className="primary" onClick={() => onNavigate(project ? "Training" : "Projects")}>
-        <Play size={13}/>{project ? "Start training" : "Create project"}
-      </button>
-    </div>
-
-    {!project && (
-      <div className="welcome-card">
-        <div className="welcome-icon"><Sparkles size={19}/></div>
-        <div>
-          <strong>Start with a project</strong>
-          <p>Create a workspace, inspect your images, then train and validate your first anomaly detector.</p>
-        </div>
-        <button className="secondary" onClick={() => onNavigate("Projects")}>Create project</button>
-      </div>
-    )}
-
-    {!apiHealthy && <div className="api-warning"><CircleGauge size={14}/> Studio API is offline. Start FastAPI on port 8000.</div>}
-
-    <div className="grid-4">
-      <Stat icon={<Database size={15}/>} label="Projects" value={String(projects.length)} meta={projects.length ? "workspaces available" : "create your first workspace"}/>
-      <Stat icon={<BrainCircuit size={15}/>} label="Models" value={String(models.length)} meta={latest ? `${latest.algorithm} · ${latest.status}` : "train a model to get started"}/>
-      <Stat icon={<ShieldCheck size={15}/>} label="Validation" value={latest ? "Available" : "—"} meta={latest ? "validate before deployment" : "needs a trained model"} green={Boolean(latest)}/>
-      <Stat icon={<MonitorCog size={15}/>} label="Deployment" value="Ready" meta="choose a target when validated"/>
-    </div>
-
-    <section className="section">
-      <div className="section-head">
-        <div>
-          <div className="section-title">Your workflow</div>
-          <div className="subtitle">A simple path from images to production</div>
-        </div>
-        <div className="section-link">Data → Train → Validate → Deploy → Monitor</div>
-      </div>
-      <div className="workflow">
-        {workflows.map(([step,title,text]) => {
-          const target = workflowPages[title];
-          return target
-            ? <button className="card workflow-card workflow-action" key={step} onClick={() => onNavigate(target)}>
-                <div className="step">{step}</div>
-                <div className="workflow-title">{title}<span className="workflow-arrow">→</span></div>
-                <div className="workflow-text">{text}</div>
-              </button>
-            : <div className="card workflow-card" key={step}>
-                <div className="step">{step}</div>
-                <div className="workflow-title">{title}</div>
-                <div className="workflow-text">{text}</div>
-              </div>;
-        })}
-      </div>
-    </section>
-
-    <section className="section activity">
-      <div className="card">
-        <div className="section-head">
-          <div><div className="section-title">Recent models</div><div className="subtitle">Your latest trained artifacts</div></div>
-          <button className="text-button" onClick={() => onNavigate("Models")}>View all →</button>
-        </div>
-        {models.length
-          ? models.slice(0,4).map((m) => <ActivityRow key={m.id} icon={<BrainCircuit size={14}/>} title={`${m.algorithm.toUpperCase()} · ${m.class_name}`} sub={m.run_name} badge={m.status}/>)
-          : <div className="empty-state"><strong>No models yet</strong><span>Train your first model to see it here.</span><button className="secondary" onClick={() => onNavigate("Training")}>Start training</button></div>}
-      </div>
-
-      <div className="card">
-        <div className="section-head">
-          <div><div className="section-title">System status</div><div className="subtitle">Studio services at a glance</div></div>
-          <button className="text-button" onClick={() => onNavigate("Monitoring")}>Monitoring →</button>
-        </div>
-        <HealthRow title="Studio API" sub="FastAPI workspace service" ok={apiHealthy}/>
-        <HealthRow title="AnomaVision core" sub="Training and inference engine" ok/>
-        <HealthRow title="Drift monitoring" sub="Production observer" ok/>
-      </div>
-    </section>
-  </>;
+ const latest=models[0]; const workflow=[["01","Dataset","Connect and validate inspection images.","Datasets",false],["02","Train","Build a PaDiM or PatchCore detector.","Training",Boolean(latest)],["03","Model","Review the trained artifact and metrics.","Models",Boolean(latest)],["04","Deploy","Export and validate your runtime target.","Deployments",false]] as const;
+ return <><section className="overview-hero"><div className="overview-hero-copy"><div className="eyebrow">PROJECT WORKSPACE</div><h1>{project?.name??"Build your first anomaly detector"}</h1><p>{project?.description||"A focused workspace for preparing inspection data, training an anomaly model, and taking it into production."}</p><div className="hero-actions"><button className="primary hero-primary" onClick={()=>onNavigate(project?"Datasets":"Projects")}>{project?"Continue workflow":"Create your first project"} <span>→</span></button>{project&&<button className="secondary" onClick={()=>onNavigate("Inference")}>Run inference</button>}</div>{!apiHealthy&&<div className="hero-warning"><span className="status-dot offline-dot"/> Studio API is offline. Start the API service to continue.</div>}</div><div className="hero-visual" aria-hidden="true"><div className="hero-orbit hero-orbit-a"/><div className="hero-orbit hero-orbit-b"/><div className="hero-center"><span>AV</span><small>VISION</small></div><div className="hero-node hero-node-a">DATA</div><div className="hero-node hero-node-b">MODEL</div><div className="hero-node hero-node-c">LIVE</div></div></section>
+ <section className="overview-metrics"><div className="metric-card metric-primary"><span>ACTIVE PROJECT</span><strong>{project?.name||"—"}</strong><small>{project?project.algorithm.toUpperCase()+" detector":"Create a project to begin"}</small></div><div className="metric-card"><span>TRAINED MODELS</span><strong>{models.length}</strong><small>{latest?"Latest model available":"No model trained yet"}</small></div><div className="metric-card"><span>WORKSPACES</span><strong>{projects.length}</strong><small>{projects.length===1?"1 project configured":"Projects in this Studio"}</small></div><div className="metric-card"><span>SERVICE</span><strong className={apiHealthy?"metric-ok":"metric-bad"}>{apiHealthy?"Ready":"Offline"}</strong><small>{apiHealthy?"Studio API connected":"Connection required"}</small></div></section>
+ <section className="overview-section"><div className="section-heading-row"><div><div className="eyebrow">BUILD PIPELINE</div><h2>From image to production</h2><p>Complete each step in order. Your project state stays available across the workspace.</p></div></div><div className="pipeline">{workflow.map(([key,label,desc,target,done],i)=><div className="pipeline-item-wrap" key={key}><button className={`pipeline-item ${done?"completed":""}`} onClick={()=>onNavigate(target as Page)}><div className="pipeline-number">{done?"✓":key}</div><div className="pipeline-copy"><strong>{label}</strong><span>{desc}</span></div><span className="pipeline-arrow">→</span></button>{i<3&&<div className="pipeline-connector"/>}</div>)}</div></section>
+ <section className="overview-lower"><div className="card recent-panel"><div className="panel-head"><div><div className="eyebrow">RECENT MODELS</div><h3>Model library</h3></div><button className="text-button" onClick={()=>onNavigate("Models")}>View models →</button></div>{models.length?<div className="model-list">{models.slice(0,3).map(m=><button className="model-row" key={m.id} onClick={()=>onNavigate("Models")}><span className="model-avatar"><BrainCircuit size={16}/></span><span className="model-row-copy"><strong>{m.algorithm.toUpperCase()} · {m.class_name}</strong><small>{m.run_name}</small></span><span className="model-status">{m.status}</span><span>→</span></button>)}</div>:<div className="panel-empty"><div className="empty-icon"><BrainCircuit size={18}/></div><strong>No trained models</strong><span>Validate your dataset, then train the first detector.</span><button className="secondary" onClick={()=>onNavigate("Datasets")}>Check dataset</button></div>}</div><div className="card quick-panel"><div className="panel-head"><div><div className="eyebrow">QUICK ACTIONS</div><h3>What do you want to do?</h3></div></div><button className="quick-action" onClick={()=>onNavigate("Datasets")}><span className="quick-icon"><Database size={16}/></span><span><strong>Check a dataset</strong><small>Validate images and structure</small></span><b>→</b></button><button className="quick-action" onClick={()=>onNavigate("Inference")}><span className="quick-icon"><Wifi size={16}/></span><span><strong>Inspect an image</strong><small>Run anomaly detection</small></span><b>→</b></button><button className="quick-action" onClick={()=>onNavigate("Monitoring")}><span className="quick-icon"><Activity size={16}/></span><span><strong>Check monitoring</strong><small>Review drift and production health</small></span><b>→</b></button></div></section></>;
 }
-
 function ProjectsPage({ projects, selectedProject, onSelect, onCreated }: { projects: Project[]; selectedProject: string; onSelect: (id:string)=>void; onCreated:()=>Promise<void> }) {
   const [name,setName]=useState(""); const [description,setDescription]=useState(""); const [algorithm,setAlgorithm]=useState("patchcore"); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
   const [jobId,setJobId]=useState("");
