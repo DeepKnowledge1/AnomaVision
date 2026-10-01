@@ -101,14 +101,17 @@ def _resolve_model_path(project_id: Optional[str] = None) -> Optional[str]:
 
             with open(metadata_path, encoding="utf-8") as handle:
                 metadata = json.load(handle)
-            model_path = os.path.realpath(metadata.get("model", ""))
+            model_value = str(metadata.get("model", "")).strip()
+            model_path = os.path.realpath(model_value)
+            if not os.path.isfile(model_path) and model_value:
+                model_path = os.path.realpath(os.path.join(project_dir, model_value))
             if not os.path.isfile(model_path):
                 continue
-            run_name = os.path.splitext(os.path.basename(model_path))[0]
+            run_name = os.path.basename(os.path.dirname(model_path))
             deployment = os.path.join(
                 project_dir,
                 "deployments",
-                os.path.basename(os.path.dirname(model_path)),
+                run_name,
                 "onnx",
                 "model.onnx",
             )
@@ -147,9 +150,16 @@ def _export_latest_model(project_id: Optional[str] = None) -> Optional[str]:
 
             with open(metadata_path, encoding="utf-8") as handle:
                 metadata = json.load(handle)
-            model_path = os.path.realpath(metadata.get("model", ""))
-            config_path = os.path.realpath(metadata.get("config", ""))
+            model_value = str(metadata.get("model", "")).strip()
+            config_value = str(metadata.get("config", "")).strip()
+            model_path = os.path.realpath(model_value)
+            config_path = os.path.realpath(config_value)
+            if not os.path.isfile(model_path) and model_value:
+                model_path = os.path.realpath(os.path.join(project_dir, model_value))
+            if not os.path.isfile(config_path) and config_value:
+                config_path = os.path.realpath(os.path.join(project_dir, config_value))
             if not os.path.isfile(model_path) or not os.path.isfile(config_path):
+                print(f"[inference] Training metadata is missing a readable model/config for {project_dir}")
                 continue
             run_name = os.path.basename(os.path.dirname(model_path))
             output_dir = os.path.join(project_dir, "deployments", run_name, "onnx")
