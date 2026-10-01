@@ -63,6 +63,7 @@ class InferenceResult:
     image_np: np.ndarray  # original RGB, (H, W, 3) uint8
     heatmap_np: np.ndarray  # heatmap overlay, same shape
     boundary_np: np.ndarray  # framed boundary, same shape
+    highlighted_np: np.ndarray  # localized anomaly regions, same shape
     latency_ms: float
 
 
@@ -309,9 +310,13 @@ def run(
         heatmap_np = visualization.heatmap_images(
             test_images, score_maps, alpha=VIZ_ALPHA
         )[0]
+        highlighted_np = visualization.highlighted_images(
+            test_images, score_map_cls, color=VIZ_COLOR
+        )[0]
     else:
         boundary_np = np.empty((0, 0, 3), dtype=np.uint8)
         heatmap_np = np.empty((0, 0, 3), dtype=np.uint8)
+        highlighted_np = np.empty((0, 0, 3), dtype=np.uint8)
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
@@ -326,5 +331,6 @@ def run(
         image_np=image_np,
         heatmap_np=heatmap_np,
         boundary_np=boundary_np,
+        highlighted_np=highlighted_np,
         latency_ms=latency_ms,
     )
