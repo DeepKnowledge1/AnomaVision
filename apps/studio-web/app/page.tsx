@@ -201,7 +201,7 @@ export default function StudioPage() {
           {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={navigate} onDeploy={(id) => { setDeploymentModelId(id); navigate("Deployments"); }}/>}
           {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>}
           {page === "Performance" && <PerformancePage project={project} session={inferenceSession}/>}
-          {page === "Monitoring" && <MonitoringPage project={project}/>}
+          <MonitoringPage project={project} visible={page === "Monitoring"} />
           
           {page === "Results" && <ResultsPage session={inferenceSession} onNavigate={navigate}/>}
           
@@ -934,7 +934,7 @@ function PerformancePage({project,session}:{project?:Project;session:{result:any
   </>;
 }
 
-function MonitoringPage({project}:{project?:Project}) {
+function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
   const [summary,setSummary]=useState<Record<string,any>|null>(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
@@ -974,7 +974,7 @@ function MonitoringPage({project}:{project?:Project}) {
   const healthy=!driftDetected && (status==="ok" || status==="healthy" || status==="stable" || status==="no_data");
   const statusLabel=status==="no_data"?"No data":status.replaceAll("_"," ");
 
-  return <>
+  return <div className={visible ? "" : "studio-page-hidden"}>\n  return <>
     <div className="page-head">
       <div>
         <div className="eyebrow">Production health</div>
@@ -1076,6 +1076,7 @@ function MonitoringPage({project}:{project?:Project}) {
       </div>
     </>}
   </>;
+  </div>;
 }
 
 function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResults}:{apiHealthy:boolean;projectId:string;projectAlgorithm?:string;visible:boolean;onResult:(result:any,history:any[],config:any)=>void;onResults:()=>void}) {
