@@ -429,7 +429,17 @@ async def predict(
     try:
         contents = await file.read()
         image_np = _load_image_np(contents)
-        result = engine.run(image_np, threshold=engine.ANOMALY_THRESHOLD, include_visualizations=include_visualizations)
+
+        # Apply the selected Studio project's threshold BEFORE inference.
+        # The result status and visualization frame must use the same threshold.
+        if _drift_project_id:
+            _apply_project_config(_drift_project_id)
+
+        result = engine.run(
+            image_np,
+            threshold=engine.ANOMALY_THRESHOLD,
+            include_visualizations=include_visualizations,
+        )
         drift_report = _update_project_drift(_drift_project_id or "", image_np)
 
         heatmap_b64 = ""
