@@ -515,23 +515,49 @@ def run_inference(args):
                         score_maps, kernel_size=33, sigma=4
                     )
                     if config.thresh is not None:
-                        # Localization is the source of truth for anomaly
-                        # classification: an image is anomalous only when at
-                        # least one pixel in its anomaly map reaches the
-                        # configured threshold. This prevents the image-level
-                        # score from reporting ANOMALY without localization.
-                        localization_masks = anomavision.classification(
-                            score_maps, config.thresh
-                        )
-                        is_anomaly = (
-                            np.any(
-                                np.asarray(localization_masks).reshape(
-                                    len(localization_masks), -1
-                                )
-                                > 0,
-                                axis=1,
+                        if str(config.get("algorithm", "")).lower() == "patchcore":
+                            # PatchCore: config.thresh is an IMAGE-level threshold
+                            # (cosine-distance scale). The blurred pixel map lives
+                            # on a different scale, so thresholding it directly
+                            # gives either an empty or a full-image mask. Classify
+                            # by image score, then localize with a per-image
+                            # relative cutoff on the score map.
+                            scores_np = np.asarray(
+                                image_scores.detach().float().cpu().numpy()
+                                if hasattr(image_scores, "detach")
+                                else image_scores
+                            ).reshape(-1)
+                            is_anomaly = (scores_np >= float(config.thresh)).astype(
+                                np.int64
                             )
-                        ).astype(np.int64)
+                            # Cheap relative cutoff on the min-max normalised map
+                            maps_np = (
+                                score_maps.detach().float().cpu().numpy()
+                                if hasattr(score_maps, "detach")
+                                else np.asarray(score_maps)
+                            )
+                            lo = maps_np.min(axis=(1, 2), keepdims=True)
+                            hi = maps_np.max(axis=(1, 2), keepdims=True)
+                            norm = (maps_np - lo) / (hi - lo + 1e-8)
+                            localization_masks = (
+                                (norm >= float(config.get("patchcore_loc_rel", 0.60)))
+                                & (is_anomaly[:, None, None] > 0)
+                            ).astype(np.uint8)
+                        else:
+                            # PaDiM etc.: an image is anomalous only when at
+                            # least one pixel reaches the configured threshold.
+                            localization_masks = anomavision.classification(
+                                score_maps, config.thresh
+                            )
+                            is_anomaly = (
+                                np.any(
+                                    np.asarray(localization_masks).reshape(
+                                        len(localization_masks), -1
+                                    )
+                                    > 0,
+                                    axis=1,
+                                )
+                            ).astype(np.int64)
                     else:
                         localization_masks = np.zeros_like(score_maps)
                         is_anomaly = np.zeros(score_maps.shape[0], dtype=np.int64)

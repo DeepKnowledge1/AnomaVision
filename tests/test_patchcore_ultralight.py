@@ -59,3 +59,36 @@ def test_patchcore_stats_round_trip_preserves_ultralight_settings(
     assert restored.patch_grid == 3
     assert restored.search_chunk_size == 7
     assert restored.max_memory_patches == 11
+
+
+def test_patchcore_fit_and_inference_are_deterministic(monkeypatch):
+    """Guard against regressions that make PatchCore appear random between runs."""
+    monkeypatch.setattr(patchcore_module, "ResnetEmbeddingsExtractor", FakeExtractor)
+
+    images = torch.arange(6 * 3 * 8 * 8, dtype=torch.float32).reshape(6, 3, 8, 8)
+    loader = DataLoader(TensorDataset(images), batch_size=2, shuffle=False)
+    query = images[:2]
+
+    def build_and_run():
+        model = patchcore_module.PatchCore(
+            device="cpu",
+            layer_indices=[0],
+            coreset_ratio=0.5,
+            max_memory_patches=5,
+            patch_grid=2,
+            search_chunk_size=2,
+            coreset_method="kcenter",
+            coreset_seed=42,
+        )
+        model.fit(loader)
+        scores, maps = model.predict(query)
+        return model.memory_bank.clone(), scores.clone(), maps.clone()
+
+    bank_a, scores_a, maps_a = build_and_run()
+    bank_b, scores_b, maps_b = build_and_run()
+
+    assert torch.equal(bank_a, bank_b)
+    assert torch.equal(scores_a, scores_b)
+    assert torch.equal(maps_a, maps_b)
+    assert torch.isfinite(scores_a).all()
+    assert torch.isfinite(maps_a).all()

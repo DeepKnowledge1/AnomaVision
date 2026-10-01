@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
+import cv2
 import numpy as np
 import onnxruntime as ort
 from onnxruntime import GraphOptimizationLevel, SessionOptions
@@ -27,7 +28,24 @@ from anomavision.static.AnomaVision import classification, to_batch, visualizati
 # -----------------------------------------------------------------------------
 # Config — all overridable via environment variables
 # -----------------------------------------------------------------------------
-ANOMALY_THRESHOLD = float(os.getenv("ANOMAVISION_THRESHOLD", "13.0"))
+# Keep an explicit environment override authoritative. Otherwise the
+# threshold follows the algorithm encoded by the active model path.
+_THRESHOLD_OVERRIDE = os.getenv("ANOMAVISION_THRESHOLD")
+ANOMALY_THRESHOLD = float(_THRESHOLD_OVERRIDE) if _THRESHOLD_OVERRIDE else 13.0
+
+
+def _threshold_for_model(model_path: str) -> float:
+    """Return the algorithm-appropriate pixel threshold for a model artifact."""
+    if _THRESHOLD_OVERRIDE:
+        return float(_THRESHOLD_OVERRIDE)
+    normalized = os.path.normpath(model_path).lower()
+    if "patchcore" in normalized:
+        return float(os.getenv("ANOMAVISION_PATCHCORE_THRESHOLD", "0.25"))
+    if "efficientad" in normalized:
+        return float(os.getenv("ANOMAVISION_EFFICIENTAD_THRESHOLD", "1.0"))
+    return float(os.getenv("ANOMAVISION_PADIM_THRESHOLD", "13.0"))
+
+
 MODEL_DATA_PATH = os.getenv("ANOMAVISION_MODEL_DATA_PATH", "")
 MODEL_FILE = os.getenv("ANOMAVISION_MODEL_FILE", "model.onnx")
 STUDIO_ROOT = os.path.expanduser(
@@ -214,6 +232,13 @@ def load_model(project_id: Optional[str] = None) -> str:
     _sess = ort.InferenceSession(model_path, providers=providers, sess_options=opts)
     _input_name = _sess.get_inputs()[0].name
 
+    # The previous API used a fixed PaDiM threshold (13.0) for every model.
+    # PatchCore maps use a much smaller score scale, so that made the heatmap
+    # show the defect while the binary localization mask was completely empty.
+    global ANOMALY_THRESHOLD
+    ANOMALY_THRESHOLD = _threshold_for_model(model_path)
+    print(f"[inference] Localization threshold: {ANOMALY_THRESHOLD}")
+
     # Warmup — run twice so JIT compile happens now, not on the first real request
     dummy_shape = tuple(
         d if isinstance(d, int) and d > 0 else 1 for d in _sess.get_inputs()[0].shape
@@ -283,15 +308,50 @@ def run(
     # Visualizations are optional. Live/camera inference does not need them;
     # skipping this CPU-heavy path keeps latency close to the raw ONNX runtime.
     if include_visualizations:
-        score_map_cls = classification(score_maps, threshold)
-        # Use the localized pixel mask as the source of truth. The image-level
-        # score alone must not produce ANOMALY when no pixel is localized.
-        image_cls = (
-            np.any(
-                np.asarray(score_map_cls).reshape(score_map_cls.shape[0], -1) > 0,
-                axis=1,
+        # The image score decides whether the frame is anomalous.
+        # Localization is derived independently from the spatial PatchCore map.
+        #
+        # Do not use a fixed normalized threshold such as 0.60 here: for a
+        # localized defect that can select a large portion of the object/image.
+        # Instead, keep only the strongest spatial response (top 5% of pixels)
+        # and then retain the connected high-score regions. This makes the
+        # contour follow the defect rather than the whole image.
+        raw_map = np.asarray(score_maps, dtype=np.float32)
+        flat_map = raw_map.reshape(raw_map.shape[0], -1)
+        map_min = flat_map.min(axis=1)[:, None, None]
+        map_max = flat_map.max(axis=1)[:, None, None]
+        normalized_maps = (raw_map - map_min) / np.maximum(map_max - map_min, 1e-8)
+
+        score_map_cls = np.zeros_like(normalized_maps, dtype=np.uint8)
+        for i, normalized_map in enumerate(normalized_maps):
+            localization_threshold = float(np.quantile(normalized_map, 0.95))
+            mask = (normalized_map >= localization_threshold).astype(np.uint8)
+
+            # Close small gaps without expanding the defect excessively.
+            kernel = np.ones((3, 3), dtype=np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+            # Keep only connected regions containing one of the strongest
+            # PatchCore responses. This removes scattered background pixels.
+            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+                mask, connectivity=8
             )
-        ).astype(np.int64)
+            if num_labels > 1:
+                peaks = []
+                for label in range(1, num_labels):
+                    component = normalized_map[labels == label]
+                    peaks.append((float(component.max()), label))
+                keep = {label for _, label in sorted(peaks, reverse=True)[:3]}
+                mask = np.isin(labels, list(keep)).astype(np.uint8)
+
+            score_map_cls[i] = mask
+
+        # The image-level score is the anomaly decision. The score map is
+        # localization data and must not determine the outer anomaly frame.
+        image_cls = np.array(
+            [int(float(image_score) >= float(threshold))], dtype=np.int64
+        )
+        score_map_cls[image_cls == 0] = 0
         test_images = np.array([image_np])
         boundary_np = visualization.framed_boundary_images(
             test_images, score_map_cls, image_cls, padding=VIZ_PADDING
@@ -305,10 +365,7 @@ def run(
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
-    pixel_mask = classification(score_maps, threshold)
-    is_anomaly = bool(
-        np.any(np.asarray(pixel_mask).reshape(pixel_mask.shape[0], -1) > 0)
-    )
+    is_anomaly = bool(float(image_score) >= float(threshold))
 
     return InferenceResult(
         anomaly_score=image_score,
