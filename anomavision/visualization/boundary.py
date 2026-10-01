@@ -93,27 +93,42 @@ def boundary_image(
     """
 
     image = to_numpy(image).copy()
-    mask = to_numpy(patch_classification).copy()
+    mask = np.squeeze(to_numpy(patch_classification).copy())
 
-    # Keep the localization boundary binary until it is applied to the image.
-    # Resizing a one-pixel boundary with area interpolation can make values
-    # fractional; exact binary-mask checks then erase the boundary.
-    mask = np.squeeze(mask)
     if mask.ndim != 2:
         raise ValueError(
             f"patch_classification must be a 2D mask after squeezing; got shape {mask.shape}"
         )
 
-    found_boundaries = find_boundaries(mask > 0.5, mode="outer")
+    # Resize the localization mask itself, not its one-pixel boundary.
+    # This preserves the defect region and lets OpenCV trace a visible
+    # contour at the final image resolution.
+    binary_mask = (mask > 0.5).astype(np.uint8)
 
-    if found_boundaries.shape != image.shape[:2]:
-        found_boundaries = cv2.resize(
-            found_boundaries.astype(np.uint8),
+    if binary_mask.shape != image.shape[:2]:
+        binary_mask = cv2.resize(
+            binary_mask,
             (image.shape[1], image.shape[0]),
             interpolation=cv2.INTER_NEAREST,
-        ).astype(bool)
+        )
+
+    # Fill tiny gaps introduced by patch/grid localization while keeping
+    # separate defects as separate regions.
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(
+        binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
 
     b_image = image.copy()
-    b_image[found_boundaries] = np.asarray(boundary_color, dtype=b_image.dtype)
+    if contours:
+        cv2.drawContours(
+            b_image,
+            contours,
+            contourIdx=-1,
+            color=tuple(int(v) for v in boundary_color),
+            thickness=max(2, min(image.shape[:2]) // 150),
+        )
 
     return b_image
