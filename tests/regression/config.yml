@@ -1,0 +1,37 @@
+dataset_path: "."
+class_name: "cable"
+resize: [224, 224]
+crop_size:
+normalize: true
+no_normalize: false
+norm_mean: [0.485, 0.456, 0.406]
+norm_std: [0.229, 0.224, 0.225]
+
+backbone: "resnet18"
+algorithm: "patchcore"
+coreset_ratio: 0.02
+max_memory_patches: 2048
+patch_grid: 14
+search_chunk_size: 1024
+coreset_method: "kcenter"
+coreset_seed: 42
+feat_dim: 50
+layer_indices: [0]
+patchcore_layer_indices: [1, 2]
+
+model_data_path: "."
+model: "model.pt"
+batch_size: 1
+device: "cpu"
+
+enable_visualization: false
+save_visualizations: false
+num_workers: 0
+pin_memory: false
+run_name: "regression"
+overwrite: true
+
+thresh: null
+thresh_patchcore: 0.25
+thresh_padim: 13.0
+thresh_efficientad: 1.0
