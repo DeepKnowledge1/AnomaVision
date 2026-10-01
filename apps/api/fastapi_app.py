@@ -30,8 +30,24 @@ model: Optional[ModelWrapper] = None
 model_type: Optional[ModelType] = None
 drift_runtime: Optional[InferenceDriftRuntime] = None
 
-ANOMALY_THRESHOLD = 13.0
+# Pixel thresholds are algorithm-specific. A single PaDiM threshold (13.0)
+# makes PatchCore masks empty even when the image is correctly classified as
+# anomalous (PatchCore scores are typically much smaller).
+_THRESHOLD_OVERRIDE = os.getenv("ANOMAVISION_THRESHOLD")
+ANOMALY_THRESHOLD = float(_THRESHOLD_OVERRIDE) if _THRESHOLD_OVERRIDE else 13.0
 RESIZE_SIZE = (224, 224)
+
+
+def _threshold_for_model(model_path: str) -> float:
+    """Return the pixel-localization threshold for the active model."""
+    if _THRESHOLD_OVERRIDE:
+        return float(_THRESHOLD_OVERRIDE)
+    normalized = os.path.normpath(model_path).lower()
+    if "patchcore" in normalized:
+        return float(os.getenv("ANOMAVISION_PATCHCORE_THRESHOLD", "0.25"))
+    if "efficientad" in normalized:
+        return float(os.getenv("ANOMAVISION_EFFICIENTAD_THRESHOLD", "1.0"))
+    return float(os.getenv("ANOMAVISION_PADIM_THRESHOLD", "13.0"))
 
 # You can override these via environment variables
 MODEL_DATA_PATH = os.getenv(
@@ -56,7 +72,7 @@ async def load_model():
       model = ModelWrapper(model_path, device_str)
       model_type = ModelType.from_extension(model_path)
     """
-    global model, model_type, drift_runtime
+    global model, model_type, drift_runtime, ANOMALY_THRESHOLD
 
     device_str = determine_device(DEVICE)  # "cpu" or "cuda"
     model_path = os.path.realpath(os.path.join(MODEL_DATA_PATH, MODEL_FILE))
@@ -67,6 +83,8 @@ async def load_model():
     # ModelType is inferred from extension (.pt/.onnx/.engine/...)
     model_type = ModelType.from_extension(model_path)
     model = ModelWrapper(model_path, device_str)
+    ANOMALY_THRESHOLD = _threshold_for_model(model_path)
+    print(f"[api] Localization threshold: {ANOMALY_THRESHOLD}")
 
     if DRIFT_REFERENCE:
         reference = load_embeddings(DRIFT_REFERENCE)
