@@ -435,6 +435,8 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
   const [pickerBusy,setPickerBusy]=useState(false);
+  const [jobId,setJobId]=useState("");
+  const [jobStatus,setJobStatus]=useState("");
   const [resolved,setResolved]=useState<{dataset_path:string;class_name:string;train_good:string}|null>(null);
 
   useEffect(()=>{if(project)setAlgorithm(project.algorithm)},[project]);
