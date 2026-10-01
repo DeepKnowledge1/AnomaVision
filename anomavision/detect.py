@@ -515,26 +515,32 @@ def run_inference(args):
                         score_maps, kernel_size=33, sigma=4
                     )
                     if config.thresh is not None:
-                        # Localization is the source of truth for anomaly
-                        # classification: an image is anomalous only when at
-                        # least one pixel in its anomaly map reaches the
-                        # configured threshold. This prevents the image-level
-                        # score from reporting ANOMALY without localization.
-                        localization_masks = anomavision.classification(
-                            score_maps, config.thresh
-                        )
+                        # Keep the image-level anomaly decision based on the
+                        # model's image score. The pixel score map is used
+                        # independently for spatial localization so a valid
+                        # image-level anomaly is not lost just because the
+                        # fixed image threshold is not a good pixel threshold.
                         is_anomaly = (
-                            np.any(
-                                np.asarray(localization_masks).reshape(
-                                    len(localization_masks), -1
-                                )
-                                > 0,
-                                axis=1,
-                            )
+                            np.asarray(image_scores).reshape(-1) >= float(config.thresh)
                         ).astype(np.int64)
+
+                        # Build a spatial defect mask from the strongest
+                        # responses in each anomalous image. Do not use the
+                        # image threshold directly as a pixel threshold:
+                        # PatchCore's image score and pixel-map values have
+                        # different distributions.
+                        localization_masks = make_localization_mask(
+                            score_maps,
+                            is_anomaly,
+                            quantile=0.90,
+                        )
                     else:
-                        localization_masks = np.zeros_like(score_maps)
-                        is_anomaly = np.zeros(score_maps.shape[0], dtype=np.int64)
+                        localization_masks = np.zeros_like(
+                            np.asarray(score_maps), dtype=np.uint8
+                        )
+                        is_anomaly = np.zeros(
+                            np.asarray(score_maps).shape[0], dtype=np.int64
+                        )
 
                     if not stream_mode:
                         results_accumulator["scores"].extend(image_scores.tolist())
