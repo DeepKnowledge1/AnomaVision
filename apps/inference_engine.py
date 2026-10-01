@@ -306,30 +306,52 @@ def run(
     # Visualizations are optional. Live/camera inference does not need them;
     # skipping this CPU-heavy path keeps latency close to the raw ONNX runtime.
     if include_visualizations:
-        # The absolute anomaly threshold decides whether the image is anomalous.
-        # The display mask is derived from the same score map, but normalized
-        # per image so the spatial peak visible in the heatmap remains drawable.
+        # The image score decides whether the frame is anomalous.
+        # Localization is derived independently from the spatial PatchCore map.
+        #
+        # Do not use a fixed normalized threshold such as 0.60 here: for a
+        # localized defect that can select a large portion of the object/image.
+        # Instead, keep only the strongest spatial response (top 5% of pixels)
+        # and then retain the connected high-score regions. This makes the
+        # contour follow the defect rather than the whole image.
         raw_map = np.asarray(score_maps, dtype=np.float32)
         flat_map = raw_map.reshape(raw_map.shape[0], -1)
         map_min = flat_map.min(axis=1)[:, None, None]
         map_max = flat_map.max(axis=1)[:, None, None]
-        normalized_maps = (raw_map - map_min) / np.maximum(map_max - map_min, 1e-8)
-        score_map_cls = (normalized_maps >= 0.60).astype(np.uint8)
+        normalized_maps = (raw_map - map_min) / np.maximum(
+            map_max - map_min, 1e-8
+        )
 
-        kernel = np.ones((5, 5), dtype=np.uint8)
-        for i in range(score_map_cls.shape[0]):
-            score_map_cls[i] = cv2.morphologyEx(score_map_cls[i], cv2.MORPH_CLOSE, kernel)
-            score_map_cls[i] = cv2.morphologyEx(score_map_cls[i], cv2.MORPH_OPEN, kernel)
+        score_map_cls = np.zeros_like(normalized_maps, dtype=np.uint8)
+        for i, normalized_map in enumerate(normalized_maps):
+            localization_threshold = float(np.quantile(normalized_map, 0.95))
+            mask = (normalized_map >= localization_threshold).astype(np.uint8)
+
+            # Close small gaps without expanding the defect excessively.
+            kernel = np.ones((3, 3), dtype=np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+            # Keep only connected regions containing one of the strongest
+            # PatchCore responses. This removes scattered background pixels.
+            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+                mask, connectivity=8
+            )
+            if num_labels > 1:
+                peaks = []
+                for label in range(1, num_labels):
+                    component = normalized_map[labels == label]
+                    peaks.append((float(component.max()), label))
+                keep = {label for _, label in sorted(peaks, reverse=True)[:3]}
+                mask = np.isin(labels, list(keep)).astype(np.uint8)
+
+            score_map_cls[i] = mask
 
         # The image-level score is the anomaly decision. The score map is
-        # localization data and may have a different numerical scale from the
-        # image score, so do not use a pixel threshold to decide the frame color.
-        image_cls = (
-            np.asarray(image_scores).reshape(-1) >= float(threshold)
-        ).astype(np.int64)
+        # localization data and must not determine the outer anomaly frame.
+        image_cls = np.array(
+            [int(float(image_score) >= float(threshold))], dtype=np.int64
+        )
         score_map_cls[image_cls == 0] = 0
-        # Use the localized pixel mask as the source of truth. The image-level
-        # score alone must not produce ANOMALY when no pixel is localized.
         test_images = np.array([image_np])
         boundary_np = visualization.framed_boundary_images(
             test_images, score_map_cls, image_cls, padding=VIZ_PADDING
