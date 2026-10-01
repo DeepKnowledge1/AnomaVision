@@ -197,6 +197,15 @@ def _load_project_drift_monitor(project_id: str, config: dict) -> None:
 
 
 def _update_project_drift(project_id: str, image_np) -> Optional[dict]:
+    if not project_id:
+        return None
+    if _drift_monitor is None or _drift_project_id != project_id:
+        try:
+            _apply_project_config(project_id)
+        except Exception as exc:
+            # Monitoring must never prevent inference when its reference/config is unavailable.
+            print(f"[monitoring] Could not initialize project monitoring: {exc}")
+            return None
     if _drift_monitor is None or _drift_project_id != project_id:
         return None
     from anomavision.static.AnomaVision import to_batch
@@ -318,7 +327,10 @@ def _apply_project_config(project_id: Optional[str]) -> None:
     from anomavision.config import load_config
 
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    config_path = Path(str(metadata.get("config", ""))).expanduser()
+    config_value = str(metadata.get("config", "")).strip()
+    config_path = Path(config_value).expanduser()
+    if not config_path.is_file() and config_value:
+        config_path = root / project_id / config_value
     if not config_path.is_file():
         return
 
