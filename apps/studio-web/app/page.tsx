@@ -1172,7 +1172,7 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
       const rows:any[]=[];
       for(const file of files.slice(0,10)){
         const body=new FormData();body.append("file",file,file.name);
-        const r=await fetch(inferenceUrl+"/predict",{method:"POST",body});
+        const r=await fetch(inferenceUrl+"/predict?include_visualizations=true",{method:"POST",body});
         const d=await r.json().catch(()=>({}));
         if(!r.ok)throw new Error(d.detail||"Inference API error ("+r.status+")");
         setInferenceHealth("online");setInferenceHealthMessage("Inference API is connected and responding.");
@@ -1233,12 +1233,29 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
     {latest && <section className="card result-hero">
       <div className="section-head"><div><div className="section-title">Latest result</div><div className="subtitle">{latest.filename}</div></div><span className={`result-status ${threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"anomaly":"normal"}`}>{threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"ANOMALY":"NORMAL"}</span></div>
       <div className="result-score"><strong>{Number(latest.anomaly_score).toFixed(4)}</strong><span>Anomaly score</span><small>Decision threshold: {threshold!=null?Number(threshold).toFixed(4):"not available"}</small></div>
-      <div className="result-visual-grid">
+      {result.batch_results?.length ? <div className="batch-result-list">
+        {result.batch_results.map((item:any,index:number)=>{
+          const r=item.result||{};
+          const isAnomaly=activeThreshold!=null ? Number(r.anomaly_score)>=Number(activeThreshold) : Boolean(r.is_anomaly);
+          return <article className="batch-result-item" key={item.filename||index}>
+            <div className="batch-result-head">
+              <div><strong>{item.filename||`Image ${index+1}`}</strong><span>Score {Number(r.anomaly_score||0).toFixed(4)} · {Number(r.latency_ms||0).toFixed(1)} ms</span></div>
+              <span className={`result-status ${isAnomaly?"anomaly":"normal"}`}>{isAnomaly?"ANOMALY":"NORMAL"}</span>
+            </div>
+            <div className="result-visual-grid">
+              {r.heatmap_image_base64 && <div className="result-visual"><span>Heatmap</span><img src={`data:image/png;base64,${r.heatmap_image_base64}`} alt={`Anomaly heatmap for ${item.filename||"image"}`}/></div>}
+              {r.boundary_image_base64 && <div className="result-visual"><span>Boundary</span><img src={`data:image/png;base64,${r.boundary_image_base64}`} alt={`Anomaly boundary for ${item.filename||"image"}`}/></div>}
+              {r.highlighted_image_base64 && <div className="result-visual"><span>Highlighted regions</span><img src={`data:image/png;base64,${r.highlighted_image_base64}`} alt={`Highlighted anomaly regions for ${item.filename||"image"}`}/></div>}
+              {!r.heatmap_image_base64&&!r.boundary_image_base64&&!r.highlighted_image_base64&&<div className="result-no-visual">No visual evidence was returned for this image.</div>}
+            </div>
+          </article>;
+        })}
+      </div> : <div className="result-visual-grid">
         {result.heatmap_image_base64 && <div className="result-visual"><span>Heatmap</span><img src={`data:image/png;base64,${result.heatmap_image_base64}`} alt="Anomaly heatmap"/></div>}
         {result.boundary_image_base64 && <div className="result-visual"><span>Boundary</span><img src={`data:image/png;base64,${result.boundary_image_base64}`} alt="Anomaly boundary visualization"/></div>}
         {result.highlighted_image_base64 && <div className="result-visual"><span>Highlighted regions</span><img src={`data:image/png;base64,${result.highlighted_image_base64}`} alt="Highlighted anomaly regions"/></div>}
-        {!result.heatmap_image_base64&&!result.boundary_image_base64&&!result.highlighted_image_base64&&<div className="result-no-visual">Detailed visualizations are not available for this batch response. Run a single-image test when visual evidence is needed.</div>}
-      </div>
+        {!result.heatmap_image_base64&&!result.boundary_image_base64&&!result.highlighted_image_base64&&<div className="result-no-visual">No visual evidence was returned for this image.</div>}
+      </div>}
     </section>}
 
     <section className="card">
