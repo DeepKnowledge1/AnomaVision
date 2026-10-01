@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
+import cv2
 import onnxruntime as ort
 from onnxruntime import GraphOptimizationLevel, SessionOptions
 from PIL import Image
@@ -305,15 +306,31 @@ def run(
     # Visualizations are optional. Live/camera inference does not need them;
     # skipping this CPU-heavy path keeps latency close to the raw ONNX runtime.
     if include_visualizations:
-        score_map_cls = classification(score_maps, threshold)
-        # Use the localized pixel mask as the source of truth. The image-level
-        # score alone must not produce ANOMALY when no pixel is localized.
+        # The absolute anomaly threshold decides whether the image is anomalous.
+        # The display mask is derived from the same score map, but normalized
+        # per image so the spatial peak visible in the heatmap remains drawable.
+        raw_map = np.asarray(score_maps, dtype=np.float32)
+        flat_map = raw_map.reshape(raw_map.shape[0], -1)
+        map_min = flat_map.min(axis=1)[:, None, None]
+        map_max = flat_map.max(axis=1)[:, None, None]
+        normalized_maps = (raw_map - map_min) / np.maximum(map_max - map_min, 1e-8)
+        score_map_cls = (normalized_maps >= 0.60).astype(np.uint8)
+
+        kernel = np.ones((5, 5), dtype=np.uint8)
+        for i in range(score_map_cls.shape[0]):
+            score_map_cls[i] = cv2.morphologyEx(score_map_cls[i], cv2.MORPH_CLOSE, kernel)
+            score_map_cls[i] = cv2.morphologyEx(score_map_cls[i], cv2.MORPH_OPEN, kernel)
+
+        model_mask = classification(score_maps, threshold)
         image_cls = (
             np.any(
-                np.asarray(score_map_cls).reshape(score_map_cls.shape[0], -1) > 0,
+                np.asarray(model_mask).reshape(model_mask.shape[0], -1) > 0,
                 axis=1,
             )
         ).astype(np.int64)
+        score_map_cls[image_cls == 0] = 0
+        # Use the localized pixel mask as the source of truth. The image-level
+        # score alone must not produce ANOMALY when no pixel is localized.
         test_images = np.array([image_np])
         boundary_np = visualization.framed_boundary_images(
             test_images, score_map_cls, image_cls, padding=VIZ_PADDING
