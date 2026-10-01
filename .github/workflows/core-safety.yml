@@ -1,0 +1,36 @@
+name: Core Safety Gate
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: core-safety-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic-contract:
+    name: Core Regression Contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python + uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.10"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install CPU dependencies
+        run: uv sync --extra cpu --locked
+
+      - name: Run core safety contract
+        run: uv run pytest tests/test_core_safety_contract.py -q
