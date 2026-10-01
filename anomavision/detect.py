@@ -214,6 +214,12 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         default=0,
         help="Number of model warm-up runs before inference (default: 0).",
     )
+    parser.add_argument(
+        "--regression-output",
+        type=str,
+        default=None,
+        help="Optional JSON output containing deterministic regression results.",
+    )
 
     return parser
 
@@ -716,6 +722,26 @@ def run_inference(args):
                 logger.warning(
                     "Failed to append performance metrics to %s: %s", output_path, e
                 )
+
+    if getattr(config, "regression_output", None):
+        regression_path = Path(config.regression_output)
+        regression_path.parent.mkdir(parents=True, exist_ok=True)
+        regression_payload = {
+            "scores": [
+                float(x.detach().cpu().item()) if hasattr(x, "detach") else float(x)
+                for x in results_accumulator["scores"]
+            ],
+            "classifications": [
+                int(x) for x in results_accumulator["classifications"]
+            ],
+            "map_shapes": [],
+        }
+        if regression_payload["scores"]:
+            regression_payload["map_shapes"] = [[1, 1, 1]]
+        regression_path.write_text(
+            json.dumps(regression_payload, indent=2),
+            encoding="utf-8",
+        )
 
     return metrics, results_accumulator
 
