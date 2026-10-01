@@ -1234,21 +1234,18 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
       <div className="section-head"><div><div className="section-title">Latest result</div><div className="subtitle">{latest.filename}</div></div><span className={`result-status ${threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"anomaly":"normal"}`}>{threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"ANOMALY":"NORMAL"}</span></div>
       <div className="result-score"><strong>{Number(latest.anomaly_score).toFixed(4)}</strong><span>Anomaly score</span><small>Decision threshold: {threshold!=null?Number(threshold).toFixed(4):"not available"}</small></div>
       <div className="batch-result-list">
-        {rows.map((r:any,index:number)=>{
-          const isAnomaly=threshold!=null ? Number(r.anomaly_score)>=Number(threshold) : Boolean(r.is_anomaly);
-          return <article className="batch-result-item" key={r.filename||index}>
-            <div className="batch-result-head">
-              <div><strong>{r.filename||`Image ${index+1}`}</strong><span>Score {Number(r.anomaly_score||0).toFixed(4)} · {Number(r.latency_ms||0).toFixed(1)} ms</span></div>
-              <span className={`result-status ${isAnomaly?"anomaly":"normal"}`}>{isAnomaly?"ANOMALY":"NORMAL"}</span>
-            </div>
-            <div className="result-visual-grid">
-              {r.heatmap_image_base64 && <div className="result-visual"><span>Heatmap</span><img src={`data:image/png;base64,${r.heatmap_image_base64}`} alt={`Anomaly heatmap for ${r.filename||"image"}`}/></div>}
-              {r.boundary_image_base64 && <div className="result-visual"><span>Boundary</span><img src={`data:image/png;base64,${r.boundary_image_base64}`} alt={`Anomaly boundary for ${r.filename||"image"}`}/></div>}
-              {r.highlighted_image_base64 && <div className="result-visual"><span>Highlighted regions</span><img src={`data:image/png;base64,${r.highlighted_image_base64}`} alt={`Highlighted anomaly regions for ${r.filename||"image"}`}/></div>}
-              {!r.heatmap_image_base64&&!r.boundary_image_base64&&!r.highlighted_image_base64&&<div className="result-no-visual">No visual evidence was returned for this image.</div>}
-            </div>
-          </article>;
-        })}
+        {latest && <article className="batch-result-item" key={latest.filename || "current-result"}>
+          <div className="batch-result-head">
+            <div><strong>{latest.filename || "Current image"}</strong><span>Score {Number(latest.anomaly_score||0).toFixed(4)} · {Number(latest.latency_ms||0).toFixed(1)} ms</span></div>
+            <span className={`result-status ${(threshold!=null ? Number(latest.anomaly_score)>=Number(threshold) : Boolean(latest.is_anomaly))?"anomaly":"normal"}`}>{(threshold!=null ? Number(latest.anomaly_score)>=Number(threshold) : Boolean(latest.is_anomaly))?"ANOMALY":"NORMAL"}</span>
+          </div>
+          <div className="result-visual-grid">
+            {latest.heatmap_image_base64 && <div className="result-visual"><span>Heatmap</span><img src={`data:image/png;base64,${latest.heatmap_image_base64}`} alt="Anomaly heatmap"/></div>}
+            {latest.boundary_image_base64 && <div className="result-visual"><span>Boundary</span><img src={`data:image/png;base64,${latest.boundary_image_base64}`} alt="Anomaly boundary visualization"/></div>}
+            {latest.highlighted_image_base64 && <div className="result-visual"><span>Highlighted regions</span><img src={`data:image/png;base64,${latest.highlighted_image_base64}`} alt="Highlighted anomaly regions"/></div>}
+            {!latest.heatmap_image_base64&&!latest.boundary_image_base64&&!latest.highlighted_image_base64&&<div className="result-no-visual">No visual evidence was returned for this image.</div>}
+          </div>
+        </article>}
       </div>
     </section>}
 
