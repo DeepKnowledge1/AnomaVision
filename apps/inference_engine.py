@@ -295,14 +295,12 @@ def run(
     # skipping this CPU-heavy path keeps latency close to the raw ONNX runtime.
     if include_visualizations:
         score_map_cls = classification(score_maps, threshold)
-        # Use the localized pixel mask as the source of truth. The image-level
-        # score alone must not produce ANOMALY when no pixel is localized.
-        image_cls = (
-            np.any(
-                np.asarray(score_map_cls).reshape(score_map_cls.shape[0], -1) > 0,
-                axis=1,
-            )
-        ).astype(np.int64)
+        # The frame must agree with the image-level decision shown by the API.
+        # Pixel localization can be empty even when the image-level score is
+        # above the configured threshold; in that case a green frame is
+        # misleading. Keep localization for the boundary itself, but use the
+        # image-level score for the anomaly/normal frame decision.
+        image_cls = np.array([image_score >= threshold], dtype=np.int64)
         test_images = np.array([image_np])
         boundary_np = visualization.framed_boundary_images(
             test_images, score_map_cls, image_cls, padding=VIZ_PADDING
@@ -321,9 +319,9 @@ def run(
     latency_ms = (time.perf_counter() - t0) * 1000
 
     pixel_mask = classification(score_maps, threshold)
-    is_anomaly = bool(
-        np.any(np.asarray(pixel_mask).reshape(pixel_mask.shape[0], -1) > 0)
-    )
+    # Keep the API anomaly decision consistent with the frame/status: the
+    # image-level score is the authoritative image classification.
+    is_anomaly = bool(image_score >= threshold)
 
     return InferenceResult(
         anomaly_score=image_score,
