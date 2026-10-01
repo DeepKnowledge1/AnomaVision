@@ -1,5 +1,6 @@
 from typing import Tuple, Union
 
+import cv2
 import numpy as np
 import torch
 from skimage.segmentation import find_boundaries
@@ -94,10 +95,25 @@ def boundary_image(
     image = to_numpy(image).copy()
     mask = to_numpy(patch_classification).copy()
 
-    found_boundaries = find_boundaries(mask).astype(np.uint8)
-    layer_two = np.zeros(image.shape, dtype=np.uint8)
-    layer_two[:] = boundary_color
+    # Keep the localization boundary binary until it is applied to the image.
+    # Resizing a one-pixel boundary with area interpolation can make values
+    # fractional; exact binary-mask checks then erase the boundary.
+    mask = np.squeeze(mask)
+    if mask.ndim != 2:
+        raise ValueError(
+            f"patch_classification must be a 2D mask after squeezing; got shape {mask.shape}"
+        )
 
-    b_image = composite_image(image, layer_two, found_boundaries)
+    found_boundaries = find_boundaries(mask > 0.5, mode="outer")
+
+    if found_boundaries.shape != image.shape[:2]:
+        found_boundaries = cv2.resize(
+            found_boundaries.astype(np.uint8),
+            (image.shape[1], image.shape[0]),
+            interpolation=cv2.INTER_NEAREST,
+        ).astype(bool)
+
+    b_image = image.copy()
+    b_image[found_boundaries] = np.asarray(boundary_color, dtype=b_image.dtype)
 
     return b_image
