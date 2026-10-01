@@ -96,6 +96,7 @@ class PredictionResult(BaseModel):
     latency_ms: float
     heatmap_image_base64: Optional[str] = ""
     boundary_image_base64: Optional[str] = ""
+    highlighted_image_base64: Optional[str] = ""
     drift_report: Optional[dict] = None
 
 
@@ -417,11 +418,13 @@ async def predict(
 
         heatmap_b64 = ""
         boundary_b64 = ""
+        highlighted_b64 = ""
 
         if include_visualizations:
-            heatmap_b64, boundary_b64 = await asyncio.gather(
+            heatmap_b64, boundary_b64, highlighted_b64 = await asyncio.gather(
                 _encode_async(result.heatmap_np, _resize_size),
                 _encode_async(result.boundary_np, _resize_size),
+                _encode_async(result.highlighted_np, _resize_size),
             )
 
         return PredictionResult(
@@ -430,6 +433,7 @@ async def predict(
             latency_ms=result.latency_ms,
             heatmap_image_base64=heatmap_b64,
             boundary_image_base64=boundary_b64,
+            highlighted_image_base64=highlighted_b64,
             drift_report=drift_report,
         )
 
