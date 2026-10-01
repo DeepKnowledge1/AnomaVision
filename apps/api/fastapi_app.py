@@ -201,11 +201,23 @@ def create_visualizations(
 ):
     """
     Mirror detect.py's visualization path.
+
+    The localization mask is the source of truth for both the defect contour
+    and image anomaly status. The image-level score is intentionally not used
+    to decide whether a localization frame is drawn.
     """
     score_map_classifications = anomavision.classification(
         score_maps, ANOMALY_THRESHOLD
     )
-    image_classifications = anomavision.classification(image_scores, ANOMALY_THRESHOLD)
+    image_classifications = (
+        np.any(
+            np.asarray(score_map_classifications).reshape(
+                score_map_classifications.shape[0], -1
+            )
+            > 0,
+            axis=1,
+        )
+    ).astype(np.int64)
 
     test_images = np.array([image_np])
 
