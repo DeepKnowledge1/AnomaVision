@@ -122,13 +122,27 @@ See the [Production Data Drift guide](docs/anomaly_detection_production_data_dri
 
 AnomaVision includes a reproducible benchmark workflow for comparing anomaly-detection performance and runtime characteristics.
 
-The benchmark reports **Image AUROC, Pixel AUROC, latency, P95 latency, FPS, model/artifact size, and memory usage**. The current comparison script uses a shared evaluation contract so results can be reproduced consistently.
+The benchmark reports **Image AUROC, Pixel AUROC, latency, P95 latency, FPS, model/artifact size, and memory usage**. The comparison script uses a shared evaluation contract so results can be reproduced consistently.
+
+### ⚠️ Anomalib Version
+
+The benchmark depends on Anomalib APIs that are changing frequently. To ensure reproducibility and avoid compatibility issues, **always pin Anomalib to the tested commit before running the benchmark**.
+
+After cloning Anomalib, check out the following commit:
+
+```powershell
+git clone https://github.com/open-edge-platform/anomalib.git
+cd anomalib
+git checkout 4207f163a556c5dbf59ed58ed372d8c47dc526a0
+```
+
+Do **not** run the benchmark against the latest Anomalib `main` branch unless the benchmark integration has been explicitly updated and validated for that API version.
 
 ### Quick example
 
 ```powershell
-python scripts\\benchmarks\\compare_with_anomalib.py `
-  --dataset_path D:\\01-DATA `
+python scripts\benchmarks\compare_with_anomalib.py `
+  --dataset_path D:\01-DATA `
   --class_name bottle `
   --algorithms padim `
   --device cpu
@@ -136,7 +150,7 @@ python scripts\\benchmarks\\compare_with_anomalib.py `
 
 Historical benchmark results are available for **MVTec AD and VisA**, including per-class results and visual comparisons. These results are retained for reference; the corrected benchmark should be rerun before making current performance claims.
 
-See the [Benchmark guide](docs/benchmark.md) for the methodology, commands, metrics, and detailed results.
+See the [Benchmark guide](docs/benchmark.md) for the methodology, commands, metrics, Anomalib version/commit, and detailed results.
 
 ---
 
