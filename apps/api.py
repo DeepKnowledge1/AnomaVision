@@ -227,26 +227,42 @@ def _update_project_drift(project_id: str, image_np) -> Optional[dict]:
 # Helpers — only used by the REST path, not by Gradio
 # -----------------------------------------------------------------------------
 def _numpy_to_base64(arr, resize_to: tuple) -> str:
-    """numpy uint8 array → resized PNG → base64 string."""
+    """Encode a visualization numpy array as a PNG data URL payload."""
+    import numpy as np
+
     if arr is None:
         return ""
-    try:
-        import numpy as np
 
-        if arr.dtype != np.uint8:
-            arr = (
-                (arr * 255).clip(0, 255).astype(np.uint8)
-                if arr.max() <= 1.0
-                else arr.clip(0, 255).astype(np.uint8)
-            )
-        img = Image.fromarray(arr)
-        if resize_to:
-            img = img.resize(resize_to, Image.BILINEAR)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG", compress_level=1)  # fast encode
-        return base64.b64encode(buf.getvalue()).decode()
-    except Exception:
+    value = np.asarray(arr)
+    if value.size == 0:
         return ""
+
+    # Visualization helpers may return (1,H,W,3), (H,W,3), or a 2-D map.
+    if value.ndim == 4:
+        value = value[0]
+    if value.ndim == 2:
+        value = np.stack([value, value, value], axis=-1)
+    if value.ndim != 3 or value.shape[-1] not in (1, 3, 4):
+        raise ValueError(f"Unsupported visualization shape: {value.shape}")
+
+    if value.shape[-1] == 1:
+        value = np.repeat(value, 3, axis=-1)
+    elif value.shape[-1] == 4:
+        value = value[:, :, :3]
+
+    if value.dtype != np.uint8:
+        value = np.nan_to_num(value, nan=0.0, posinf=255.0, neginf=0.0)
+        if float(value.max()) <= 1.0:
+            value = value * 255.0
+        value = np.clip(value, 0, 255).astype(np.uint8)
+
+    img = Image.fromarray(value, mode="RGB")
+    if resize_to:
+        img = img.resize((int(resize_to[0]), int(resize_to[1])), Image.BILINEAR)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", compress_level=1)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
 async def _encode_async(arr, resize_to: tuple) -> str:
