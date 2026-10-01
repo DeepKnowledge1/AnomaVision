@@ -17,8 +17,8 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-import numpy as np
 import cv2
+import numpy as np
 import onnxruntime as ort
 from onnxruntime import GraphOptimizationLevel, SessionOptions
 from PIL import Image
@@ -44,6 +44,8 @@ def _threshold_for_model(model_path: str) -> float:
     if "efficientad" in normalized:
         return float(os.getenv("ANOMAVISION_EFFICIENTAD_THRESHOLD", "1.0"))
     return float(os.getenv("ANOMAVISION_PADIM_THRESHOLD", "13.0"))
+
+
 MODEL_DATA_PATH = os.getenv("ANOMAVISION_MODEL_DATA_PATH", "")
 MODEL_FILE = os.getenv("ANOMAVISION_MODEL_FILE", "model.onnx")
 STUDIO_ROOT = os.path.expanduser(
@@ -318,9 +320,7 @@ def run(
         flat_map = raw_map.reshape(raw_map.shape[0], -1)
         map_min = flat_map.min(axis=1)[:, None, None]
         map_max = flat_map.max(axis=1)[:, None, None]
-        normalized_maps = (raw_map - map_min) / np.maximum(
-            map_max - map_min, 1e-8
-        )
+        normalized_maps = (raw_map - map_min) / np.maximum(map_max - map_min, 1e-8)
 
         score_map_cls = np.zeros_like(normalized_maps, dtype=np.uint8)
         for i, normalized_map in enumerate(normalized_maps):
