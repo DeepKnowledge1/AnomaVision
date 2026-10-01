@@ -321,12 +321,11 @@ def run(
             score_map_cls[i] = cv2.morphologyEx(score_map_cls[i], cv2.MORPH_CLOSE, kernel)
             score_map_cls[i] = cv2.morphologyEx(score_map_cls[i], cv2.MORPH_OPEN, kernel)
 
-        model_mask = classification(score_maps, threshold)
+        # The image-level score is the anomaly decision. The score map is
+        # localization data and may have a different numerical scale from the
+        # image score, so do not use a pixel threshold to decide the frame color.
         image_cls = (
-            np.any(
-                np.asarray(model_mask).reshape(model_mask.shape[0], -1) > 0,
-                axis=1,
-            )
+            np.asarray(image_scores).reshape(-1) >= float(threshold)
         ).astype(np.int64)
         score_map_cls[image_cls == 0] = 0
         # Use the localized pixel mask as the source of truth. The image-level
@@ -344,10 +343,7 @@ def run(
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
-    pixel_mask = classification(score_maps, threshold)
-    is_anomaly = bool(
-        np.any(np.asarray(pixel_mask).reshape(pixel_mask.shape[0], -1) > 0)
-    )
+    is_anomaly = bool(float(image_score) >= float(threshold))
 
     return InferenceResult(
         anomaly_score=image_score,
