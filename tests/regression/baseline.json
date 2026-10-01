@@ -1,0 +1,21 @@
+{
+  "algorithm": "patchcore",
+  "class_name": "cable",
+  "run_name": "regression",
+  "threshold": 0.25,
+  "score_tolerance": 0.05,
+  "cases": [
+    {
+      "name": "good_01",
+      "image": "tests/regression/images/good_01.png",
+      "expected": "normal",
+      "expected_score": null
+    },
+    {
+      "name": "defect_01",
+      "image": "tests/regression/images/defect_01.png",
+      "expected": "anomaly",
+      "expected_score": null
+    }
+  ]
+}
