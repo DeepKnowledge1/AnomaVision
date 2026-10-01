@@ -297,6 +297,7 @@ def run_inference(args):
         "scores": [],
         "classifications": [],
         "images": [] if not stream_mode else None,
+        "map_shapes": [],
     }
     total_start_time = time.time()
 
@@ -573,6 +574,9 @@ def run_inference(args):
                         results_accumulator["classifications"].extend(
                             is_anomaly.tolist()
                         )
+                        results_accumulator["map_shapes"].extend(
+                            [list(np.asarray(score_maps[i]).shape) for i in range(len(score_maps))]
+                        )
                         results_accumulator["images"].extend(images)
                 except Exception as e:
                     logger.error(f"Postprocessing failed batch {batch_idx}: {e}")
@@ -734,10 +738,8 @@ def run_inference(args):
             "classifications": [
                 int(x) for x in results_accumulator["classifications"]
             ],
-            "map_shapes": [],
+            "map_shapes": results_accumulator["map_shapes"],
         }
-        if regression_payload["scores"]:
-            regression_payload["map_shapes"] = [[1, 1, 1]]
         regression_path.write_text(
             json.dumps(regression_payload, indent=2),
             encoding="utf-8",
