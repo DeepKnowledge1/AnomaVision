@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy to a local baseline file and replace with validated values. Do not commit proprietary datasets or model artifacts.",
+  "algorithm": "patchcore",
+  "model": "path/to/validated/model.pt",
+  "threshold": 0.25,
+  "cases": [
+    {
+      "image": "path/to/good-image.png",
+      "expected": "normal",
+      "max_score": 0.25
+    },
+    {
+      "image": "path/to/defect-image.png",
+      "expected": "anomaly",
+      "min_score": 0.25
+    }
+  ]
+}
