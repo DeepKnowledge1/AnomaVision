@@ -27,7 +27,22 @@ from anomavision.static.AnomaVision import classification, to_batch, visualizati
 # -----------------------------------------------------------------------------
 # Config — all overridable via environment variables
 # -----------------------------------------------------------------------------
-ANOMALY_THRESHOLD = float(os.getenv("ANOMAVISION_THRESHOLD", "13.0"))
+# Keep an explicit environment override authoritative. Otherwise the
+# threshold follows the algorithm encoded by the active model path.
+_THRESHOLD_OVERRIDE = os.getenv("ANOMAVISION_THRESHOLD")
+ANOMALY_THRESHOLD = float(_THRESHOLD_OVERRIDE) if _THRESHOLD_OVERRIDE else 13.0
+
+
+def _threshold_for_model(model_path: str) -> float:
+    """Return the algorithm-appropriate pixel threshold for a model artifact."""
+    if _THRESHOLD_OVERRIDE:
+        return float(_THRESHOLD_OVERRIDE)
+    normalized = os.path.normpath(model_path).lower()
+    if "patchcore" in normalized:
+        return float(os.getenv("ANOMAVISION_PATCHCORE_THRESHOLD", "0.25"))
+    if "efficientad" in normalized:
+        return float(os.getenv("ANOMAVISION_EFFICIENTAD_THRESHOLD", "1.0"))
+    return float(os.getenv("ANOMAVISION_PADIM_THRESHOLD", "13.0"))
 MODEL_DATA_PATH = os.getenv("ANOMAVISION_MODEL_DATA_PATH", "")
 MODEL_FILE = os.getenv("ANOMAVISION_MODEL_FILE", "model.onnx")
 STUDIO_ROOT = os.path.expanduser(
@@ -213,6 +228,13 @@ def load_model(project_id: Optional[str] = None) -> str:
 
     _sess = ort.InferenceSession(model_path, providers=providers, sess_options=opts)
     _input_name = _sess.get_inputs()[0].name
+
+    # The previous API used a fixed PaDiM threshold (13.0) for every model.
+    # PatchCore maps use a much smaller score scale, so that made the heatmap
+    # show the defect while the binary localization mask was completely empty.
+    global ANOMALY_THRESHOLD
+    ANOMALY_THRESHOLD = _threshold_for_model(model_path)
+    print(f"[inference] Localization threshold: {ANOMALY_THRESHOLD}")
 
     # Warmup — run twice so JIT compile happens now, not on the first real request
     dummy_shape = tuple(
