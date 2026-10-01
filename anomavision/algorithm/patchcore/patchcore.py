@@ -43,8 +43,8 @@ class PatchCore(torch.nn.Module):
         backbone: Feature-extraction backbone. Supported values are ``resnet18`` and
             ``wide_resnet50``.
         device: Device used for feature extraction and nearest-neighbor distance.
-        layer_indices: ResNet feature stages to concatenate. Defaults to ``[0, 1]``
-            to keep the lightweight model fast and compact.
+        layer_indices: ResNet feature stages to concatenate. Defaults to ``[1, 2]``
+            to provide multi-scale mid/deep features while remaining lightweight.
         memory_bank: Optional precomputed bank with shape ``(num_patches, dim)``.
             Providing it creates a ready-to-infer model.
         coreset_ratio: Fraction of extracted normal patches to retain. Must be in
@@ -90,7 +90,7 @@ class PatchCore(torch.nn.Module):
             )
         self.device = torch.device(device)
         self.backbone = backbone
-        self.layer_indices = list(layer_indices or [0, 1])
+        self.layer_indices = list(layer_indices or [1, 2])
         self.coreset_ratio = float(coreset_ratio)
         self.max_memory_patches = max_memory_patches
         self.patch_grid = patch_grid
