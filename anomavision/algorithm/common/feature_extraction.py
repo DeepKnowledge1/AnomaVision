@@ -163,7 +163,16 @@ class ResnetEmbeddingsExtractor(torch.nn.Module):
                     layers.append(out4)
 
             if layer_indices is not None:
-                layers = [layers[i] for i in layer_indices]
+                # Indices refer to the original ResNet stages:
+                # 0=layer1, 1=layer2, 2=layer3, 3=layer4.
+                stage_outputs = [out1]
+                if max_l >= 1:
+                    stage_outputs.append(out2)
+                if max_l >= 2:
+                    stage_outputs.append(out3)
+                if max_l >= 3:
+                    stage_outputs.append(out4)
+                layers = [stage_outputs[i] for i in layer_indices]
 
             if layer_hook is not None:
                 layers = [layer_hook(layer) for layer in layers]
