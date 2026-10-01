@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, Box, BrainCircuit, CircleGauge, Database, FlaskConical,
+  Activity, Box, BrainCircuit, CircleGauge, Database, FlaskConical, LoaderCircle,
   LayoutDashboard, MonitorCog, Play, Rocket, Settings2, ShieldCheck,
   SlidersHorizontal, Sparkles, Wifi, FolderOpen, Menu, X, ChevronDown,
 } from "lucide-react";
@@ -14,7 +14,10 @@ type DatasetReport = {
   image_count: number; valid_count: number; failed_count: number; duplicate_count: number;
   resolutions: Record<string, number>; failures?: { path: string; error: string }[];
 };
-type Catalog = { algorithms: Record<string, unknown>; deployment_targets: Record<string, unknown> };
+type Catalog = {
+  algorithms: Record<string, { name?: string; description?: string }>;
+  deployment_targets: Record<string, unknown>;
+};
 
 const API_BASE = process.env.NEXT_PUBLIC_STUDIO_API_URL ?? "http://localhost:8000";
 const navGroups: { label: string; items: { label: Page; icon: React.ElementType }[] }[] = [
@@ -194,7 +197,7 @@ export default function StudioPage() {
           {page === "Overview" && <Overview project={project} projects={projects} models={models} apiHealthy={apiHealthy} onNavigate={navigate}/>}
           {page === "Projects" && <ProjectsPage projects={projects} selectedProject={selectedProject} onSelect={setSelectedProject} onCreated={loadProjects}/>}
           {page === "Datasets" && <DatasetsPage project={project}/>}
-          {page === "Training" && <TrainingPage project={project} onFinished={() => loadModels(selectedProject)}/>}
+          {page === "Training" && <TrainingPage key={selectedProject || "no-project"} project={project} onFinished={() => loadModels(selectedProject)} onNavigate={navigate}/>}
           {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={navigate} onDeploy={(id) => { setDeploymentModelId(id); navigate("Deployments"); }}/>}
           {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>}
           {page === "Performance" && <PerformancePage project={project} session={inferenceSession}/>}
@@ -423,7 +426,7 @@ function DatasetsPage({ project }: { project?: Project }) {
   </>;
 }
 
-function TrainingPage({ project, onFinished }: { project?: Project; onFinished:()=>Promise<void> }) {
+function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; onFinished:()=>Promise<void>; onNavigate:(page:Page)=>void }) {
   const [dataset,setDataset]=useState("");
   const [algorithm,setAlgorithm]=useState(project?.algorithm||"patchcore");
   const [className,setClassName]=useState("");
@@ -434,37 +437,73 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
   const [result,setResult]=useState<Record<string,any>|null>(null);
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
+  const [validating,setValidating]=useState(false);
   const [pickerBusy,setPickerBusy]=useState(false);
   const [jobId,setJobId]=useState("");
   const [jobStatus,setJobStatus]=useState("");
   const [resolved,setResolved]=useState<{dataset_path:string;class_name:string;train_good:string}|null>(null);
+  const [availableAlgorithms,setAvailableAlgorithms]=useState<Catalog["algorithms"]>({});
+  const [catalogLoading,setCatalogLoading]=useState(true);
+  const [catalogError,setCatalogError]=useState("");
+  const onFinishedRef=useRef(onFinished);
 
-  useEffect(()=>{if(project)setAlgorithm(project.algorithm)},[project]);
+  const algorithmOptions=useMemo(()=>Object.entries(availableAlgorithms),[availableAlgorithms]);
+
+  useEffect(()=>{onFinishedRef.current=onFinished},[onFinished]);
+
+  useEffect(()=>{
+    let cancelled=false;
+    fetch(`${API_BASE}/api/catalog`,{cache:"no-store"})
+      .then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"Could not load supported training methods");return d as Catalog})
+      .then(d=>{if(cancelled)return;const methods=d.algorithms||{};setAvailableAlgorithms(methods);if(!Object.keys(methods).length)setCatalogError("The Studio API did not report any supported training methods.")})
+      .catch(e=>{if(!cancelled)setCatalogError(e instanceof Error?e.message:"Could not load supported training methods")})
+      .finally(()=>{if(!cancelled)setCatalogLoading(false)});
+    return()=>{cancelled=true};
+  },[]);
+
+  useEffect(()=>{
+    if(!project)return;
+    const first=Object.keys(availableAlgorithms)[0];
+    setAlgorithm(availableAlgorithms[project.algorithm]?project.algorithm:first||project.algorithm);
+  },[project?.id,project?.algorithm,availableAlgorithms]);
 
   useEffect(()=>{
     if(!project || typeof window==="undefined") return;
     const key="anomavision:training-job:"+project.id;
     const saved=window.localStorage.getItem(key);
     if(!saved) return;
+    try{
+      const job=JSON.parse(saved);
+      if(!job.job_id){window.localStorage.removeItem(key);return}
+      setJobId(String(job.job_id));setBusy(true);setJobStatus("Resuming training…");
+    }catch{window.localStorage.removeItem(key)}
+  },[project?.id]);
+
+  useEffect(()=>{
+    if(!project || !jobId || typeof window==="undefined")return;
     let cancelled=false;
-    let job:any;
-    try{job=JSON.parse(saved)}catch{window.localStorage.removeItem(key);return}
-    setJobId(String(job.job_id||"")); setBusy(true); setJobStatus("Resuming training…");
+    let timer:number|undefined;
+    const key="anomavision:training-job:"+project.id;
     const poll=async()=>{
       try{
-        const r=await fetch(`${API_BASE}/api/projects/${project.id}/training/${job.job_id}`,{cache:"no-store"});
+        const r=await fetch(`${API_BASE}/api/projects/${project.id}/training/${jobId}`,{cache:"no-store"});
         const d=await r.json().catch(()=>({}));
-        if(!r.ok)throw new Error(d.detail||"Could not restore training job");
+        if(!r.ok)throw new Error(d.detail||"Could not read training status");
         if(cancelled)return;
-        setJobStatus(d.message||d.status||"Training…");
-        if(d.status==="completed"){setResult(d.result||{});setBusy(false);window.localStorage.removeItem(key);await onFinished();return}
-        if(d.status==="failed"){setError(d.message||"Training failed");setBusy(false);window.localStorage.removeItem(key);return}
-        window.setTimeout(poll,1200);
-      }catch(e){if(!cancelled){setError(e instanceof Error?e.message:"Could not restore training job");setBusy(false)}}
+        setJobStatus(d.message|| (d.status==="queued"?"Waiting to start…":"Training in progress"));
+        if(d.status==="completed"){
+          window.localStorage.removeItem(key);setResult(d.result||{});setBusy(false);setJobId("");setJobStatus("Training completed");
+          await onFinishedRef.current();return;
+        }
+        if(d.status==="failed"){
+          window.localStorage.removeItem(key);setError(d.message||"Training failed");setBusy(false);setJobId("");return;
+        }
+        timer=window.setTimeout(poll,1500);
+      }catch(e){if(!cancelled){setError(e instanceof Error?e.message:"Could not read training status");setBusy(false)}}
     };
     void poll();
-    return()=>{cancelled=true};
-  },[project?.id]);
+    return()=>{cancelled=true;if(timer!==undefined)window.clearTimeout(timer)};
+  },[project?.id,jobId]);
 
 
   useEffect(()=>{
@@ -495,6 +534,7 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
   async function validateDataset(){
     if(!project){setError("Select a project first.");return null;}
     if(!dataset.trim()){setError("Choose a dataset folder first.");return null;}
+    setValidating(true);setError("");
     try{
       const r=await fetch(`${API_BASE}/api/projects/${project.id}/datasets/resolve`,{
         method:"POST",
@@ -508,15 +548,17 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
       setClassName(d.class_name);
       return d;
     }catch(e){setResolved(null);setError(e instanceof Error?e.message:"Invalid training dataset");return null}
+    finally{setValidating(false)}
   }
 
   async function train(){
     if(!project){setError("Select a project first.");return;}
     if(!dataset.trim()){setError("Add your dataset path first.");return;}
+    if(!availableAlgorithms[algorithm]){setError("Choose a training method supported by the connected Studio API.");return;}
     setBusy(true);setError("");setResult(null);setJobStatus("Validating dataset…");
     try{
       const canonical=await validateDataset();
-      if(!canonical)return;
+      if(!canonical){setBusy(false);return;}
       const body:{dataset_path:string;algorithm:string;class_name?:string;batch_size?:number;resize?:number[];backbone?:string}={dataset_path:canonical.dataset_path,algorithm};
       const selectedClass=String(canonical.class_name||className).trim();
       if(selectedClass) body.class_name=selectedClass;
@@ -527,20 +569,10 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
       const r=await fetch(`${API_BASE}/api/projects/${project.id}/training`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();
       if(!r.ok)throw new Error(d.detail||"Could not start training");
-      if(!d.job_id){setResult(d);await onFinished();return;}
+      if(!d.job_id){setResult(d);setJobStatus("Training completed");setBusy(false);await onFinishedRef.current();return;}
       setJobId(d.job_id);setJobStatus("Training queued…");
       if(typeof window!=="undefined") window.localStorage.setItem("anomavision:training-job:"+project.id,JSON.stringify({job_id:d.job_id}));
-      for(;;){
-        await new Promise(resolve=>window.setTimeout(resolve,1200));
-        const statusResponse=await fetch(`${API_BASE}/api/projects/${project.id}/training/${d.job_id}`,{cache:"no-store"});
-        const status=await statusResponse.json().catch(()=>({}));
-        if(!statusResponse.ok)throw new Error(status.detail||"Could not read training status");
-        setJobStatus(status.message||status.status||"Training…");
-        if(status.status==="completed"){setResult(status.result||{});setJobStatus("Training completed");if(typeof window!=="undefined")window.localStorage.removeItem("anomavision:training-job:"+project.id);await onFinished();break;}
-        if(status.status==="failed"){if(typeof window!=="undefined")window.localStorage.removeItem("anomavision:training-job:"+project.id);throw new Error(status.message||"Training failed");}
-      }
-    }catch(e){setError(e instanceof Error?e.message:"Training failed");setJobStatus("Training stopped")}
-    finally{setBusy(false)}
+    }catch(e){setError(e instanceof Error?e.message:"Training failed");setJobStatus("Training stopped");setBusy(false)}
   }
 
   return (
@@ -563,23 +595,23 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
       {project && (
         <div className="training-content">
           <div className="training-steps">
-            <div className="training-step active"><span>1</span><div><strong>Data</strong><small>Choose images</small></div></div>
+            <div className={`training-step ${resolved?"is-complete":"active"}`} aria-current={!resolved?"step":undefined}><span>{resolved?"✓":"1"}</span><div><strong>Data</strong><small>{resolved?"Validated":"Choose images"}</small></div></div>
             <div className="training-line"/>
-            <div className="training-step active"><span>2</span><div><strong>Method</strong><small>Choose detector</small></div></div>
+            <div className={`training-step ${busy||result?"is-complete":"active"}`}><span>{busy||result?"✓":"2"}</span><div><strong>Method</strong><small>Choose detector</small></div></div>
             <div className="training-line"/>
-            <div className="training-step"><span>3</span><div><strong>Run</strong><small>Start training</small></div></div>
+            <div className={`training-step ${result?"is-complete":busy?"active":""}`} aria-current={busy?"step":undefined}><span>{result?"✓":"3"}</span><div><strong>Run</strong><small>{busy?"Training":result?"Completed":"Start training"}</small></div></div>
           </div>
 
           <div className="two-column training-layout">
             <section className="card">
               <div className="section-title">1. Training data</div>
               <p className="form-help">Point Studio to the same local image folder you checked in Data Readiness.</p>
-              <label>Dataset path<input value={dataset} onChange={e=>{setDataset(e.target.value);setResolved(null)}} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
+              <label>Dataset path<input value={dataset} disabled={busy||validating} onChange={e=>{setDataset(e.target.value);setResolved(null)}} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
               <div className="form-actions">
-                <button className="secondary" type="button" onClick={chooseTrainingFolder} disabled={pickerBusy}><FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose folder"}</button>
-                <button className="secondary" type="button" onClick={validateDataset} disabled={busy||!dataset.trim()}>Check training layout</button>
+                <button className="secondary" type="button" onClick={chooseTrainingFolder} disabled={busy||validating||pickerBusy}><FolderOpen size={13}/>{pickerBusy?"Opening…":"Choose folder"}</button>
+                <button className="secondary" type="button" onClick={validateDataset} disabled={busy||validating||!dataset.trim()}>{validating?<><LoaderCircle className="training-spinner" size={13}/>Checking…</>:"Check training layout"}</button>
               </div>
-              <label>Class name<input value={className} onChange={e=>{setClassName(e.target.value);setResolved(null)}} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
+              <label>Class name<input value={className} disabled={busy||validating} onChange={e=>{setClassName(e.target.value);setResolved(null)}} placeholder={configLoaded?"From config.yml":"Loading config…"}/></label>
               {resolved&&<div className="config-field-note"><span>✓ Training folder: <code>{resolved.train_good}</code></span></div>}
               <div className="config-field-note">{className ? <span>Using <strong>{className}</strong> from {configLoaded ? "config.yml" : "the current setup"}.</span> : <span>Class name will be taken from <strong>config.yml</strong> if you leave it empty.</span>}</div>
             </section>
@@ -588,16 +620,12 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
               <div className="section-title">2. Detection method</div>
               <p className="form-help">Choose the anomaly detector for this experiment.</p>
               <div className="algorithm-options">
-                {[
-                  ["patchcore","PatchCore","Strong local-feature baseline"],
-                  ["padim","PaDiM","Fast statistical baseline"],
-                  ["efficientad","EfficientAD","Lightweight industrial detector"]
-                ].map(([value,title,desc])=>
-                  <button key={value} type="button" className={`algorithm-option ${algorithm===value?"selected":""}`} onClick={()=>setAlgorithm(value)}>
+                {algorithmOptions.length?algorithmOptions.map(([value,details])=>
+                  <button key={value} type="button" className={`algorithm-option ${algorithm===value?"selected":""}`} onClick={()=>setAlgorithm(value)} disabled={busy} aria-pressed={algorithm===value}>
                     <span className="algorithm-radio">{algorithm===value?"✓":""}</span>
-                    <span><strong>{title}</strong><small>{desc}</small></span>
+                    <span><strong>{details.name||value}</strong><small>{details.description||"Supported by the connected AnomaVision engine."}</small></span>
                   </button>
-                )}
+                ):<div className="catalog-empty" role={catalogError?"alert":"status"}>{catalogLoading?"Loading supported training methods…":catalogError||"No supported training methods are available."}</div>}
               </div>
             </section>
           </div>
@@ -608,18 +636,24 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
               <div className="section-link">Config-aware</div>
             </div>
             <div className="form-grid">
-              <label>Image size<input value={resize} onChange={e=>setResize(e.target.value)} placeholder="From config.yml"/></label>
-              <label>Batch size<input value={batch} onChange={e=>setBatch(e.target.value)} placeholder="Use config default"/></label>
-              <label>Backbone<input value={backbone} onChange={e=>setBackbone(e.target.value)} placeholder="Use config default"/></label>
+              <label>Image size<input value={resize} disabled={busy} onChange={e=>setResize(e.target.value)} placeholder="From config.yml"/></label>
+              <label>Batch size<input value={batch} disabled={busy} inputMode="numeric" onChange={e=>setBatch(e.target.value)} placeholder="Use config default"/></label>
+              <label>Backbone<input value={backbone} disabled={busy} onChange={e=>setBackbone(e.target.value)} placeholder="Use config default"/></label>
             </div>
           </section>
 
-          <div className="training-action">
-            <div><strong>Ready to train?</strong><span>{algorithm.toUpperCase()} · {resize || "config.yml"} · {className || "config.yml class"}</span></div>
-            <button className="primary" onClick={train} disabled={busy}><Play size={13}/>{busy?(jobStatus||"Working…"):"Start training"}</button>
+          <div className={`training-action ${busy?"is-running":result?"is-complete":""}`} aria-live="polite" aria-busy={busy}>
+            <div className="training-action-copy">
+              <strong>{busy?"Training run in progress":result?"Training complete":"Ready to train"}</strong>
+              <span>{busy?(jobStatus||"Training in progress"):result?"Your model is ready to review in Models.":`${(availableAlgorithms[algorithm]?.name||algorithm).toUpperCase()} · ${resize||"config.yml image size"} · ${className||"config.yml class"}`}</span>
+              {busy&&<div className="training-progress" role="progressbar" aria-label="Training progress" aria-valuetext={jobStatus||"Training in progress"}><span/></div>}
+            </div>
+            <button className="primary" onClick={train} disabled={busy||catalogLoading||!algorithmOptions.length}>
+              {busy?<><LoaderCircle className="training-spinner" size={14}/>{jobStatus||"Training…"}</>:<><Play size={13}/>Start training</>}
+            </button>
           </div>
 
-          {error && <div className="form-error">{error}</div>}
+          {error && <div className="form-error" role="alert">{error}</div>}
 
           {result && (
             <section className="card training-result">
@@ -630,18 +664,18 @@ function TrainingPage({ project, onFinished }: { project?: Project; onFinished:(
               <div className="training-success">
                 <div className="training-success-icon"><ShieldCheck size={18}/></div>
                 <div><strong>Your model was created successfully.</strong><span>Open Models to review the artifact or continue to validation.</span></div>
-                <button className="secondary" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}>Continue</button>
+                <button className="secondary" onClick={()=>onNavigate("Models")}>Review model</button>
               </div>
               <div className="training-result-grid">
                 <div><span>Algorithm</span><b>{String(result.algorithm ?? algorithm).toUpperCase()}</b></div>
                 <div><span>Class</span><b>{String(result.class_name ?? className ?? "From config")}</b></div>
-                <div><span>Run</span><b>{String(result.run_name ?? result.model_id ?? "Created")}</b></div>
+                <div><span>Run</span><b>{String(result.run_name ?? result.model_id ?? result.run_dir ?? "Created")}</b></div>
                 <div><span>Status</span><b>{String(result.status ?? "trained")}</b></div>
               </div>
-              {(result.model_path || result.path) && (
+              {(result.model_path || result.path || result.model) && (
                 <div className="artifact-box">
                   <span>Model artifact</span>
-                  <code>{String(result.model_path ?? result.path)}</code>
+                  <code>{String(result.model_path ?? result.path ?? result.model)}</code>
                 </div>
               )}
               <details className="technical-details">
