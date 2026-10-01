@@ -22,7 +22,8 @@ search_chunk_size: 1024                    # PatchCore nearest-neighbor search c
 coreset_method: "kcenter"                  # PatchCore coreset method: kcenter | random
 coreset_seed: 42                           # Random seed for PatchCore coreset selection
 feat_dim: 50                               # PaDiM number of feature dimensions to keep
-layer_indices: [0]                         # Backbone feature layers used by PaDiM/PatchCore/EfficientAD
+layer_indices: [0]                         # Backbone feature layers used by PaDiM/EfficientAD
+patchcore_layer_indices: [1, 2]              # PatchCore uses ResNet layer2 + layer3 for multi-scale anomaly features
 model_data_path: "./distributions"         # Directory for trained models and statistics
 model: "model.pt"                          # Model filename used by detect/eval/export
 output_model: "model.pt"                   # Filename written by the train command
