@@ -14,7 +14,7 @@ norm_std:  [0.229, 0.224, 0.225]           # Normalization standard deviation fo
 # Model / training
 # =========================
 backbone: "resnet18"                       # Backbone network: resnet18 | wide_resnet50
-algorithm: "padim"                         # Anomaly algorithm: padim | patchcore | efficientad
+algorithm: "efficientad"                         # Anomaly algorithm: padim | patchcore | efficientad
 coreset_ratio: 0.02                        # PatchCore fraction of patches kept in memory
 max_memory_patches: 2048                   # Maximum number of PatchCore memory-bank patches
 patch_grid: 14                             # PatchCore feature-map grid size
@@ -80,7 +80,7 @@ viz_color: "128,0,128"                     # RGB color used for anomaly overlays
 img_path: "D:\\01-DATA\\VisA_pytorch\\candle\\train\\good"         # Input image or directory for detection
 thresh: null                               # Generic legacy threshold fallback
 thresh_padim: 13.0                         # Fixed PaDiM anomaly threshold
-thresh_patchcore: 0.25                     # Fixed PatchCore anomaly threshold
+thresh_patchcore: 0.76                     # Fixed PatchCore anomaly threshold
 thresh_efficientad: 1.0                    # EfficientAD threshold; 1.0 means the model's adaptive training threshold
 num_workers: 0                             # Number of data-loader worker processes
 pin_memory: false                          # Pin CPU memory for faster GPU transfers

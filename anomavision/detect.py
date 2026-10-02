@@ -214,12 +214,6 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         default=0,
         help="Number of model warm-up runs before inference (default: 0).",
     )
-    parser.add_argument(
-        "--regression-output",
-        type=str,
-        default=None,
-        help="Optional JSON output containing deterministic regression results.",
-    )
 
     return parser
 
@@ -297,7 +291,6 @@ def run_inference(args):
         "scores": [],
         "classifications": [],
         "images": [] if not stream_mode else None,
-        "map_shapes": [],
     }
     total_start_time = time.time()
 
@@ -518,53 +511,35 @@ def run_inference(args):
 
             with profilers["postprocessing"]:
                 try:
-                    score_maps = adaptive_gaussian_blur(
-                        score_maps, kernel_size=33, sigma=4
+                    # PatchCore's map is already smooth (bilinear upsample) and its
+                    # image score is the raw map maximum. Blurring would lower the
+                    # peaks and break the match between image threshold and pixels.
+                    if str(config.get("algorithm", "")).lower() != "patchcore":
+                        score_maps = adaptive_gaussian_blur(
+                            score_maps, kernel_size=33, sigma=4
+                        )
+                    logger.info(
+                        "Batch %d image scores: %s (thresh=%s)",
+                        batch_idx,
+                        np.round(np.asarray(image_scores).reshape(-1), 4).tolist(),
+                        config.thresh,
                     )
                     if config.thresh is not None:
-                        if str(config.get("algorithm", "")).lower() == "patchcore":
-                            # PatchCore: config.thresh is an IMAGE-level threshold
-                            # (cosine-distance scale). The blurred pixel map lives
-                            # on a different scale, so thresholding it directly
-                            # gives either an empty or a full-image mask. Classify
-                            # by image score, then localize with a per-image
-                            # relative cutoff on the score map.
-                            scores_np = np.asarray(
-                                image_scores.detach().float().cpu().numpy()
-                                if hasattr(image_scores, "detach")
-                                else image_scores
-                            ).reshape(-1)
-                            is_anomaly = (scores_np >= float(config.thresh)).astype(
-                                np.int64
-                            )
-                            # Cheap relative cutoff on the min-max normalised map
-                            maps_np = (
-                                score_maps.detach().float().cpu().numpy()
-                                if hasattr(score_maps, "detach")
-                                else np.asarray(score_maps)
-                            )
-                            lo = maps_np.min(axis=(1, 2), keepdims=True)
-                            hi = maps_np.max(axis=(1, 2), keepdims=True)
-                            norm = (maps_np - lo) / (hi - lo + 1e-8)
-                            localization_masks = (
-                                (norm >= float(config.get("patchcore_loc_rel", 0.60)))
-                                & (is_anomaly[:, None, None] > 0)
-                            ).astype(np.uint8)
-                        else:
-                            # PaDiM etc.: an image is anomalous only when at
-                            # least one pixel reaches the configured threshold.
-                            localization_masks = anomavision.classification(
-                                score_maps, config.thresh
-                            )
-                            is_anomaly = (
-                                np.any(
-                                    np.asarray(localization_masks).reshape(
-                                        len(localization_masks), -1
-                                    )
-                                    > 0,
-                                    axis=1,
+                        # Pixels at or above the threshold are defects; an image is
+                        # anomalous when at least one pixel reaches it (PaDiM and
+                        # PatchCore behave the same way).
+                        localization_masks = anomavision.classification(
+                            score_maps, config.thresh
+                        )
+                        is_anomaly = (
+                            np.any(
+                                np.asarray(localization_masks).reshape(
+                                    len(localization_masks), -1
                                 )
-                            ).astype(np.int64)
+                                > 0,
+                                axis=1,
+                            )
+                        ).astype(np.int64)
                     else:
                         localization_masks = np.zeros_like(score_maps)
                         is_anomaly = np.zeros(score_maps.shape[0], dtype=np.int64)
@@ -573,9 +548,6 @@ def run_inference(args):
                         results_accumulator["scores"].extend(image_scores.tolist())
                         results_accumulator["classifications"].extend(
                             is_anomaly.tolist()
-                        )
-                        results_accumulator["map_shapes"].extend(
-                            [list(np.asarray(score_maps[i]).shape) for i in range(len(score_maps))]
                         )
                         results_accumulator["images"].extend(images)
                 except Exception as e:
@@ -638,6 +610,21 @@ def run_inference(args):
                     except Exception as e:
                         logger.error(f"Visualization failed batch {batch_idx}: {e}")
     finally:
+        try:
+            _all = np.asarray(results_accumulator["scores"], dtype=np.float64)
+            if _all.size:
+                _top = np.sort(_all)[::-1][:5]
+                logger.info(
+                    "Score summary: n=%d min=%.4f mean=%.4f max=%.4f top5=%s thresh=%s",
+                    _all.size,
+                    _all.min(),
+                    _all.mean(),
+                    _all.max(),
+                    np.round(_top, 4).tolist(),
+                    config.thresh,
+                )
+        except Exception:
+            pass
         if drift_runtime is not None and drift_output is not None:
             try:
                 _save_live_drift_status()
@@ -726,24 +713,6 @@ def run_inference(args):
                 logger.warning(
                     "Failed to append performance metrics to %s: %s", output_path, e
                 )
-
-    if getattr(config, "regression_output", None):
-        regression_path = Path(config.regression_output)
-        regression_path.parent.mkdir(parents=True, exist_ok=True)
-        regression_payload = {
-            "scores": [
-                float(x.detach().cpu().item()) if hasattr(x, "detach") else float(x)
-                for x in results_accumulator["scores"]
-            ],
-            "classifications": [
-                int(x) for x in results_accumulator["classifications"]
-            ],
-            "map_shapes": results_accumulator["map_shapes"],
-        }
-        regression_path.write_text(
-            json.dumps(regression_payload, indent=2),
-            encoding="utf-8",
-        )
 
     return metrics, results_accumulator
 
