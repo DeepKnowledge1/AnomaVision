@@ -2,7 +2,7 @@
 # Dataset / preprocessing (shared by train, detect, eval, stream)
 # =========================
 dataset_path: "D:/01-DATA/mvtec"                 # Root dataset directory (contains train/test folders)
-class_name: "cable"                       # Dataset class to train/evaluate
+class_name: "capsule"                       # Dataset class to train/evaluate
 resize: [224, 224]                         # Input image size [width, height]
 crop_size:                                 # Optional center crop size [width, height]
 normalize: true                            # Apply ImageNet normalization
@@ -14,7 +14,7 @@ norm_std:  [0.229, 0.224, 0.225]           # Normalization standard deviation fo
 # Model / training
 # =========================
 backbone: "resnet18"                       # Backbone network: resnet18 | wide_resnet50
-algorithm: "efficientad"                         # Anomaly algorithm: padim | patchcore | efficientad
+algorithm: "patchcore"                         # Anomaly algorithm: padim | patchcore | efficientad
 coreset_ratio: 0.02                        # PatchCore fraction of patches kept in memory
 max_memory_patches: 2048                   # Maximum number of PatchCore memory-bank patches
 patch_grid: 14                             # PatchCore feature-map grid size
@@ -22,8 +22,7 @@ search_chunk_size: 1024                    # PatchCore nearest-neighbor search c
 coreset_method: "kcenter"                  # PatchCore coreset method: kcenter | random
 coreset_seed: 42                           # Random seed for PatchCore coreset selection
 feat_dim: 50                               # PaDiM number of feature dimensions to keep
-layer_indices: [0]                         # Backbone feature layers used by PaDiM/EfficientAD
-patchcore_layer_indices: [1, 2]              # PatchCore uses ResNet layer2 + layer3 for multi-scale anomaly features
+layer_indices: [0]                         # Backbone feature layers used by PaDiM/PatchCore/EfficientAD
 model_data_path: "./distributions"         # Directory for trained models and statistics
 model: "model.pt"                          # Model filename used by detect/eval/export
 output_model: "model.pt"                   # Filename written by the train command

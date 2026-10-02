@@ -10,7 +10,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = ROOT / "tests" / "regression" / "baseline.json"
 MODEL = ROOT / "tests" / "regression" / "model" / "model.pt"

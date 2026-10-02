@@ -528,18 +528,17 @@ def run_inference(args):
                         # Pixels at or above the threshold are defects; an image is
                         # anomalous when at least one pixel reaches it (PaDiM and
                         # PatchCore behave the same way).
-                        localization_masks = anomavision.classification(
-                            score_maps, config.thresh
+                        # Image-level classification uses the configured algorithm threshold.
+                        is_anomaly = anomavision.classification(
+                            image_scores, config.thresh
                         )
-                        is_anomaly = (
-                            np.any(
-                                np.asarray(localization_masks).reshape(
-                                    len(localization_masks), -1
-                                )
-                                > 0,
-                                axis=1,
-                            )
-                        ).astype(np.int64)
+
+                        # Localization is independent of the image-level threshold.
+                        # It selects the strongest spatial regions from the score map.
+                        localization_masks = make_localization_mask(
+                            score_maps,
+                            is_anomaly,
+                        )
                     else:
                         localization_masks = np.zeros_like(score_maps)
                         is_anomaly = np.zeros(score_maps.shape[0], dtype=np.int64)

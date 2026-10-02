@@ -62,7 +62,9 @@ def main() -> int:
         raise SystemExit(f"FAIL: expected one image score, got shape {scores.shape}")
 
     score = float(scores[0])
-    prediction = "anomaly" if int(classification(scores, args.threshold)[0]) else "normal"
+    prediction = (
+        "anomaly" if int(classification(scores, args.threshold)[0]) else "normal"
+    )
 
     if prediction != args.expected:
         raise SystemExit(
