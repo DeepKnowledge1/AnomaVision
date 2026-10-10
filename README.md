@@ -139,8 +139,8 @@ python scripts\\benchmarks\\compare_with_anomalib.py `
 Run all available MVTec classes:
 
 ```powershell
-python scripts\\benchmarks\\compare_with_anomalib.py `
-  --dataset_path D:\\01-DATA `
+python scripts/benchmarks/compare_with_anomalib.py `
+  --dataset_path D:/01-DATA/VisA_pytorch `
   --all_classes `
   --algorithms padim `
   --device cpu

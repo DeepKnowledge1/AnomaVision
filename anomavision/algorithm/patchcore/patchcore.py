@@ -219,12 +219,38 @@ class PatchCore(torch.nn.Module):
                 chunks.append(embeddings.reshape(-1, embeddings.shape[-1]).cpu())
         if not chunks:
             raise ValueError("Cannot fit PatchCore with an empty dataloader.")
+        # bank = torch.cat(chunks, dim=0)
+        # keep = max(1, int(bank.shape[0] * self.coreset_ratio))
+        # if self.max_memory_patches is not None:
+        #     keep = min(keep, int(self.max_memory_patches))
+        # if keep < bank.shape[0]:
+        #     bank = self._select_coreset(bank, keep)
+        # self.memory_bank = bank.to(self.device)
+
         bank = torch.cat(chunks, dim=0)
         keep = max(1, int(bank.shape[0] * self.coreset_ratio))
+
         if self.max_memory_patches is not None:
             keep = min(keep, int(self.max_memory_patches))
+
+        # DEBUG: inspect the feature bank before coreset selection.
+        print("\n[AnomaVision PatchCore] Before coreset selection")
+        print(f"  Feature matrix shape : {tuple(bank.shape)}")
+        print(f"  Feature matrix dtype : {bank.dtype}")
+        print(f"  Feature matrix device: {bank.device}")
+        print(f"  Coreset ratio        : {self.coreset_ratio}")
+        print(f"  Maximum memory patches: {self.max_memory_patches}")
+        print(f"  Requested coreset size: {keep}")
+        print(f"  Coreset method       : {self.coreset_method}")
+
         if keep < bank.shape[0]:
             bank = self._select_coreset(bank, keep)
+
+        # DEBUG: inspect the selected memory bank.
+        print("[AnomaVision PatchCore] After coreset selection")
+        print(f"  Memory bank shape    : {tuple(bank.shape)}")
+        print(f"  Memory bank dtype    : {bank.dtype}")
+
         self.memory_bank = bank.to(self.device)
 
     @torch.no_grad()
