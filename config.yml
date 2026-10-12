@@ -14,7 +14,7 @@ norm_std:  [0.229, 0.224, 0.225]           # Normalization standard deviation fo
 # Model / training
 # =========================
 backbone: "resnet18"                       # Backbone network: resnet18 | wide_resnet50
-algorithm: "padim"                         # Anomaly algorithm: padim | patchcore | efficientad
+algorithm: "patchcore"                         # Anomaly algorithm: padim | patchcore | efficientad
 coreset_ratio: 0.02                        # PatchCore fraction of patches kept in memory
 max_memory_patches: 2048                   # Maximum number of PatchCore memory-bank patches
 patch_grid: 14                             # PatchCore feature-map grid size

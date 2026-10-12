@@ -494,7 +494,7 @@ class BenchmarkRunner:
             from anomavision import EfficientAD
 
             return EfficientAD(
-                backbone=BACKBONE, device=self.device, epochs=5, learning_rate=1e-3
+                backbone=BACKBONE, device=self.device, epochs=1, learning_rate=1e-3
             )
         raise ValueError(f"Unsupported algorithm: {algorithm}")
 
@@ -755,6 +755,10 @@ class BenchmarkRunner:
 
     def report(self, results: List[ModelMetrics]) -> None:
         rows = [asdict(item) for item in results]
+        rows = [
+            {k: (round(v, 4) if isinstance(v, float) else v) for k, v in row.items()}
+            for row in rows
+        ]
         frame = pd.DataFrame(rows)
         frame["environment"] = frame["environment"].apply(
             lambda value: json.dumps(value, sort_keys=True)
@@ -808,7 +812,11 @@ class BenchmarkRunner:
             html_rows.append(
                 "<tr>"
                 + "".join(
-                    f"<td>{row[k]}</td>"
+                    (
+                        f"<td>{row[k]:.4f}</td>"
+                        if isinstance(row[k], float)
+                        else f"<td>{row[k]}</td>"
+                    )
                     for k in [
                         "algorithm",
                         "name",
