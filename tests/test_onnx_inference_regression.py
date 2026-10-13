@@ -10,7 +10,6 @@ from pathlib import Path
 import numpy as np
 import onnx
 import onnxruntime as ort
-import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -113,7 +112,7 @@ def test_padim_pt_and_onnx_inference_are_strictly_equivalent(
     tmp_path, trained_padim_model, sample_batch
 ):
     """Exercise PaDiM training fixture, export, graph validation, and both backends."""
-    pytest.importorskip("onnxruntime")
+
     batch, _, _, _ = sample_batch
     _assert_pt_and_onnx_match(
         trained_padim_model, batch.cpu(), tmp_path, "padim_regression"
@@ -124,7 +123,7 @@ def test_patchcore_pt_and_onnx_inference_are_strictly_equivalent(
     tmp_path, monkeypatch
 ):
     """Exercise PatchCore export and inference without external datasets or GPUs."""
-    pytest.importorskip("onnxruntime")
+
     monkeypatch.setattr(
         patchcore_module,
         "ResnetEmbeddingsExtractor",
