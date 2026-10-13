@@ -107,6 +107,13 @@ def test_padim_pt_and_onnx_defect_pixel_counts_match(
         pt_counts = np.count_nonzero(pt_masks, axis=(1, 2))
         onnx_counts = np.count_nonzero(onnx_masks, axis=(1, 2))
 
+        # Print observed baseline values when invoked with pytest -s. These
+        # values must be recorded from a deterministic fixture before pinning
+        # them as exact expected counts; do not guess a baseline.
+        print(f"PaDiM PyTorch defect-pixel counts: {pt_counts.tolist()}")
+        print(f"PaDiM ONNX defect-pixel counts: {onnx_counts.tolist()}")
+        print(f"Pixel threshold: {DEFECT_THRESHOLD}")
+
         np.testing.assert_array_equal(
             onnx_counts,
             pt_counts,
