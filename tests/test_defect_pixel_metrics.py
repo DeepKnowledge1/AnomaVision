@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 import onnxruntime as ort
+import pytest
 import torch
 
 from anomavision.export import ModelExporter
@@ -55,12 +56,8 @@ def test_normal_map_has_zero_defect_pixels():
 def test_non_finite_anomaly_map_fails_closed():
     anomaly_map = np.array([[0.1, np.nan]], dtype=np.float32)
 
-    try:
+    with pytest.raises(ValueError, match="non-finite"):
         count_defect_pixels(anomaly_map, threshold=0.5)
-    except ValueError as exc:
-        assert "non-finite" in str(exc)
-    else:
-        raise AssertionError("Non-finite anomaly map must fail the test")
 
 
 def test_padim_pt_and_onnx_defect_pixel_counts_match(
@@ -92,8 +89,8 @@ def test_padim_pt_and_onnx_defect_pixel_counts_match(
     pt_wrapper = ModelWrapper(str(pt_path), device="cpu")
     onnx_wrapper = ModelWrapper(str(onnx_path), device="cpu")
     try:
-        pt_scores, pt_maps = pt_wrapper.predict(batch)
-        onnx_scores, onnx_maps = onnx_wrapper.predict(batch)
+        _, pt_maps = pt_wrapper.predict(batch)
+        _, onnx_maps = onnx_wrapper.predict(batch)
 
         assert pt_maps.shape == onnx_maps.shape
         assert pt_maps.shape == (
