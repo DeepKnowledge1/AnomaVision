@@ -305,9 +305,6 @@ class ModelExporter:
         t0 = time.perf_counter()
         try:
             model = self._load_model()
-            # ONNX export includes the model representation used by production
-            # drift monitoring. Keep _load_model() backward compatible.
-            model.include_embeddings = True
             dummy_input = torch.randn(*input_shape, device=self.device)
 
             # Auto-detect precision based on device if not forced
