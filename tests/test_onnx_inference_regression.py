@@ -18,7 +18,6 @@ from anomavision.export import ModelExporter
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.utils import get_logger
 
-
 LOGGER = get_logger(__name__)
 
 
@@ -67,9 +66,7 @@ def _assert_pt_and_onnx_match(model, batch, tmp_path: Path, filename: str):
     onnx.checker.check_model(str(onnx_path))
 
     # Enforce the default inference contract: scores and maps only.
-    session = ort.InferenceSession(
-        str(onnx_path), providers=["CPUExecutionProvider"]
-    )
+    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     assert session.get_providers()[0] == "CPUExecutionProvider"
     assert len(session.get_inputs()) == 1
     assert len(session.get_outputs()) == 2
@@ -86,10 +83,14 @@ def _assert_pt_and_onnx_match(model, batch, tmp_path: Path, filename: str):
         assert isinstance(onnx_maps, np.ndarray)
 
         assert pt_scores.shape == onnx_scores.shape == (batch.shape[0],)
-        assert pt_maps.shape == onnx_maps.shape == (
-            batch.shape[0],
-            batch.shape[2],
-            batch.shape[3],
+        assert (
+            pt_maps.shape
+            == onnx_maps.shape
+            == (
+                batch.shape[0],
+                batch.shape[2],
+                batch.shape[3],
+            )
         )
         assert np.isfinite(pt_scores).all()
         assert np.isfinite(pt_maps).all()
@@ -97,12 +98,8 @@ def _assert_pt_and_onnx_match(model, batch, tmp_path: Path, filename: str):
         assert np.isfinite(onnx_maps).all()
 
         # Fail the test on any score or pixel-map mismatch outside tolerance.
-        np.testing.assert_allclose(
-            onnx_scores, pt_scores, rtol=1e-3, atol=1e-4
-        )
-        np.testing.assert_allclose(
-            onnx_maps, pt_maps, rtol=1e-3, atol=1e-4
-        )
+        np.testing.assert_allclose(onnx_scores, pt_scores, rtol=1e-3, atol=1e-4)
+        np.testing.assert_allclose(onnx_maps, pt_maps, rtol=1e-3, atol=1e-4)
     finally:
         pt_wrapper.close()
         onnx_wrapper.close()
@@ -119,9 +116,7 @@ def test_padim_pt_and_onnx_inference_are_strictly_equivalent(
     )
 
 
-def test_patchcore_pt_and_onnx_inference_are_strictly_equivalent(
-    tmp_path, monkeypatch
-):
+def test_patchcore_pt_and_onnx_inference_are_strictly_equivalent(tmp_path, monkeypatch):
     """Exercise PatchCore export and inference without external datasets or GPUs."""
 
     monkeypatch.setattr(

@@ -17,7 +17,6 @@ from anomavision.export import ModelExporter
 from anomavision.inference.model.wrapper import ModelWrapper
 from anomavision.utils import get_logger
 
-
 LOGGER = get_logger(__name__)
 DEFECT_THRESHOLD = 0.5
 
@@ -81,9 +80,7 @@ def test_padim_pt_and_onnx_defect_pixel_counts_match(
     assert onnx_path is not None and onnx_path.is_file()
     onnx.checker.check_model(str(onnx_path))
 
-    session = ort.InferenceSession(
-        str(onnx_path), providers=["CPUExecutionProvider"]
-    )
+    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     assert session.get_providers()[0] == "CPUExecutionProvider"
 
     pt_wrapper = ModelWrapper(str(pt_path), device="cpu")
