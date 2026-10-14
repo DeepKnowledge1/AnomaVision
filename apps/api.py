@@ -400,7 +400,10 @@ def _apply_project_config(project_id: Optional[str]) -> None:
         return
 
     cfg = load_config(str(config_path)) or {}
-    _load_project_drift_monitor(project_id, cfg)
+    # Keep the rolling monitor alive across inference requests. Rebuilding it
+    # for every camera frame resets samples_seen and leaves drift stuck warming up.
+    if _drift_monitor is None or _drift_project_id != project_id:
+        _load_project_drift_monitor(project_id, cfg)
     algorithm = str(cfg.get("algorithm", "padim")).lower()
     threshold_keys = {
         "padim": "thresh_padim",
