@@ -62,17 +62,21 @@ def _assert_pt_and_onnx_match(model, batch, tmp_path: Path, filename: str):
     assert onnx_path is not None, "ONNX export returned None"
     assert onnx_path.is_file() and onnx_path.stat().st_size > 0
 
-    # This fails on malformed graphs, including missing initializer references.
+    # Fail on malformed graphs, including missing initializer references.
     onnx.checker.check_model(str(onnx_path))
 
     # Enforce the default inference contract: scores and maps only.
-    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    session = ort.InferenceSession(
+        str(onnx_path),
+        providers=["CPUExecutionProvider"],
+    )
     assert session.get_providers()[0] == "CPUExecutionProvider"
     assert len(session.get_inputs()) == 1
     assert len(session.get_outputs()) == 2
 
     pt_wrapper = ModelWrapper(str(pt_path), device="cpu")
     onnx_wrapper = ModelWrapper(str(onnx_path), device="cpu")
+
     try:
         pt_scores, pt_maps = pt_wrapper.predict(batch)
         onnx_scores, onnx_maps = onnx_wrapper.predict(batch)
@@ -86,20 +90,40 @@ def _assert_pt_and_onnx_match(model, batch, tmp_path: Path, filename: str):
         assert (
             pt_maps.shape
             == onnx_maps.shape
-            == (
-                batch.shape[0],
-                batch.shape[2],
-                batch.shape[3],
-            )
+            == (batch.shape[0], batch.shape[2], batch.shape[3])
         )
+
         assert np.isfinite(pt_scores).all()
         assert np.isfinite(pt_maps).all()
         assert np.isfinite(onnx_scores).all()
         assert np.isfinite(onnx_maps).all()
 
-        # Fail the test on any score or pixel-map mismatch outside tolerance.
-        np.testing.assert_allclose(onnx_scores, pt_scores, rtol=1e-3, atol=1e-4)
-        np.testing.assert_allclose(onnx_maps, pt_maps, rtol=1e-3, atol=1e-4)
+        # Strict score comparison remains unchanged.
+        np.testing.assert_allclose(
+            onnx_scores, pt_scores, rtol=1e-3, atol=1e-4
+        )
+
+        # Temporary diagnostics to investigate CI-only map mismatches.
+        print(f"\n[{filename}] PyTorch map range: {pt_maps.min()} .. {pt_maps.max()}")
+        print(f"[{filename}] ONNX map range: {onnx_maps.min()} .. {onnx_maps.max()}")
+        print(
+            f"[{filename}] Maximum absolute map difference: "
+            f"{np.max(np.abs(onnx_maps - pt_maps))}"
+        )
+        print(
+            f"[{filename}] PyTorch zero pixels: "
+            f"{np.count_nonzero(pt_maps == 0)}"
+        )
+        print(
+            f"[{filename}] ONNX zero pixels: "
+            f"{np.count_nonzero(onnx_maps == 0)}"
+        )
+
+        # Keep strict pixel-map tolerance; do not weaken the regression test.
+        np.testing.assert_allclose(
+            onnx_maps, pt_maps, rtol=1e-3, atol=1e-4
+        )
+
     finally:
         pt_wrapper.close()
         onnx_wrapper.close()
