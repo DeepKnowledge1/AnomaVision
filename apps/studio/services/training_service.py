@@ -13,7 +13,9 @@ import yaml
 from anomavision.train import run_training
 
 
-def normalize_dataset_source(source: str, class_name: str = "default") -> tuple[Path, str]:
+def normalize_dataset_source(
+    source: str, class_name: str = "default"
+) -> tuple[Path, str]:
     """Resolve any common MVTec folder selection to train.py's exact contract.
 
     train.py receives:
@@ -64,7 +66,8 @@ def normalize_dataset_source(source: str, class_name: str = "default") -> tuple[
 
     # Dataset root with exactly one discoverable class.
     candidates = [
-        child for child in selected.iterdir()
+        child
+        for child in selected.iterdir()
         if child.is_dir() and (child / "train" / "good").is_dir()
     ]
     if len(candidates) == 1:
@@ -72,7 +75,11 @@ def normalize_dataset_source(source: str, class_name: str = "default") -> tuple[
 
     # Dataset root that directly contains train/good.
     if (selected / "train" / "good").is_dir():
-        effective_class = requested_class if requested_class and requested_class.lower() != "default" else selected.name
+        effective_class = (
+            requested_class
+            if requested_class and requested_class.lower() != "default"
+            else selected.name
+        )
         return selected, effective_class
 
     raise ValueError(
@@ -85,7 +92,9 @@ def _load_base_config() -> dict[str, Any]:
     """Load AnomaVision's canonical repository config as the Studio template."""
     repo_config = Path(__file__).resolve().parents[3] / "config.yml"
     if not repo_config.is_file():
-        raise FileNotFoundError(f"Canonical AnomaVision config not found: {repo_config}")
+        raise FileNotFoundError(
+            f"Canonical AnomaVision config not found: {repo_config}"
+        )
 
     config = yaml.safe_load(repo_config.read_text(encoding="utf-8")) or {}
     if not isinstance(config, dict):
@@ -108,7 +117,11 @@ def create_training_config(
     dataset_path, detected_class = normalize_dataset_source(dataset_source, class_name)
     effective_class = detected_class if detected_class != "default" else class_name
 
-    run_id = re.sub(r"[^a-zA-Z0-9_-]+", "-", f"{algorithm}-{effective_class}").strip("-").lower()
+    run_id = (
+        re.sub(r"[^a-zA-Z0-9_-]+", "-", f"{algorithm}-{effective_class}")
+        .strip("-")
+        .lower()
+    )
     run_dir = Path(project_dir) / "experiments" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 

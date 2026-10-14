@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 from anomavision.eval import run_evaluation
-
 from apps.studio.services.model_registry import get_model
 
 
@@ -57,5 +56,8 @@ def evaluate_project_model(
     output = project_dir / "models" / model["run_name"] / "evaluation.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     import json
-    output.write_text(json.dumps(evaluation, indent=2, default=float) + "\n", encoding="utf-8")
+
+    output.write_text(
+        json.dumps(evaluation, indent=2, default=float) + "\n", encoding="utf-8"
+    )
     return evaluation

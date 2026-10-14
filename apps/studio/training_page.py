@@ -46,9 +46,11 @@ def render_training_page(store, store_root: Path, algorithms: dict) -> None:
     algorithm = st.selectbox(
         "Algorithm",
         list(algorithms),
-        index=list(algorithms).index(project.get("algorithm", "patchcore"))
-        if project.get("algorithm", "patchcore") in algorithms
-        else 0,
+        index=(
+            list(algorithms).index(project.get("algorithm", "patchcore"))
+            if project.get("algorithm", "patchcore") in algorithms
+            else 0
+        ),
         format_func=lambda key: algorithms[key]["name"],
     )
 
@@ -63,12 +65,18 @@ def render_training_page(store, store_root: Path, algorithms: dict) -> None:
         with col1:
             backbone = st.selectbox("Backbone", ["resnet18", "wide_resnet50"])
         with col2:
-            batch_size = st.number_input("Batch size", min_value=1, max_value=64, value=2)
+            batch_size = st.number_input(
+                "Batch size", min_value=1, max_value=64, value=2
+            )
         with col3:
-            resize = st.number_input("Image size", min_value=64, max_value=1024, value=224)
+            resize = st.number_input(
+                "Image size", min_value=64, max_value=1024, value=224
+            )
 
         if algorithm == "padim":
-            feat_dim = st.number_input("PaDiM feature dimensions", min_value=1, max_value=1024, value=50)
+            feat_dim = st.number_input(
+                "PaDiM feature dimensions", min_value=1, max_value=1024, value=50
+            )
             coreset_ratio = 0.02
         else:
             feat_dim = 50

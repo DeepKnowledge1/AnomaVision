@@ -38,7 +38,9 @@ class ProjectStore:
                 projects.append(json.loads(metadata_path.read_text(encoding="utf-8")))
             except (OSError, json.JSONDecodeError):
                 continue
-        return sorted(projects, key=lambda item: item.get("updated_at", ""), reverse=True)
+        return sorted(
+            projects, key=lambda item: item.get("updated_at", ""), reverse=True
+        )
 
     def get(self, project_id: str) -> dict[str, Any] | None:
         path = self.root / project_id / "project.json"
@@ -66,7 +68,13 @@ class ProjectStore:
             "created_at": now,
             "updated_at": now,
         }
-        for directory in ("datasets", "experiments", "models", "deployments", "monitoring"):
+        for directory in (
+            "datasets",
+            "experiments",
+            "models",
+            "deployments",
+            "monitoring",
+        ):
             (project_dir / directory).mkdir(parents=True, exist_ok=True)
         (project_dir / "project.json").write_text(
             json.dumps(metadata, indent=2) + "\n", encoding="utf-8"

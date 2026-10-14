@@ -309,12 +309,6 @@ class ModelExporter:
         t0 = time.perf_counter()
         try:
             model = self._load_model()
-            # Keep the production ONNX graph minimal and stable. PatchCore
-            # embeddings are optional because production inference consumes only
-            # the image score and pixel map outputs. Calling the extractor a
-            # second time can create an invalid ONNX graph with duplicated
-            # backbone parameter references.
-            model.include_embeddings = include_embeddings
             dummy_input = torch.randn(*input_shape, device=self.device)
 
             # Auto-detect precision based on device if not forced

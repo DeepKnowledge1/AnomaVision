@@ -16,19 +16,22 @@ def list_models(project_dir: Path | str) -> list[dict[str, Any]]:
         metadata = {}
         if config_path.is_file():
             import yaml
+
             try:
                 metadata = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
             except yaml.YAMLError:
                 metadata = {}
-        models.append({
-            "id": str(model_path.relative_to(root)),
-            "path": str(model_path),
-            "algorithm": metadata.get("algorithm", model_path.parts[-4]),
-            "class_name": metadata.get("class_name", model_path.parts[-3]),
-            "run_name": metadata.get("run_name", model_path.parts[-2]),
-            "config": str(config_path),
-            "status": "trained",
-        })
+        models.append(
+            {
+                "id": str(model_path.relative_to(root)),
+                "path": str(model_path),
+                "algorithm": metadata.get("algorithm", model_path.parts[-4]),
+                "class_name": metadata.get("class_name", model_path.parts[-3]),
+                "run_name": metadata.get("run_name", model_path.parts[-2]),
+                "config": str(config_path),
+                "status": "trained",
+            }
+        )
 
     metadata_path = root / "latest_training.json"
     if metadata_path.is_file():

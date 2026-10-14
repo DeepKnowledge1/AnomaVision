@@ -41,7 +41,8 @@ def test_projects_uses_isolated_store(tmp_path, monkeypatch):
 
 def test_config_reads_canonical_values(tmp_path, monkeypatch):
     config = tmp_path / "config.yml"
-    config.write_text("""
+    config.write_text(
+        """
 algorithm: patchcore
 resize: [224, 224]
 normalize: true
@@ -55,7 +56,9 @@ drift_min_samples: 5
 drift_threshold: 0.20
 drift_evaluation_interval: 25
 enable_drift_monitoring: false
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("ANOMAVISION_CONFIG", str(config))
 
     client = TestClient(studio_api.app)

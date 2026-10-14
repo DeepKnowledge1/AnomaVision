@@ -16,15 +16,20 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from anomavision.config import load_config
 from apps.studio.services.catalog import ALGORITHMS, DEPLOYMENT_TARGETS
 from apps.studio.services.dataset_service import inspect_dataset, save_dataset_manifest
-from apps.studio.services.deployment_service import deploy_model, TARGET_DESCRIPTIONS
-from apps.studio.services.monitoring_service import list_monitoring_reports, monitoring_summary
-from apps.studio.services.model_registry import list_models, get_model
+from apps.studio.services.deployment_service import TARGET_DESCRIPTIONS, deploy_model
+from apps.studio.services.model_registry import get_model, list_models
+from apps.studio.services.monitoring_service import (
+    list_monitoring_reports,
+    monitoring_summary,
+)
 from apps.studio.services.project_store import ProjectStore
-from apps.studio.services.training_service import train_project, normalize_dataset_source
-from anomavision.config import load_config
-
+from apps.studio.services.training_service import (
+    normalize_dataset_source,
+    train_project,
+)
 
 STORE_ROOT = Path(
     os.getenv("ANOMAVISION_STUDIO_ROOT", "~/.anomavision/projects")
@@ -39,10 +44,16 @@ _training_lock = threading.Lock()
 def _training_worker(job_id: str, project_id: str, request: TrainingRequest) -> None:
     try:
         with _training_lock:
-            _training_jobs[job_id].update(status="running", message="Training in progress")
+            _training_jobs[job_id].update(
+                status="running", message="Training in progress"
+            )
         algorithm = request.algorithm.lower()
-        config_data = load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
-        class_name = str(request.class_name or config_data.get("class_name", "default") or "default")
+        config_data = (
+            load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
+        )
+        class_name = str(
+            request.class_name or config_data.get("class_name", "default") or "default"
+        )
         overrides: dict[str, Any] = {}
         for name in ("batch_size", "backbone", "feat_dim", "coreset_ratio"):
             value = getattr(request, name)
@@ -50,12 +61,21 @@ def _training_worker(job_id: str, project_id: str, request: TrainingRequest) -> 
                 overrides[name] = value
         if request.resize is not None:
             overrides["resize"] = request.resize
-        result = train_project(project_dir=_project_dir(project_id), dataset_source=request.dataset_path, algorithm=algorithm, class_name=class_name, **overrides)
+        result = train_project(
+            project_dir=_project_dir(project_id),
+            dataset_source=request.dataset_path,
+            algorithm=algorithm,
+            class_name=class_name,
+            **overrides,
+        )
         with _training_lock:
-            _training_jobs[job_id].update(status="completed", message="Training completed", result=result)
+            _training_jobs[job_id].update(
+                status="completed", message="Training completed", result=result
+            )
     except Exception as exc:
         with _training_lock:
             _training_jobs[job_id].update(status="failed", message=str(exc))
+
 
 app = FastAPI(
     title="AnomaVision Studio API",
@@ -157,7 +177,9 @@ def config() -> dict[str, Any]:
 def _choose_dataset_folder(initial_dir: str = "") -> str:
     """Open a native folder picker on the local Windows desktop."""
     if os.name != "nt":
-        raise RuntimeError("Native folder picker is currently supported on Windows only.")
+        raise RuntimeError(
+            "Native folder picker is currently supported on Windows only."
+        )
 
     import subprocess
 
@@ -238,7 +260,9 @@ def projects() -> list[dict[str, Any]]:
 def create_project(request: ProjectCreate) -> dict[str, Any]:
     algorithm = request.algorithm.lower()
     if algorithm not in ALGORITHMS:
-        raise HTTPException(status_code=400, detail=f"Unsupported algorithm: {algorithm}")
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported algorithm: {algorithm}"
+        )
 
     try:
         project = store.create(request.name, algorithm)
@@ -267,9 +291,7 @@ def models(project_id: str) -> list[dict[str, Any]]:
 
 
 @app.post("/api/projects/{project_id}/datasets/inspect")
-def inspect_project_dataset(
-    project_id: str, request: DatasetInspect
-) -> dict[str, Any]:
+def inspect_project_dataset(project_id: str, request: DatasetInspect) -> dict[str, Any]:
     _project_or_404(project_id)
     try:
         report = inspect_dataset(request.path, recursive=request.recursive)
@@ -282,23 +304,29 @@ def inspect_project_dataset(
 
 
 @app.post("/api/projects/{project_id}/datasets/resolve")
-def resolve_project_dataset(
-    project_id: str, request: DatasetInspect
-) -> dict[str, str]:
+def resolve_project_dataset(project_id: str, request: DatasetInspect) -> dict[str, str]:
     """Validate and normalize a dataset selection to train.py's contract."""
     _project_or_404(project_id)
-    config_data = load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
-    class_name = str(request.class_name or config_data.get("class_name", "default") or "default")
+    config_data = (
+        load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
+    )
+    class_name = str(
+        request.class_name or config_data.get("class_name", "default") or "default"
+    )
     try:
-        dataset_path, detected_class = normalize_dataset_source(request.path, class_name)
+        dataset_path, detected_class = normalize_dataset_source(
+            request.path, class_name
+        )
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "dataset_path": str(dataset_path),
         "class_name": detected_class,
-        "train_good": str(dataset_path / detected_class / "train" / "good")
-        if (dataset_path / detected_class / "train" / "good").is_dir()
-        else str(dataset_path / "train" / "good"),
+        "train_good": (
+            str(dataset_path / detected_class / "train" / "good")
+            if (dataset_path / detected_class / "train" / "good").is_dir()
+            else str(dataset_path / "train" / "good")
+        ),
     }
 
 
@@ -307,11 +335,21 @@ def start_training(project_id: str, request: TrainingRequest) -> dict[str, Any]:
     _project_or_404(project_id)
     algorithm = request.algorithm.lower()
     if algorithm not in ALGORITHMS:
-        raise HTTPException(status_code=400, detail=f"Unsupported algorithm: {algorithm}")
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported algorithm: {algorithm}"
+        )
     job_id = uuid.uuid4().hex
     with _training_lock:
-        _training_jobs[job_id] = {"job_id": job_id, "project_id": project_id, "status": "queued", "message": "Training queued", "result": None}
-    threading.Thread(target=_training_worker, args=(job_id, project_id, request), daemon=True).start()
+        _training_jobs[job_id] = {
+            "job_id": job_id,
+            "project_id": project_id,
+            "status": "queued",
+            "message": "Training queued",
+            "result": None,
+        }
+    threading.Thread(
+        target=_training_worker, args=(job_id, project_id, request), daemon=True
+    ).start()
     return dict(_training_jobs[job_id])
 
 
@@ -347,7 +385,9 @@ def deployments(project_id: str) -> list[dict[str, Any]]:
             results.append(__import__("json").loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             continue
-    return sorted(results, key=lambda item: item.get("elapsed_seconds", 0), reverse=True)
+    return sorted(
+        results, key=lambda item: item.get("elapsed_seconds", 0), reverse=True
+    )
 
 
 @app.post("/api/projects/{project_id}/deployments")
@@ -365,13 +405,16 @@ def start_deployment(project_id: str, request: DeploymentRequest) -> dict[str, A
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Deployment failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Deployment failed: {exc}"
+        ) from exc
 
 
 @app.get("/api/projects/{project_id}/monitoring")
 def monitoring(project_id: str) -> dict[str, Any]:
     _project_or_404(project_id)
     return monitoring_summary(_project_dir(project_id))
+
 
 @app.get("/api/projects/{project_id}/monitoring/reports")
 def monitoring_reports(project_id: str) -> list[dict[str, Any]]:

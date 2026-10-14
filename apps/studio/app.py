@@ -15,9 +15,9 @@ from pathlib import Path
 import streamlit as st
 
 from apps.studio.services.catalog import ALGORITHMS, DEPLOYMENT_TARGETS
-from apps.studio.services.project_store import ProjectStore
-from apps.studio.services.model_registry import list_models
 from apps.studio.services.evaluation_service import evaluate_project_model
+from apps.studio.services.model_registry import list_models
+from apps.studio.services.project_store import ProjectStore
 from apps.studio.training_page import render_training_page
 
 st.set_page_config(
@@ -27,7 +27,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-STORE_ROOT = Path(os.getenv("ANOMAVISION_STUDIO_ROOT", "~/.anomavision/projects")).expanduser()
+STORE_ROOT = Path(
+    os.getenv("ANOMAVISION_STUDIO_ROOT", "~/.anomavision/projects")
+).expanduser()
 store = ProjectStore(STORE_ROOT)
 
 
@@ -67,7 +69,17 @@ def sidebar() -> str:
         st.caption("Train · Validate · Deploy · Inspect · Monitor")
         page = st.radio(
             "Workspace",
-            ["Dashboard", "Projects", "Datasets", "Training", "Models", "Deployments", "Live", "Monitoring", "Settings"],
+            [
+                "Dashboard",
+                "Projects",
+                "Datasets",
+                "Training",
+                "Models",
+                "Deployments",
+                "Live",
+                "Monitoring",
+                "Settings",
+            ],
             label_visibility="collapsed",
         )
         st.divider()
@@ -81,16 +93,25 @@ def dashboard() -> None:
     st.caption("Your local anomaly-detection workspace.")
 
     cols = st.columns(4)
-    with cols[0]: metric_card("Projects", str(len(projects)), "local projects")
-    with cols[1]: metric_card("Models", "0", "ready to deploy")
-    with cols[2]: metric_card("Deployments", "0", "active runtimes")
-    with cols[3]: metric_card("Health", "Ready", "Studio storage online")
+    with cols[0]:
+        metric_card("Projects", str(len(projects)), "local projects")
+    with cols[1]:
+        metric_card("Models", "0", "ready to deploy")
+    with cols[2]:
+        metric_card("Deployments", "0", "active runtimes")
+    with cols[3]:
+        metric_card("Health", "Ready", "Studio storage online")
 
     st.subheader("Workflow")
     flow = st.columns(5)
-    for col, label in zip(flow, ["01  Data", "02  Train", "03  Validate", "04  Deploy", "05  Monitor"]):
+    for col, label in zip(
+        flow, ["01  Data", "02  Train", "03  Validate", "04  Deploy", "05  Monitor"]
+    ):
         with col:
-            st.markdown(f'<div class="studio-card"><b>{label}</b><div class="studio-muted">Next step in the Studio workflow</div></div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="studio-card"><b>{label}</b><div class="studio-muted">Next step in the Studio workflow</div></div>',
+                unsafe_allow_html=True,
+            )
 
     st.subheader("Recent projects")
     if not projects:
@@ -108,13 +129,21 @@ def dashboard() -> None:
 
 def projects_page() -> None:
     st.title("Projects")
-    st.caption("Each project contains its dataset, experiments, models, deployments and monitoring state.")
+    st.caption(
+        "Each project contains its dataset, experiments, models, deployments and monitoring state."
+    )
 
     with st.expander("+ Create project", expanded=not bool(store.list_projects())):
         with st.form("create-project"):
             name = st.text_input("Project name", placeholder="Bottle Cap Inspection")
-            algorithm = st.selectbox("Initial algorithm", list(ALGORITHMS), format_func=lambda key: ALGORITHMS[key]["name"])
-            description = st.text_area("Description", placeholder="Detect abnormal bottle caps")
+            algorithm = st.selectbox(
+                "Initial algorithm",
+                list(ALGORITHMS),
+                format_func=lambda key: ALGORITHMS[key]["name"],
+            )
+            description = st.text_area(
+                "Description", placeholder="Detect abnormal bottle caps"
+            )
             submitted = st.form_submit_button("Create project", type="primary")
             if submitted:
                 if not name.strip():
@@ -125,7 +154,10 @@ def projects_page() -> None:
                         project["description"] = description.strip()
                         project_path = STORE_ROOT / project["id"] / "project.json"
                         import json
-                        project_path.write_text(json.dumps(project, indent=2) + "\n", encoding="utf-8")
+
+                        project_path.write_text(
+                            json.dumps(project, indent=2) + "\n", encoding="utf-8"
+                        )
                         st.success(f'Created "{project["name"]}".')
                         st.rerun()
                     except ValueError as exc:
@@ -175,7 +207,11 @@ def datasets_page() -> None:
     analyze = st.button("Analyze dataset", type="primary", disabled=not source.strip())
 
     if analyze:
-        from apps.studio.services.dataset_service import inspect_dataset, save_dataset_manifest
+        from apps.studio.services.dataset_service import (
+            inspect_dataset,
+            save_dataset_manifest,
+        )
+
         try:
             report = inspect_dataset(source)
             if selected:
@@ -188,7 +224,9 @@ def datasets_page() -> None:
 
     report = st.session_state.get("dataset_report")
     if not report:
-        st.info("Enter an image folder and analyze it. The report is saved inside the selected project.")
+        st.info(
+            "Enter an image folder and analyze it. The report is saved inside the selected project."
+        )
         return
 
     cols = st.columns(4)
@@ -215,7 +253,10 @@ def datasets_page() -> None:
     with left:
         st.subheader("Resolutions")
         st.dataframe(
-            [{"resolution": key, "images": count} for key, count in report["resolutions"].items()],
+            [
+                {"resolution": key, "images": count}
+                for key, count in report["resolutions"].items()
+            ],
             use_container_width=True,
             hide_index=True,
         )
@@ -300,16 +341,22 @@ def models_page() -> None:
         st.code(model["path"], language="text")
 
         st.subheader("Evaluate")
-        st.caption("Uses the existing AnomaVision evaluation pipeline. For MVTec, select the dataset root containing the class folder.")
+        st.caption(
+            "Uses the existing AnomaVision evaluation pipeline. For MVTec, select the dataset root containing the class folder."
+        )
         dataset_path = st.text_input(
             "Evaluation dataset",
             placeholder=r"C:\datasets\mvtec_anomaly_detection",
             key="evaluation-dataset",
         )
         device = st.selectbox("Device", ["cpu", "auto"])
-        batch_size = st.number_input("Evaluation batch size", min_value=1, max_value=64, value=1)
+        batch_size = st.number_input(
+            "Evaluation batch size", min_value=1, max_value=64, value=1
+        )
 
-        if st.button("Evaluate model", type="primary", disabled=not dataset_path.strip()):
+        if st.button(
+            "Evaluate model", type="primary", disabled=not dataset_path.strip()
+        ):
             try:
                 with st.spinner("Evaluating model..."):
                     result = evaluate_project_model(
@@ -332,7 +379,10 @@ def models_page() -> None:
             metric_items = list(metrics.items())
             for col, (name, value) in zip(cols, metric_items[:4]):
                 with col:
-                    metric_card(name.replace("_", " ").title(), f"{value:.4f}" if isinstance(value, float) else str(value))
+                    metric_card(
+                        name.replace("_", " ").title(),
+                        f"{value:.4f}" if isinstance(value, float) else str(value),
+                    )
             st.json(metrics)
 
     with st.expander("Available algorithms"):
@@ -344,27 +394,41 @@ def models_page() -> None:
 
 def deployments_page() -> None:
     st.title("Deployments")
-    st.caption("Deployment targets reuse AnomaVision's existing export and validation infrastructure.")
+    st.caption(
+        "Deployment targets reuse AnomaVision's existing export and validation infrastructure."
+    )
     for key, label in DEPLOYMENT_TARGETS.items():
         st.checkbox(label, value=(key == "cpu"), disabled=True, key=f"target-{key}")
-    st.info("Deployment orchestration is intentionally not implemented yet. The existing deployment-validation engine remains the source of truth.")
+    st.info(
+        "Deployment orchestration is intentionally not implemented yet. The existing deployment-validation engine remains the source of truth."
+    )
 
 
 def live_page() -> None:
     st.title("Live Inspection")
-    st.caption("Live camera/stream inference will use the existing AnomaVision runtime.")
-    st.info("Live runtime wiring is the next Studio milestone. No duplicate inference engine is being introduced.")
+    st.caption(
+        "Live camera/stream inference will use the existing AnomaVision runtime."
+    )
+    st.info(
+        "Live runtime wiring is the next Studio milestone. No duplicate inference engine is being introduced."
+    )
 
 
 def monitoring_page() -> None:
     st.title("Monitoring")
     st.caption("Production health, latency and data drift.")
     cols = st.columns(4)
-    with cols[0]: metric_card("Runtime", "Idle", "no deployment selected")
-    with cols[1]: metric_card("FPS", "—", "live runtime")
-    with cols[2]: metric_card("Latency", "—", "milliseconds")
-    with cols[3]: metric_card("Drift", "—", "reference comparison")
-    st.info("The existing drift monitor remains unchanged. Studio will consume its observer-only status and metrics here.")
+    with cols[0]:
+        metric_card("Runtime", "Idle", "no deployment selected")
+    with cols[1]:
+        metric_card("FPS", "—", "live runtime")
+    with cols[2]:
+        metric_card("Latency", "—", "milliseconds")
+    with cols[3]:
+        metric_card("Drift", "—", "reference comparison")
+    st.info(
+        "The existing drift monitor remains unchanged. Studio will consume its observer-only status and metrics here."
+    )
 
 
 def settings_page() -> None:
@@ -377,12 +441,21 @@ def settings_page() -> None:
 
 inject_style()
 page = sidebar()
-if page == "Dashboard": dashboard()
-elif page == "Projects": projects_page()
-elif page == "Datasets": datasets_page()
-elif page == "Training": render_training_page(store, STORE_ROOT, ALGORITHMS)
-elif page == "Models": models_page()
-elif page == "Deployments": deployments_page()
-elif page == "Live": live_page()
-elif page == "Monitoring": monitoring_page()
-else: settings_page()
+if page == "Dashboard":
+    dashboard()
+elif page == "Projects":
+    projects_page()
+elif page == "Datasets":
+    datasets_page()
+elif page == "Training":
+    render_training_page(store, STORE_ROOT, ALGORITHMS)
+elif page == "Models":
+    models_page()
+elif page == "Deployments":
+    deployments_page()
+elif page == "Live":
+    live_page()
+elif page == "Monitoring":
+    monitoring_page()
+else:
+    settings_page()

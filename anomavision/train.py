@@ -94,6 +94,13 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         help="Backbone feature layers.",
     )
     parser.add_argument(
+        "--patchcore_layer_indices",
+        type=int,
+        nargs="+",
+        default=None,
+        help="ResNet stages used by PatchCore; defaults to [1, 2].",
+    )
+    parser.add_argument(
         "--coreset_ratio",
         type=float,
         default=None,
@@ -226,14 +233,18 @@ def run_training(args):
         "cfg: algorithm=%s | backbone=%s | layers=%s",
         config.algorithm,
         config.backbone,
-        config.layer_indices,
+        (
+            config.get("patchcore_layer_indices", [1, 2])
+            if str(config.algorithm).lower() == "patchcore"
+            else config.layer_indices
+        ),
     )
 
     if str(config.algorithm).lower() == "patchcore":
         model = anomavision.PatchCore(
             backbone=config.backbone,
             device=device,
-            layer_indices=config.layer_indices,
+            layer_indices=config.get("patchcore_layer_indices", [1, 2]),
             coreset_ratio=float(config.coreset_ratio),
             max_memory_patches=config.max_memory_patches,
             patch_grid=config.patch_grid,

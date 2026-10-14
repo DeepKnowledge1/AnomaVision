@@ -1,8 +1,11 @@
 """Read-only Studio adapters for existing production monitoring artifacts."""
+
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any
+
 
 def list_monitoring_reports(project_dir: Path | str) -> list[dict[str, Any]]:
     root = Path(project_dir) / "monitoring"
@@ -18,6 +21,7 @@ def list_monitoring_reports(project_dir: Path | str) -> list[dict[str, Any]]:
             payload["_file"] = str(path)
             reports.append(payload)
     return sorted(reports, key=lambda item: str(item.get("_file", "")), reverse=True)
+
 
 def monitoring_summary(project_dir: Path | str) -> dict[str, Any]:
     reports = list_monitoring_reports(project_dir)

@@ -1,5 +1,8 @@
 """Fair AnomaVision vs Anomalib benchmark for PaDiM, PatchCore and EfficientAD."""
 
+# git checkout 4207f163a556c5dbf59ed58ed372d8c47dc526a0
+
+
 from __future__ import annotations
 
 import argparse
@@ -28,6 +31,19 @@ warnings.filterwarnings("ignore")
 
 ANOMAVISION_ROOT = Path(__file__).resolve().parents[2]
 ANOMALIB_ROOT = ANOMAVISION_ROOT.parent / "anomalib"
+
+
+# AnomaVision
+coreset_ratio = 0.02
+max_memory_patches = 2048
+patch_grid = 14
+n_neighbors = 1
+
+
+# Anomalib
+coreset_sampling_ratio = 0.02
+num_neighbors = 1
+precision = "float32"
 
 
 def add_local_anomalib_to_path() -> Path:
@@ -78,8 +94,45 @@ MVTec_CLASSES = [
     "transistor",
     "wood",
     "zipper",
+    "candle",
+    "capsules",
+    "cashew",
+    "chewinggum",
+    "fryum",
+    "macaroni1",
+    "macaroni2",
+    "pcb1",
+    "pcb2",
+    "pcb3",
+    "pcb4",
+    "pipe_fryum",
 ]
 ALGORITHMS = ("padim", "patchcore", "efficientad")
+
+
+class AnomaVisionCompatiblePool(torch.nn.Module):
+    def forward(self, features):
+        features = torch.nn.functional.adaptive_avg_pool2d(
+            features, (patch_grid, patch_grid)
+        )
+        return torch.nn.functional.normalize(features, p=2, dim=1)
+
+
+def load_torchvision_weights_into_anomalib(model) -> None:
+    """Make Anomalib use the same torchvision ResNet18 weights as AnomaVision.
+
+    Anomalib builds its backbone with timm (default weights: resnet18.a1_in1k),
+    while AnomaVision uses torchvision ResNet18_Weights.DEFAULT. Key names match,
+    so the torchvision weights can be loaded directly into the timm extractor.
+    """
+    from torchvision.models import ResNet18_Weights, resnet18
+
+    tv_state = resnet18(weights=ResNet18_Weights.DEFAULT).state_dict()
+    target = model.model.feature_extractor.feature_extractor  # timm features_only net
+    result = target.load_state_dict(tv_state, strict=False)
+    if result.missing_keys:
+        raise RuntimeError(f"Backbone weights not fully loaded: {result.missing_keys}")
+    target.eval()
 
 
 @dataclass
@@ -328,8 +381,32 @@ class BenchmarkRunner:
         )
         return train, test
 
+    # def _build_anomalib_datamodule(self, algorithm: str):
+    #     # from anomalib.data import MVTecAD
+
+    #     from anomalib.data import Visa as MVTecAD
+    #     kwargs = {
+    #         "root": str(self.dataset_path),
+    #         "category": self.class_name,
+    #         "train_batch_size": 1 if algorithm == "efficientad" else BATCH_SIZE,
+    #         "eval_batch_size": BATCH_SIZE,
+    #         "num_workers": 0,
+    #         "seed": self.seed,
+    #     }
+    #     params = inspect.signature(MVTecAD).parameters
+    #     datamodule = MVTecAD(**{k: v for k, v in kwargs.items() if k in params})
+    #     datamodule.setup()
+    #     return datamodule
+
     def _build_anomalib_datamodule(self, algorithm: str):
-        from anomalib.data import MVTecAD
+        from anomalib.data import MVTecAD, Visa
+
+        dataset_name = self.dataset_path.name.lower()
+
+        if "visa" in dataset_name:
+            datamodule_cls = Visa
+        else:
+            datamodule_cls = MVTecAD
 
         kwargs = {
             "root": str(self.dataset_path),
@@ -339,14 +416,32 @@ class BenchmarkRunner:
             "num_workers": 0,
             "seed": self.seed,
         }
-        params = inspect.signature(MVTecAD).parameters
-        datamodule = MVTecAD(**{k: v for k, v in kwargs.items() if k in params})
+
+        params = inspect.signature(datamodule_cls).parameters
+
+        # Apply the benchmark image size only if supported by this constructor.
+        if "image_size" in params:
+            kwargs["image_size"] = IMAGE_SIZE
+
+        datamodule = datamodule_cls(
+            **{key: value for key, value in kwargs.items() if key in params}
+        )
         datamodule.setup()
         return datamodule
 
     @staticmethod
     def _state_dict_size_mb(model: torch.nn.Module, path: Path) -> float:
-        torch.save(model.state_dict(), path)
+        # Count only what inference actually uses: drop ResNet stages above the
+        # highest requested layer (and the classifier head). AnomaVision keeps the
+        # full ResNet18 registered, Anomalib's timm extractor is already truncated.
+        unused = tuple(f".layer{i}." for i in range(max(LAYER_INDICES) + 2, 5))
+        unused += (".fc.",)
+        state = {
+            key: value
+            for key, value in model.state_dict().items()
+            if not any(tag in f".{key}" for tag in unused)
+        }
+        torch.save(state, path)
         return path.stat().st_size / 1024**2
 
     def _benchmark_latency(
@@ -391,17 +486,18 @@ class BenchmarkRunner:
                 backbone=BACKBONE,
                 device=self.device,
                 layer_indices=LAYER_INDICES,
-                coreset_ratio=0.02,
-                max_memory_patches=2048,
-                patch_grid=14,
-                n_neighbors=1,
+                coreset_ratio=coreset_ratio,
+                max_memory_patches=max_memory_patches,
+                patch_grid=patch_grid,
+                n_neighbors=n_neighbors,
                 coreset_seed=self.seed,
             )
+
         if algorithm == "efficientad":
             from anomavision import EfficientAD
 
             return EfficientAD(
-                backbone=BACKBONE, device=self.device, epochs=5, learning_rate=1e-3
+                backbone=BACKBONE, device=self.device, epochs=1, learning_rate=1e-3
             )
         raise ValueError(f"Unsupported algorithm: {algorithm}")
 
@@ -419,15 +515,62 @@ class BenchmarkRunner:
                 pre_trained=True,
                 n_features=N_FEATURES,
             )
+        # if algorithm == "patchcore":
+        #     return Patchcore(
+        #         backbone=BACKBONE,
+        #         layers=LAYERS,
+        #         pre_trained=True,
+        #         coreset_sampling_ratio=coreset_sampling_ratio,
+        #         num_neighbors=num_neighbors,
+        #         precision=precision,
+        #     )
+
+        # if algorithm == "patchcore":
+        #     return Patchcore(
+        #         backbone=BACKBONE,
+        #         layers=LAYERS,
+        #         pre_trained=True,
+        #         coreset_sampling_ratio=coreset_sampling_ratio,
+        #         num_neighbors=num_neighbors,
+        #         precision=precision,
+        #         pre_processor=Patchcore.configure_pre_processor(
+        #             image_size=IMAGE_SIZE,
+        #         ),
+        #     )
+
+        # if algorithm == "patchcore":
+        #     model = Patchcore(
+        #         backbone=BACKBONE,
+        #         layers=LAYERS,
+        #         pre_trained=True,
+        #         coreset_sampling_ratio=coreset_sampling_ratio,
+        #         num_neighbors=num_neighbors,
+        #         precision=precision,
+        #         pre_processor=Patchcore.configure_pre_processor(
+        #             image_size=IMAGE_SIZE,
+        #         ),
+        #     )
+
+        #     # model.model.feature_pooler = AnomaVisionCompatiblePool()
+        #     return model
+
         if algorithm == "patchcore":
-            return Patchcore(
+            model = Patchcore(
                 backbone=BACKBONE,
                 layers=LAYERS,
                 pre_trained=True,
-                coreset_sampling_ratio=0.02,
+                coreset_sampling_ratio=2048 / (900 * 14 * 14),
                 num_neighbors=1,
                 precision="float32",
+                pre_processor=Patchcore.configure_pre_processor(
+                    image_size=IMAGE_SIZE,
+                ),
             )
+
+            load_torchvision_weights_into_anomalib(model)
+            model.model.feature_pooler = AnomaVisionCompatiblePool()
+            return model
+
         if algorithm == "efficientad":
             # return EfficientAd(model_size="s", lr=1e-3, padding=False, pad_maps=True)
 
@@ -459,6 +602,22 @@ class BenchmarkRunner:
             np.concatenate(maps),
         )
 
+    @staticmethod
+    def _anomalib_preprocess(model, images):
+        """Apply the SAME transform Lightning applies during fit.
+
+        Do NOT use ``model.pre_processor(images)``: its forward() uses the
+        export transform (Resize without antialiasing), which does not match
+        the antialiased Resize used when the memory bank was built.
+        """
+        return model.pre_processor.transform(images)
+
+    @staticmethod
+    def _anomalib_raw(model, images):
+        """Torch model on already pre-processed images, skipping Anomalib's
+        post-processor (min-max normalisation + clamping), like AnomaVision."""
+        return model.model(images)
+
     def _evaluate_anomalib(self, model, test_loader) -> Tuple[float, float]:
         image_labels, image_scores, masks, maps = [], [], [], []
         model.eval()
@@ -467,7 +626,9 @@ class BenchmarkRunner:
                 images = _get_anomalib_batch_value(batch, "image").to(self.device)
                 labels = _get_anomalib_batch_value(batch, "label")
                 gt_masks = _get_anomalib_batch_value(batch, "mask")
-                scores, anomaly_maps = extract_anomalib_outputs(model(images))
+                scores, anomaly_maps = extract_anomalib_outputs(
+                    self._anomalib_raw(model, self._anomalib_preprocess(model, images))
+                )
                 image_labels.append(tensor_to_numpy(labels))
                 image_scores.append(tensor_to_numpy(scores))
                 masks.append(tensor_to_numpy(gt_masks))
@@ -536,6 +697,7 @@ class BenchmarkRunner:
         train_loader = datamodule.train_dataloader()
         test_loader = datamodule.test_dataloader()
         model = self._build_anomalib_model(algorithm).to(self.device)
+
         metrics = ModelMetrics(
             f"Anomalib {algorithm.title()}",
             algorithm,
@@ -554,6 +716,14 @@ class BenchmarkRunner:
             enable_progress_bar=False,
             enable_checkpointing=False,
         )
+
+        if algorithm == "patchcore":
+            patch_count = len(train_loader.dataset) * 14 * 14
+            model.coreset_sampling_ratio = min(
+                0.02,
+                2048 / patch_count,
+            )
+
         self._reset_memory()
         start = time.perf_counter()
         engine.fit(model=model, datamodule=datamodule)
@@ -567,12 +737,17 @@ class BenchmarkRunner:
         timing_batch = _get_anomalib_batch_value(next(iter(test_loader)), "image")[
             :TIMING_BATCH_SIZE
         ]
+        # Pre-process once, outside timing (AnomaVision's dataset also pre-processes
+        # outside predict()), so latency measures model inference only.
+        timing_batch = self._anomalib_preprocess(model, timing_batch)
         (
             metrics.latency_ms,
             metrics.p95_latency_ms,
             metrics.throughput_fps,
             metrics.inference_memory_mb,
-        ) = self._benchmark_latency(model, timing_batch, model)
+        ) = self._benchmark_latency(
+            model, timing_batch, lambda x: self._anomalib_raw(model, x)
+        )
         metrics.image_auroc, metrics.pixel_auroc = self._evaluate_anomalib(
             model, test_loader
         )
@@ -583,6 +758,10 @@ class BenchmarkRunner:
 
     def report(self, results: List[ModelMetrics]) -> None:
         rows = [asdict(item) for item in results]
+        rows = [
+            {k: (round(v, 4) if isinstance(v, float) else v) for k, v in row.items()}
+            for row in rows
+        ]
         frame = pd.DataFrame(rows)
         frame["environment"] = frame["environment"].apply(
             lambda value: json.dumps(value, sort_keys=True)
@@ -636,7 +815,11 @@ class BenchmarkRunner:
             html_rows.append(
                 "<tr>"
                 + "".join(
-                    f"<td>{row[k]}</td>"
+                    (
+                        f"<td>{row[k]:.4f}</td>"
+                        if isinstance(row[k], float)
+                        else f"<td>{row[k]}</td>"
+                    )
                     for k in [
                         "algorithm",
                         "name",
@@ -675,16 +858,76 @@ def main() -> None:
         description="Benchmark AnomaVision against a local Anomalib checkout."
     )
     parser.add_argument("--dataset_path", required=True)
-    parser.add_argument("--class_name", choices=MVTec_CLASSES, required=True)
+    parser.add_argument("--class_name", choices=MVTec_CLASSES)
+    parser.add_argument(
+        "--all_classes",
+        action="store_true",
+        help="Run the benchmark for all available MVTec classes in the dataset.",
+    )
     parser.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda"))
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument(
         "--algorithms", nargs="+", choices=ALGORITHMS, default=list(ALGORITHMS)
     )
     args = parser.parse_args()
-    BenchmarkRunner(args.dataset_path, args.class_name, args.device, args.seed).run(
-        args.algorithms
-    )
+
+    if args.class_name and args.all_classes:
+        parser.error("Use either --class_name or --all_classes, not both.")
+
+    if not args.class_name and not args.all_classes:
+        parser.error("You must specify either --class_name or --all_classes.")
+
+    dataset_path = Path(args.dataset_path)
+    if not dataset_path.is_dir():
+        parser.error(f"Dataset path does not exist: {dataset_path}")
+
+    if args.all_classes:
+        classes = [
+            class_name
+            for class_name in MVTec_CLASSES
+            if (dataset_path / class_name).is_dir()
+        ]
+
+        if not classes:
+            parser.error(f"No supported MVTec classes found under: {dataset_path}")
+
+        print("\n" + "=" * 80)
+        print("AnomaVision vs Anomalib — ALL CLASSES")
+        print("=" * 80)
+        print(f"Dataset  : {dataset_path}")
+        print(f"Classes  : {len(classes)}")
+        print(f"Algorithms: {', '.join(args.algorithms)}")
+        print(f"Device   : {args.device}")
+        print("\nClasses:")
+        for class_name in classes:
+            print(f"  - {class_name}")
+        print("=" * 80)
+
+        for index, class_name in enumerate(classes, start=1):
+            print("\n" + "#" * 80)
+            print(f"CLASS {index}/{len(classes)}: {class_name}")
+            print("#" * 80)
+
+            BenchmarkRunner(
+                str(dataset_path),
+                class_name,
+                args.device,
+                args.seed,
+            ).run(args.algorithms)
+
+            gc.collect()
+            set_seed(args.seed)
+
+        print("\n" + "=" * 80)
+        print("ALL CLASS BENCHMARKS COMPLETED")
+        print("=" * 80)
+    else:
+        BenchmarkRunner(
+            str(dataset_path),
+            args.class_name,
+            args.device,
+            args.seed,
+        ).run(args.algorithms)
 
 
 if __name__ == "__main__":

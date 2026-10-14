@@ -18,7 +18,9 @@ def discover_images(root: Path | str, recursive: bool = True) -> list[Path]:
         raise ValueError(f"Image directory does not exist: {root}")
     iterator = root.rglob("*") if recursive else root.glob("*")
     return sorted(
-        path for path in iterator if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+        path
+        for path in iterator
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     )
 
 
@@ -73,7 +75,9 @@ def inspect_dataset(root: Path | str, recursive: bool = True) -> dict[str, Any]:
         "failed_count": len(failures),
         "duplicate_count": sum(len(group) - 1 for group in duplicate_groups),
         "duplicate_groups": duplicate_groups,
-        "resolutions": dict(sorted(resolutions.items(), key=lambda item: item[1], reverse=True)),
+        "resolutions": dict(
+            sorted(resolutions.items(), key=lambda item: item[1], reverse=True)
+        ),
         "records": records,
         "failures": failures,
     }

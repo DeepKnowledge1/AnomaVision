@@ -43,8 +43,8 @@ class PatchCore(torch.nn.Module):
         backbone: Feature-extraction backbone. Supported values are ``resnet18`` and
             ``wide_resnet50``.
         device: Device used for feature extraction and nearest-neighbor distance.
-        layer_indices: ResNet feature stages to concatenate. Defaults to ``[0, 1]``
-            to keep the lightweight model fast and compact.
+        layer_indices: ResNet feature stages to concatenate. Defaults to ``[1, 2]``
+            to provide multi-scale mid/deep features while remaining lightweight.
         memory_bank: Optional precomputed bank with shape ``(num_patches, dim)``.
             Providing it creates a ready-to-infer model.
         coreset_ratio: Fraction of extracted normal patches to retain. Must be in
@@ -90,7 +90,7 @@ class PatchCore(torch.nn.Module):
             )
         self.device = torch.device(device)
         self.backbone = backbone
-        self.layer_indices = list(layer_indices or [0, 1])
+        self.layer_indices = list(layer_indices or [1, 2])
         self.coreset_ratio = float(coreset_ratio)
         self.max_memory_patches = max_memory_patches
         self.patch_grid = patch_grid
@@ -219,12 +219,38 @@ class PatchCore(torch.nn.Module):
                 chunks.append(embeddings.reshape(-1, embeddings.shape[-1]).cpu())
         if not chunks:
             raise ValueError("Cannot fit PatchCore with an empty dataloader.")
+        # bank = torch.cat(chunks, dim=0)
+        # keep = max(1, int(bank.shape[0] * self.coreset_ratio))
+        # if self.max_memory_patches is not None:
+        #     keep = min(keep, int(self.max_memory_patches))
+        # if keep < bank.shape[0]:
+        #     bank = self._select_coreset(bank, keep)
+        # self.memory_bank = bank.to(self.device)
+
         bank = torch.cat(chunks, dim=0)
         keep = max(1, int(bank.shape[0] * self.coreset_ratio))
+
         if self.max_memory_patches is not None:
             keep = min(keep, int(self.max_memory_patches))
+
+        # # DEBUG: inspect the feature bank before coreset selection.
+        # print("\n[AnomaVision PatchCore] Before coreset selection")
+        # print(f"  Feature matrix shape : {tuple(bank.shape)}")
+        # print(f"  Feature matrix dtype : {bank.dtype}")
+        # print(f"  Feature matrix device: {bank.device}")
+        # print(f"  Coreset ratio        : {self.coreset_ratio}")
+        # print(f"  Maximum memory patches: {self.max_memory_patches}")
+        # print(f"  Requested coreset size: {keep}")
+        # print(f"  Coreset method       : {self.coreset_method}")
+
         if keep < bank.shape[0]:
             bank = self._select_coreset(bank, keep)
+
+        # DEBUG: inspect the selected memory bank.
+        # print("[AnomaVision PatchCore] After coreset selection")
+        # print(f"  Memory bank shape    : {tuple(bank.shape)}")
+        # print(f"  Memory bank dtype    : {bank.dtype}")
+
         self.memory_bank = bank.to(self.device)
 
     @torch.no_grad()
@@ -260,9 +286,17 @@ class PatchCore(torch.nn.Module):
         nearest_chunks = []
         for query_chunk in flat.split(self.search_chunk_size, dim=0):
             similarity = query_chunk @ self.memory_bank.transpose(0, 1)
-            nearest_chunks.append(
-                (2.0 - 2.0 * similarity.amax(dim=1)).clamp_min_(0).sqrt_()
+            best_similarity = similarity.amax(dim=1)
+
+            # Cosine similarity is mathematically <= 1 for normalized vectors.
+            # Round-off near 1 is amplified by sqrt(2 - 2 * similarity), creating
+            # spurious nonzero distances for identical embeddings across runtimes.
+            best_similarity = torch.where(
+                best_similarity >= 1.0 - 1e-6,
+                torch.ones_like(best_similarity),
+                best_similarity,
             )
+            nearest_chunks.append((2.0 - 2.0 * best_similarity).clamp_min_(0).sqrt_())
         nearest = torch.cat(nearest_chunks).reshape(batch.shape[0], width, height)
         scores = nearest.flatten(1).amax(1)
         if not return_map:
