@@ -343,7 +343,6 @@ async def predict_anomaly(
             boundary_image_base64=boundary_image_base64,
             heatmap_image_base64=heatmap_image_base64,
             # highlighted_image_base64=highlighted_image_base64,
-            drift_report=drift_report,
         )
 
     except Exception as e:
