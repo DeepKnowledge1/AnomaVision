@@ -286,9 +286,17 @@ class PatchCore(torch.nn.Module):
         nearest_chunks = []
         for query_chunk in flat.split(self.search_chunk_size, dim=0):
             similarity = query_chunk @ self.memory_bank.transpose(0, 1)
-            nearest_chunks.append(
-                (2.0 - 2.0 * similarity.amax(dim=1)).clamp_min_(0).sqrt_()
+            best_similarity = similarity.amax(dim=1)
+
+            # Cosine similarity is mathematically <= 1 for normalized vectors.
+            # Round-off near 1 is amplified by sqrt(2 - 2 * similarity), creating
+            # spurious nonzero distances for identical embeddings across runtimes.
+            best_similarity = torch.where(
+                best_similarity >= 1.0 - 1e-6,
+                torch.ones_like(best_similarity),
+                best_similarity,
             )
+            nearest_chunks.append((2.0 - 2.0 * best_similarity).clamp_min_(0).sqrt_())
         nearest = torch.cat(nearest_chunks).reshape(batch.shape[0], width, height)
         scores = nearest.flatten(1).amax(1)
         if not return_map:

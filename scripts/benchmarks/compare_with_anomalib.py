@@ -1,5 +1,8 @@
 """Fair AnomaVision vs Anomalib benchmark for PaDiM, PatchCore and EfficientAD."""
 
+# git checkout 4207f163a556c5dbf59ed58ed372d8c47dc526a0
+
+
 from __future__ import annotations
 
 import argparse
