@@ -101,16 +101,6 @@ def _assert_pt_and_onnx_match(model, batch, tmp_path: Path, filename: str):
         # Strict score comparison remains unchanged.
         np.testing.assert_allclose(onnx_scores, pt_scores, rtol=1e-3, atol=1e-4)
 
-        # Temporary diagnostics to investigate CI-only map mismatches.
-        print(f"\n[{filename}] PyTorch map range: {pt_maps.min()} .. {pt_maps.max()}")
-        print(f"[{filename}] ONNX map range: {onnx_maps.min()} .. {onnx_maps.max()}")
-        print(
-            f"[{filename}] Maximum absolute map difference: "
-            f"{np.max(np.abs(onnx_maps - pt_maps))}"
-        )
-        print(f"[{filename}] PyTorch zero pixels: " f"{np.count_nonzero(pt_maps == 0)}")
-        print(f"[{filename}] ONNX zero pixels: " f"{np.count_nonzero(onnx_maps == 0)}")
-
         # Keep strict pixel-map tolerance; do not weaken the regression test.
         np.testing.assert_allclose(onnx_maps, pt_maps, rtol=1e-3, atol=1e-4)
 
