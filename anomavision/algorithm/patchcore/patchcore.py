@@ -296,9 +296,7 @@ class PatchCore(torch.nn.Module):
                 torch.ones_like(best_similarity),
                 best_similarity,
             )
-            nearest_chunks.append(
-                (2.0 - 2.0 * best_similarity).clamp_min_(0).sqrt_()
-            )
+            nearest_chunks.append((2.0 - 2.0 * best_similarity).clamp_min_(0).sqrt_())
         nearest = torch.cat(nearest_chunks).reshape(batch.shape[0], width, height)
         scores = nearest.flatten(1).amax(1)
         if not return_map:
