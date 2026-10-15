@@ -720,60 +720,69 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
 function ModelsPage({models,onRefresh,onNavigate,onDeploy}:{models:Model[];onRefresh:()=>Promise<void>;onNavigate:(p:Page)=>void;onDeploy:(id:string)=>void}) {
   const trainedCount=models.filter(m=>Boolean(m.path)||["trained","ready","completed","validated"].includes(String(m.status).toLowerCase())).length;
   const latest=models[0];
+  const readyCount=models.filter(m=>Boolean(m.path)&&["trained","ready","completed","validated"].includes(String(m.status).toLowerCase())).length;
 
   return <>
     <div className="page-head">
       <div>
         <div className="eyebrow">Model registry</div>
         <h1>Models</h1>
-        <p className="subtitle">Your trained models, ready to validate and move toward deployment.</p>
+        <p className="subtitle">Inspect trained artifacts, check reported readiness, and run deployment validation.</p>
       </div>
       <button className="secondary" onClick={onRefresh}><Activity size={13}/> Refresh</button>
     </div>
 
     <div className="grid-4 section">
-      <Stat icon={<BrainCircuit size={15}/>} label="Models" value={String(models.length)} meta={models.length ? "trained artifacts" : "train your first model"}/>
-      <Stat icon={<ShieldCheck size={15}/>} label="Ready to validate" value={String(trainedCount)} meta={trainedCount ? "model artifacts available" : "train or inspect a model"} green={trainedCount > 0}/>
-      <Stat icon={<FlaskConical size={15}/>} label="Latest method" value={latest?.algorithm ? latest.algorithm.toUpperCase() : "—"} meta={latest?.class_name || "no model yet"}/>
-      <Stat icon={<Rocket size={15}/>} label="Next step" value={models.length && trainedCount ? "Validate" : "Train"} meta={models.length && trainedCount ? "check model before deployment" : "create a deployable artifact"}/>
+      <Stat icon={<BrainCircuit size={15}/>} label="Registered models" value={String(models.length)} meta={models.length ? "available in this project" : "train your first model"}/>
+      <Stat icon={<ShieldCheck size={15}/>} label="Artifact paths" value={String(models.filter(m=>Boolean(m.path)).length)} meta="path reported by Studio" green={models.some(m=>Boolean(m.path))}/>
+      <Stat icon={<CircleGauge size={15}/>} label="Ready to validate" value={String(readyCount)} meta="path and completed status reported" green={readyCount>0}/>
+      <Stat icon={<Rocket size={15}/>} label="Next step" value={models.length ? "Validate" : "Train"} meta={models.length ? "run deployment validation" : "create a model artifact"}/>
     </div>
 
     <section className="section">
       <div className="section-head">
         <div>
-          <div className="section-title">Trained artifacts</div>
-          <div className="subtitle">Each model keeps the original AnomaVision training configuration and artifact.</div>
+          <div className="section-title">Model registry</div>
+          <div className="subtitle">Artifact and status details are shown exactly as reported by the Studio API.</div>
         </div>
       </div>
 
       {models.length ? <div className="model-list">
         {models.map((m,index) => {
-          const artifact = m.path ? m.path.split(/[\\/]/).pop() : "model.pt";
-          return <div className="card model-card" key={m.id}>
+          const artifact = m.path ? m.path.split(/[\\/]/).pop() : null;
+          const normalizedStatus=String(m.status||"unknown").toLowerCase();
+          const statusReady=["trained","ready","completed","validated"].includes(normalizedStatus);
+          const hasPath=Boolean(m.path);
+          const readiness=hasPath&&statusReady?"Ready to validate":hasPath?"Artifact path available":statusReady?"Completed · path not reported":"Review status";
+          return <div className="card model-card model-registry-card" key={m.id}>
             <div className="model-main">
               <div className="model-icon"><BrainCircuit size={17}/></div>
               <div className="model-info">
                 <div className="model-title">
-                  <span>{m.algorithm.toUpperCase()}</span>
+                  <span>{String(m.algorithm||"Unknown").toUpperCase()}</span>
                   <span className="model-separator">·</span>
-                  <span>{m.class_name}</span>
-                  {index === 0 && <span className="latest-chip">Latest</span>}
+                  <span>{m.class_name||"Unspecified class"}</span>
+                  {index===0&&<span className="latest-chip">Latest</span>}
                 </div>
-                <div className="model-run">{m.run_name}</div>
-                <div className="model-meta"><span>Artifact</span><code>{artifact}</code><span>Status</span><b>{m.status}</b></div>
+                <div className="model-run">{m.run_name||"Unnamed training run"}</div>
+                <div className="model-readiness-line"><span className={hasPath&&statusReady?"model-readiness-ready":"model-readiness-review"}><span className="status-dot"/>{readiness}</span><span className="model-raw-status">Reported status: <b>{m.status||"unknown"}</b></span></div>
+                <div className="model-artifact-details">
+                  <div><span>Artifact filename</span><b>{artifact||"Not reported"}</b></div>
+                  <div><span>Artifact path</span><code title={m.path||"No artifact path reported"}>{m.path||"No artifact path reported"}</code></div>
+                  <div><span>Model ID</span><code>{m.id}</code></div>
+                </div>
               </div>
             </div>
             <div className="model-actions">
-              <span className="badge"><span className="status-dot"/>{m.status}</span>
-              <button className="secondary" onClick={() => onDeploy(m.id)}><Rocket size={13}/> Validate & deploy</button>
+              <button className="secondary" onClick={()=>onDeploy(m.id)}><Rocket size={13}/> Validate & deploy</button>
             </div>
           </div>;
         })}
       </div> : <div className="card empty-state">
         <div className="dataset-empty-icon"><BrainCircuit size={20}/></div>
-        <strong>No trained models yet</strong>
-        <span>Train a model first. Once training finishes, its artifact will appear here with a direct deployment path.</span>
-        <button className="primary" onClick={() => onNavigate("Training")}><Play size={13}/> Start training</button>
+        <strong>No registered models yet</strong>
+        <span>Finish a training run to register its artifact here. Model status and artifact paths will be shown when the Studio API reports them.</span>
+        <button className="primary" onClick={()=>onNavigate("Training")}><Play size={13}/> Start training</button>
       </div>}
     </section>
   </>;
