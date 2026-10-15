@@ -542,3 +542,17 @@ label { color: #34475a !important; font-size: 13px !important; font-weight: 650 
   .overview-hero h1 { font-size: 24px !important; }
   .connection-pill { display: none !important; }
 }
+
+
+/* Keep the drift alert red even on striped rows and during hover. */
+.data-table tbody tr td.drift-cell,
+.data-table tbody tr:nth-child(even) td.drift-cell {
+  background: #fee4e2 !important;
+  color: #912018 !important;
+  font-weight: 800 !important;
+  box-shadow: inset 3px 0 0 #d92d20 !important;
+}
+.data-table tbody tr:hover td.drift-cell,
+.data-table tbody tr:nth-child(even):hover td.drift-cell {
+  background: #fecdca !important;
+}
