@@ -448,7 +448,10 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
   const [pickerBusy,setPickerBusy]=useState(false);
   const [jobId,setJobId]=useState("");
   const [jobStatus,setJobStatus]=useState("");
-  const [resolved,setResolved]=useState<{dataset_path:string;class_name:string;train_good:string}|null>(null);
+  const [progress,setProgress]=useState<number|null>(null);
+  const [startedAt,setStartedAt]=useState<number|null>(null);
+  const [elapsedSeconds,setElapsedSeconds]=useState(0);
+  const [resolved,setResolved=useState<{dataset_path:string;class_name:string;train_good:string}|null>(null);
   const [availableAlgorithms,setAvailableAlgorithms]=useState<Catalog["algorithms"]>({});
   const [catalogLoading,setCatalogLoading]=useState(true);
   const [catalogError,setCatalogError]=useState("");
@@ -482,9 +485,17 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
     try{
       const job=JSON.parse(saved);
       if(!job.job_id){window.localStorage.removeItem(key);return}
-      setJobId(String(job.job_id));setBusy(true);setJobStatus("Resuming training…");
+      setJobId(String(job.job_id));setStartedAt(Number(job.started_at)||Date.now());setBusy(true);setJobStatus("Resuming training…");
     }catch{window.localStorage.removeItem(key)}
   },[project?.id]);
+
+  useEffect(()=>{
+    if(!busy||!startedAt||typeof window==="undefined")return;
+    const updateElapsed=()=>setElapsedSeconds(Math.max(0,Math.floor((Date.now()-startedAt)/1000)));
+    updateElapsed();
+    const interval=window.setInterval(updateElapsed,1000);
+    return()=>window.clearInterval(interval);
+  },[busy,startedAt]);
 
   useEffect(()=>{
     if(!project || !jobId || typeof window==="undefined")return;
@@ -498,15 +509,17 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
         if(!r.ok)throw new Error(d.detail||"Could not read training status");
         if(cancelled)return;
         setJobStatus(d.message|| (d.status==="queued"?"Waiting to start…":"Training in progress"));
+        const rawProgress=Number(d.progress_percent ?? d.progress);
+        setProgress(Number.isFinite(rawProgress)?Math.max(0,Math.min(100,rawProgress<=1?rawProgress*100:rawProgress)):null);
         if(d.status==="completed"){
-          window.localStorage.removeItem(key);setResult(d.result||{});setBusy(false);setJobId("");setJobStatus("Training completed");
+          window.localStorage.removeItem(key);setResult(d.result||{});setProgress(100);setBusy(false);setJobId("");setJobStatus("Training completed");setStartedAt(null);
           await onFinishedRef.current();return;
         }
         if(d.status==="failed"){
-          window.localStorage.removeItem(key);setError(d.message||"Training failed");setBusy(false);setJobId("");return;
+          window.localStorage.removeItem(key);setError(d.message||"Training failed");setBusy(false);setJobId("");setStartedAt(null);setProgress(null);return;
         }
         timer=window.setTimeout(poll,1500);
-      }catch(e){if(!cancelled){setError(e instanceof Error?e.message:"Could not read training status");setBusy(false)}}
+      }catch(e){if(!cancelled){setJobStatus("Connection interrupted — retrying status check");timer=window.setTimeout(poll,3000)}}
     };
     void poll();
     return()=>{cancelled=true;if(timer!==undefined)window.clearTimeout(timer)};
@@ -578,9 +591,10 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
       const r=await fetch(`${API_BASE}/api/projects/${project.id}/training`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();
       if(!r.ok)throw new Error(d.detail||"Could not start training");
-      if(!d.job_id){setResult(d);setJobStatus("Training completed");setBusy(false);await onFinishedRef.current();return;}
-      setJobId(d.job_id);setJobStatus("Training queued…");
-      if(typeof window!=="undefined") window.localStorage.setItem("anomavision:training-job:"+project.id,JSON.stringify({job_id:d.job_id}));
+      if(!d.job_id){setResult(d);setProgress(100);setJobStatus("Training completed");setBusy(false);setStartedAt(null);await onFinishedRef.current();return;}
+      const start=Date.now();
+      setStartedAt(start);setElapsedSeconds(0);setProgress(null);setJobId(d.job_id);setJobStatus("Training queued…");
+      if(typeof window!=="undefined") window.localStorage.setItem("anomavision:training-job:"+project.id,JSON.stringify({job_id:d.job_id,started_at:start}));
     }catch(e){setError(e instanceof Error?e.message:"Training failed");setJobStatus("Training stopped");setBusy(false)}
   }
 
@@ -655,7 +669,7 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
             <div className="training-action-copy">
               <strong>{busy?"Training run in progress":result?"Training complete":"Ready to train"}</strong>
               <span>{busy?(jobStatus||"Training in progress"):result?"Your model is ready to review in Models.":`${(availableAlgorithms[algorithm]?.name||algorithm).toUpperCase()} · ${resize||"config.yml image size"} · ${className||"config.yml class"}`}</span>
-              {busy&&<div className="training-progress" role="progressbar" aria-label="Training progress" aria-valuetext={jobStatus||"Training in progress"}><span/></div>}
+              {busy&&<div className="training-progress-wrap"><div className="training-progress" role="progressbar" aria-label="Training progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress===null?undefined:Math.round(progress)} aria-valuetext={progress===null?(jobStatus||"Training in progress"):Math.round(progress)+"% complete"}><span className={progress===null?"is-indeterminate":""} style={progress===null?undefined:{width:Math.max(4,progress)+"%"}}/></div><div className="training-progress-meta"><span>{progress===null?"Progress reported by the training service when available":Math.round(progress)+"% complete"}</span><span>Elapsed {Math.floor(elapsedSeconds/60)}m {elapsedSeconds%60}s</span></div></div>}
             </div>
             <button className="primary" onClick={train} disabled={busy||catalogLoading||!algorithmOptions.length}>
               {busy?<><LoaderCircle className="training-spinner" size={14}/>{jobStatus||"Training…"}</>:<><Play size={13}/>Start training</>}
