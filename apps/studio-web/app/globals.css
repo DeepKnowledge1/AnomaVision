@@ -1990,3 +1990,6 @@ input::placeholder{color:#a0a7b3}
   .training-spinner,.training-progress>span{animation:none}
   .training-progress>span{width:100%;opacity:.65}
 }
+
+/* Highlight inference rows when the reported drift exceeds its configured threshold. */
+.data-table td.drift-cell{background:#fef2f2;color:#b91c1c;font-weight:700;box-shadow:inset 3px 0 0 #dc2626}
