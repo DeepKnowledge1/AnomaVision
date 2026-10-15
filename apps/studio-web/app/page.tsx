@@ -577,7 +577,12 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
     if(!project){setError("Select a project first.");return;}
     if(!dataset.trim()){setError("Add your dataset path first.");return;}
     if(!availableAlgorithms[algorithm]){setError("Choose a training method supported by the connected Studio API.");return;}
-    setBusy(true);setError("");setResult(null);setJobStatus("Validating dataset…");
+    if(batch.trim()&&(!Number.isInteger(Number(batch))||Number(batch)<1)){setError("Batch size must be a positive whole number.");return;}
+    if(resize.trim()){
+      const dims=resize.split(",").map(v=>v.trim());
+      if(dims.length!==2||dims.some(v=>!/^\\d+$/.test(v)||Number(v)<1)){setError("Image size must contain two positive whole numbers, for example 224,224.");return;}
+    }
+    setBusy(true);setError("");setResult(null);setProgress(null);setJobStatus("Validating dataset…");
     try{
       const canonical=await validateDataset();
       if(!canonical){setBusy(false);return;}
