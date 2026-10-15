@@ -1150,6 +1150,25 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
   }
   async function predictFrame(showBusy=true){if(!videoRef.current||cameraBusyRef.current)return;cameraBusyRef.current=true;if(showBusy)setCameraBusy(true);setCameraError("");try{const video=videoRef.current;await waitForCameraFrame(video);const canvas=document.createElement("canvas");const [targetW,targetH]=studioConfig?.resize||[224,224];canvas.width=targetW;canvas.height=targetH;canvas.getContext("2d")?.drawImage(video,0,0);const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.9));if(!blob)throw new Error("Could not capture camera frame");const body=new FormData();body.append("file",blob,"camera.jpg");const started=performance.now();const r=await fetch(inferenceUrl+"/predict?include_visualizations=true",{method:"POST",body});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"Inference API error ("+r.status+")");setInferenceHealth("online");setInferenceHealthMessage("Inference API is connected and responding.");const row={filename:"camera.jpg",...d};setResult(d);setHistory(prev=>[row,...prev].slice(0,20));const elapsed=performance.now()-started;setTotalMs(Number(d.latency_ms)||elapsed);setCameraFrames(prev=>prev+1);const now=Date.now();fpsTimesRef.current=[...fpsTimesRef.current.filter(t=>now-t<5000),now];setCameraFps(fpsTimesRef.current.length/5);}catch(e){const message=e instanceof TypeError?"Cannot reach inference API at "+inferenceUrl+". Check that the inference service is running on port 8001.":(e instanceof Error?e.message:"Camera inference failed");setInferenceHealth("offline");setInferenceHealthMessage(message);setCameraError(message)}finally{cameraBusyRef.current=false;if(showBusy)setCameraBusy(false)}}
   function startAutoInference(){if(!camera||cameraLoopRef.current!==null)return;setCameraAuto(true);void predictFrame(false);cameraLoopRef.current=window.setInterval(()=>void predictFrame(false),cameraInterval);}
+  async function createImagePreview(file:File):Promise<string>{
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onerror=()=>reject(new Error("Could not preview "+file.name));
+      reader.onload=()=>{
+        const image=new Image();
+        image.onerror=()=>reject(new Error("Could not decode "+file.name+" for preview"));
+        image.onload=()=>{
+          const scale=Math.min(1,1200/image.width,1200/image.height);
+          const canvas=document.createElement("canvas");
+          canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));
+          const context=canvas.getContext("2d");if(!context){reject(new Error("Image preview is unavailable"));return;}
+          context.drawImage(image,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL("image/jpeg",0.82));
+        };
+        image.src=String(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
   async function predictBatch(){
     if(!files.length)return;
     setBusy(true);setError("");setResult(null);
@@ -1162,7 +1181,9 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
         const d=await r.json().catch(()=>({}));
         if(!r.ok)throw new Error(d.detail||"Inference API error ("+r.status+")");
         setInferenceHealth("online");setInferenceHealthMessage("Inference API is connected and responding.");
-        rows.push({filename:file.name,...d});
+        let originalPreview:string|undefined;
+        try{originalPreview=await createImagePreview(file)}catch{/* Preview failure must not block a valid inference result. */}
+        rows.push({filename:file.name,...d,original_image_data_url:originalPreview});
       }
       const d=rows.length===1?rows[0]:{batch_results:rows.map(({filename,...result})=>({filename,result}))};
       setResult(d);
@@ -1188,7 +1209,9 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
       <div className="card"><div className="section-head"><div><div className="section-title">Latency</div><div className="subtitle">Per-image inference time.</div></div></div><div className="spark-bars">{history.slice(0,12).reverse().map((x,i)=>{const v=x.error?0:Number(x.latency_ms)||0;const max=Math.max(...history.slice(0,12).map(y=>Number(y.latency_ms)||0),1);return <div className="spark-column" key={i} title={x.filename}><div className="spark-bar" style={{height:`${Math.max(4,v/max*100)}%`}}/><span>{i+1}</span></div>})}</div></div>
     </div>}
     <div className="card"><div className="section-head"><div><div className="section-title">Recent inference events</div><div className="subtitle">Latest results from this Studio session.</div></div></div>
-      {history.length===0?<div className="empty-state">No inference events yet.</div>:<div className="table-wrap"><table className="data-table"><thead><tr><th>Image</th><th>Score</th><th>Latency</th><th>Drift</th><th>Status</th><th>Result</th></tr></thead><tbody>{history.map((x,i)=>{const driftScore=x.drift_report?.drift_score!=null?Number(x.drift_report.drift_score):null;const driftThreshold=x.drift_report?.threshold!=null?Number(x.drift_report.threshold):(studioConfig?.drift?.threshold!=null?Number(studioConfig.drift.threshold):0.2);const driftDetected=Boolean(x.drift_report)&&(x.drift_report.status==="drift"||(driftScore!=null&&driftThreshold!=null&&driftScore>=driftThreshold));return <tr key={i}><td>{x.filename}</td><td>{x.error?"—":Number(x.anomaly_score).toFixed(4)}</td><td>{x.error?"—":`${Number(x.latency_ms||0).toFixed(1)} ms`}</td><td className={driftDetected?"drift-cell":""}>{x.drift_report?(`${driftScore!=null?driftScore.toFixed(3):"—"} · ${x.drift_report.status||"observed"}`):"—"}</td><td>{x.error?"Error":activeThreshold!=null?(Number(x.anomaly_score||0)>=Number(activeThreshold)?"Anomaly":"Normal"):(x.is_anomaly?"Anomaly":"Normal")}</td><td>{x.error||"Completed"}</td></tr>})}</tbody></table></div>}
+      {history.length===0?<div className="empty-state">No inference events yet.</div>:<div className="table-wrap"><table className="data-table"><thead><tr><th>Image</th><th>Score</th><th>Latency</th><th>Drift</th><th>Status</th><th>Result</th></tr></thead><tbody>
+        {history.map((x,i)=>{const anomaly=!x.error&&(threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly));const selected=x.filename===latest?.filename;return <tr key={i} onClick={()=>setSelectedFilename(x.filename||"")} className={selected?"result-history-selected":""} tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelectedFilename(x.filename||"")}}} aria-selected={selected}><td><button className="result-history-open" onClick={e=>{e.stopPropagation();setSelectedFilename(x.filename||"")}}>{x.filename||"Image"}</button></td><td>{x.error?"—":Number(x.anomaly_score).toFixed(4)}</td><td>{x.error?"—":Number(x.latency_ms||0).toFixed(1)+" ms"}</td><td>{x.error?"—":anomaly?"Anomaly":"Normal"}</td><td>{x.error?"Error":"Completed"}</td></tr>})}
+      </tbody></table></div>}
     </div></div>; }function ResultsPage({session,onNavigate}:{session:{result:any;history:any[];config:any}|null;onNavigate:(p:Page)=>void}) {
   const result=session?.result;
   const history=session?.history||[];
@@ -1196,7 +1219,11 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
   const threshold=config?.thresholds?.[config?.algorithm] ?? null;
   const rows=history.filter(x=>!x.error);
   const anomalies=rows.filter(x=>threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly));
-  const latest=rows[0];
+  const [selectedFilename,setSelectedFilename]=useState("");
+  const [overlayOpacity,setOverlayOpacity]=useState(48);
+  const latest=rows.find(x=>x.filename===selectedFilename)||rows[0];
+  const latestIsAnomaly=Boolean(latest)&&(threshold!=null?Number(latest.anomaly_score)>=Number(threshold):Boolean(latest.is_anomaly));
+  const heatmapSrc=latest?.heatmap_image_base64?"data:image/png;base64,"+latest.heatmap_image_base64:null;
 
   if(!session || !result) return <div className="page-head">
     <div><div className="eyebrow">Results</div><h1>No results yet</h1><p className="subtitle">Run an image or batch inference first. Your latest session will appear here.</p></div>
@@ -1218,18 +1245,21 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
 
     {latest && <section className="card result-hero">
       <div className="section-head"><div><div className="section-title">Latest result</div><div className="subtitle">{latest.filename}</div></div><span className={`result-status ${threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"anomaly":"normal"}`}>{threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"ANOMALY":"NORMAL"}</span></div>
-      <div className="result-score"><strong>{Number(latest.anomaly_score).toFixed(4)}</strong><span>Anomaly score</span><small>Decision threshold: {threshold!=null?Number(threshold).toFixed(4):"not available"}</small></div>
+      <div className="result-score"><strong>{Number(latest.anomaly_score).toFixed(4)}</strong><span>Anomaly score</span><small>Decision threshold: {threshold!=null?Number(threshold).toFixed(4):"not available"}</small><div className="result-score-context"><span className={latestIsAnomaly?"result-context-anomaly":"result-context-normal"}>{latestIsAnomaly?"Above threshold · review recommended":"Below threshold · classified as normal"}</span><span>{latest.latency_ms!=null?"Inference "+Number(latest.latency_ms).toFixed(1)+" ms":"Latency unavailable"}</span></div></div>
       <div className="batch-result-list">
         {latest && <article className="batch-result-item" key={latest.filename || "current-result"}>
           <div className="batch-result-head">
             <div><strong>{latest.filename || "Current image"}</strong><span>Score {Number(latest.anomaly_score||0).toFixed(4)} · {Number(latest.latency_ms||0).toFixed(1)} ms</span></div>
             <span className={`result-status ${(threshold!=null ? Number(latest.anomaly_score)>=Number(threshold) : Boolean(latest.is_anomaly))?"anomaly":"normal"}`}>{(threshold!=null ? Number(latest.anomaly_score)>=Number(threshold) : Boolean(latest.is_anomaly))?"ANOMALY":"NORMAL"}</span>
           </div>
-          <div className="result-visual-grid">
-            {latest.heatmap_image_base64 && <div className="result-visual"><span>Heatmap</span><img src={`data:image/png;base64,${latest.heatmap_image_base64}`} alt="Anomaly heatmap"/></div>}
-            {latest.boundary_image_base64 && <div className="result-visual"><span>Boundary</span><img src={`data:image/png;base64,${latest.boundary_image_base64}`} alt="Anomaly boundary visualization"/></div>}
-            {latest.highlighted_image_base64 && <div className="result-visual"><span>Highlighted regions</span><img src={`data:image/png;base64,${latest.highlighted_image_base64}`} alt="Highlighted anomaly regions"/></div>}
-            {!latest.heatmap_image_base64&&!latest.boundary_image_base64&&!latest.highlighted_image_base64&&<div className="result-no-visual">No visual evidence was returned for this image.</div>}
+          <div className="result-review-toolbar">
+            <div><strong>Visual inspection</strong><span>Compare the uploaded image with the model evidence.</span></div>
+            <label className="overlay-opacity-control">Heatmap opacity <b>{overlayOpacity}%</b><input type="range" min="0" max="100" step="5" value={overlayOpacity} onChange={e=>setOverlayOpacity(Number(e.target.value))} disabled={!heatmapSrc||!latest.original_image_data_url}/></label>
+          </div>
+          <div className="result-visual-grid result-visual-grid-review">
+            <div className="result-visual"><span>Original image</span>{latest.original_image_data_url?<img src={latest.original_image_data_url} alt={"Original image: "+(latest.filename||"inference input")}/>:<div className="result-no-visual">Original preview is unavailable for this result. Run a new inference to capture it.</div>}</div>
+            <div className="result-visual"><span>Heatmap overlay</span>{heatmapSrc&&latest.original_image_data_url?<div className="result-overlay-stack"><img src={latest.original_image_data_url} alt="Original image under anomaly heatmap"/><img className="result-overlay-layer" style={{opacity:overlayOpacity/100}} src={heatmapSrc} alt="Anomaly heatmap overlay"/></div>:latest.highlighted_image_base64?<img src={"data:image/png;base64,"+latest.highlighted_image_base64} alt="Highlighted anomaly regions"/>:<div className="result-no-visual">Heatmap overlay is not available for this result.</div>}</div>
+            {latest.boundary_image_base64&&<div className="result-visual"><span>Boundary evidence</span><img src={"data:image/png;base64,"+latest.boundary_image_base64} alt="Anomaly boundary visualization"/>}</div>}
           </div>
         </article>}
       </div>
