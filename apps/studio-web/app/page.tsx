@@ -972,8 +972,12 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
   const driftScore=latest?.drift_score!=null?Number(latest.drift_score):null;
   const psi=latest?.psi!=null?Number(latest.psi):null;
   const driftDetected=status==="drift" || (latest?.threshold!=null && driftScore!=null && driftScore>=Number(latest.threshold));
+  const currentSamples=Number(latest?.current_samples ?? summary?.window_fill ?? summary?.samples_seen ?? 0);
+  const minimumSamples=Number(summary?.min_samples ?? latest?.min_samples ?? 100);
+  const lowConfidence=Boolean(latest) && currentSamples < minimumSamples;
+  const displayDriftDetected=driftDetected && !lowConfidence;
   const healthy=!driftDetected && (status==="ok" || status==="healthy" || status==="stable" || status==="no_data");
-  const statusLabel=status==="no_data"?"No data":status.replaceAll("_"," ");
+  const statusLabel=lowConfidence?"Low confidence":status==="no_data"?"No data":status.replaceAll("_"," ");
 
   return <div className={visible ? "" : "studio-page-hidden"}>
     <div className="page-head">
@@ -990,40 +994,26 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
       <strong>Select a project first</strong>
       <span>Monitoring reports are stored inside each Studio project.</span>
     </div> : <>
-      <div className={`monitor-status ${driftDetected?"drift":healthy?"healthy":"attention"}`}>
+      <div className={`monitor-status ${displayDriftDetected?"drift":healthy?"healthy":"attention"}`}>
         <div className="monitor-status-icon"><span className="status-dot"/></div>
         <div>
-          <strong>{latest ? (driftDetected?"Drift detected":healthy?"Monitoring is healthy":"Review drift signals") : "Monitoring is ready"}</strong>
-          <span>{latest ? `Latest report · ${warnings.length} warning${warnings.length===1?"":"s"} · ${summary?.report_count||0} stored reports` : "No monitoring state yet. Start inference to begin collecting production samples."}</span>
+          <strong>{latest ? (lowConfidence?"Low confidence — collect more samples":driftDetected?"Drift detected":healthy?"Monitoring is healthy":"Review drift signals") : "Monitoring is ready"}</strong>
+          <span>{latest ? (lowConfidence ? `${currentSamples} of ${minimumSamples} minimum samples collected · treat this signal as preliminary` : `Latest report · ${warnings.length} warning${warnings.length===1?"":"s"} · ${summary?.report_count||0} stored reports`) : "No monitoring data yet. Run inference to begin collecting production samples."}</span>
         </div>
         <div className="monitor-status-value">{statusLabel}</div>
       </div>
 
       {error&&<div className="form-error">{error}</div>}
 
-      {driftDetected && (
-        <div className="drift-alarm" role="alert">
-          <div className="drift-alarm-icon"><Activity size={19}/></div>
-          <div className="drift-alarm-copy">
-            <strong>Significant data change detected</strong>
-            <span>The current images are noticeably different from the reference data used by the model. Check the input data before relying on production results.</span>
-          </div>
-          <div className="drift-alarm-metric">
-            <span>Drift level</span>
-            <b>{driftScore!=null ? (driftDetected ? "Major" : driftScore >= 0.5 ? "Significant" : driftScore >= 0.2 ? "Slight" : "Normal") : "—"}</b>
-            <small>Technical score {driftScore!=null?driftScore.toFixed(3):"—"} · threshold {latest?.threshold!=null?Number(latest.threshold).toFixed(3):"—"}</small>
-          </div>
-        </div>
-      )}
 
       <div className="grid-4 section">
         <Stat
           icon={<Activity size={15}/>}
           label="Data drift"
-          value={driftScore==null ? "No data" : driftDetected ? "Major change" : driftScore >= 0.5 ? "Significant change" : driftScore >= 0.2 ? "Slight change" : "Normal"}
-          meta={driftScore==null ? "Waiting for monitoring data" : `Score ${driftScore.toFixed(3)} · ${driftDetected ? "attention required" : "within expected range"}`}
+          value={driftScore==null ? "No data" : lowConfidence ? "Low confidence" : driftDetected ? "Drift detected" : driftScore >= 0.5 ? "Significant change" : driftScore >= 0.2 ? "Slight change" : "Normal"}
+          meta={driftScore==null ? "Waiting for monitoring data" : lowConfidence ? `${currentSamples}/${minimumSamples} samples · preliminary signal` : `Score ${driftScore.toFixed(3)} · ${driftDetected ? "attention required" : "within expected range"}`}
           green={driftScore!=null && !driftDetected}
-          alert={driftDetected}
+          alert={displayDriftDetected}
         />
         <Stat icon={<Database size={15}/>} label="Distribution change" value={psi!=null?psi.toFixed(3):"—"} meta="PSI · technical detail"/>
         <Stat icon={<ShieldCheck size={15}/>} label="Warnings" value={String(warnings.length)} meta={warnings.length?"Review latest signals":"No warnings reported"} green={!warnings.length}/>
