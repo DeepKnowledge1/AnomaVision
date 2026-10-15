@@ -697,3 +697,22 @@ body, .main, .content { color: #172536 !important; }
 .performance-no-samples strong{font-size:13px;color:var(--av-text)}
 .performance-no-samples span{font-size:12px;line-height:1.55;max-width:620px}
 @media(max-width:700px){.performance-percentile-grid{grid-template-columns:1fr}.performance-percentile{padding:12px}.performance-percentile strong{font-size:22px}.latency-sparkline{gap:4px}.latency-bar-value{font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg)}}
+
+/* Model registry: explicit readiness and readable artifact provenance. */
+.model-registry-card{align-items:stretch;gap:18px}
+.model-registry-card .model-main{align-items:flex-start;min-width:0;flex:1}
+.model-registry-card .model-info{min-width:0;width:100%}
+.model-readiness-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px}
+.model-readiness-ready,.model-readiness-review{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:650}
+.model-readiness-ready{color:var(--av-success)}
+.model-readiness-review{color:var(--av-warning)}
+.model-raw-status{font-size:11px;color:var(--av-muted)}
+.model-raw-status b{color:var(--av-text);font-weight:650}
+.model-artifact-details{display:grid;grid-template-columns:minmax(120px,.7fr) minmax(180px,1.8fr) minmax(120px,.7fr);gap:10px;margin-top:14px}
+.model-artifact-details>div{display:flex;flex-direction:column;gap:5px;min-width:0;padding:10px 11px;border:1px solid var(--av-border);border-radius:8px;background:var(--av-surface-2)}
+.model-artifact-details>div>span{font-size:10px;text-transform:uppercase;letter-spacing:.055em;font-weight:700;color:var(--av-muted)}
+.model-artifact-details b,.model-artifact-details code{font-size:12px;line-height:1.45;color:var(--av-text);overflow-wrap:anywhere;word-break:break-word}
+.model-artifact-details code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.model-registry-card .model-actions{align-self:flex-start;flex-shrink:0}
+@media(max-width:800px){.model-artifact-details{grid-template-columns:repeat(2,minmax(0,1fr))}.model-artifact-details>div:nth-child(2){grid-column:1/-1}}
+@media(max-width:560px){.model-artifact-details{grid-template-columns:1fr}.model-artifact-details>div:nth-child(2){grid-column:auto}.model-registry-card{padding:14px}.model-registry-card .model-actions{width:100%}.model-registry-card .model-actions button{width:100%;justify-content:center}}
