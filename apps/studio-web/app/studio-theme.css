@@ -664,3 +664,13 @@ body, .main, .content { color: #172536 !important; }
   .result-review-toolbar { align-items: stretch; }
   .overlay-opacity-control { min-width: 0; }
 }
+
+
+/* Training run status: report elapsed time and use a truthful indeterminate state when no percentage is supplied. */
+.training-progress-wrap { display: grid; gap: 7px; margin-top: 12px; }
+.training-progress { position: relative; width: 100%; height: 7px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }
+.training-progress > span { display: block; height: 100%; border-radius: inherit; background: #2563eb; transition: width 220ms ease; }
+.training-progress > span.is-indeterminate { width: 32%; animation: av-training-progress 1.5s ease-in-out infinite; }
+.training-progress-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; color: #475569; font-size: 12px; }
+@keyframes av-training-progress { 0% { transform: translateX(-110%); } 100% { transform: translateX(330%); } }
+@media (prefers-reduced-motion: reduce) { .training-progress > span.is-indeterminate { animation: none; width: 45%; transform: none; } }
