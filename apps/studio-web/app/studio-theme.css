@@ -783,3 +783,17 @@ body, .main, .content { color: #172536 !important; }
 .monitor-warning-mark { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: 0 0 18px; border-radius: 50%; background: #fef0c7; color: #854a0e; font-size: 12px; font-weight: 800; }
 .monitor-warnings { display: grid; gap: 8px; }
 @media (max-width: 600px) { .monitor-drift-score { align-items: flex-start; } .monitor-drift-score-meta { justify-items: start; } .monitor-sample-progress > div:first-child { align-items: flex-start; flex-direction: column; gap: 4px; } }
+
+/* Inference history: keep threshold-triggered drift values visibly red, including row hover states. */
+.data-table tbody td.drift-cell,
+.data-table tbody tr:nth-child(even) td.drift-cell,
+.data-table tbody tr:hover td.drift-cell {
+  background: #fee4e2 !important;
+  color: #912018 !important;
+  font-weight: 800 !important;
+  box-shadow: inset 3px 0 0 #d92d20 !important;
+}
+.data-table td.drift-cell .drift-cell-value.is-alert {
+  color: #912018 !important;
+  font-weight: 850 !important;
+}
