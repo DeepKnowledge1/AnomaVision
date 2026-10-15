@@ -1274,7 +1274,7 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
       <div className="form-grid"><label className="field"><span>Images</span><input type="file" accept="image/*" multiple onChange={e=>setFiles(Array.from(e.target.files||[]).slice(0,10))}/></label><label className="field"><span>Folder</span><input type="file" accept="image/*" multiple {...({webkitdirectory:""} as any)} onChange={e=>setFiles(Array.from(e.target.files||[]).slice(0,10))}/></label></div>
       {files.length>0&&<div className="file-list">{files.map((f,i)=><span key={i} className="status-chip">{f.name}</span>)}</div>}
       <button className="primary" onClick={predictBatch} disabled={!files.length||busy}><Play size={13}/>{busy?"Analyzing…":files.length===1?"Analyze image":"Run batch inference"}</button>{error&&<div className="form-error">{error}</div>}
-      {result&&<div className="deployment-result"><div className="performance-grid"><div><span>Processed</span><b>{result.batch_results?.length??0}</b></div><div><span>Anomalies</span><b>{history.slice(0,result.batch_results?.length??0).filter(x=>!x.error&&(activeThreshold!=null?Number(x.anomaly_score||0)>=Number(activeThreshold):x.is_anomaly)).length}</b></div><div><span>Threshold</span><b>{activeThreshold!=null?Number(activeThreshold).toFixed(3):"—"}</b></div><div><span>Drift</span><b>{history.some(x=>x.drift_report)?"Observed":"Not enabled"}</b></div></div></div>}
+      {result&&<div className="deployment-result"><div className="performance-grid"><div><span>Processed</span><b>{result.batch_results?.length??0}</b></div><div><span>Anomalies</span><b>{history.slice(0,result.batch_results?.length??0).filter(x=>!x.error&&(activeThreshold!=null?Number(x.anomaly_score||0)>=Number(activeThreshold):x.is_anomaly)).length}</b></div><div><span>Threshold</span><b>{activeThreshold!=null?Number(activeThreshold).toFixed(3):"—"}</b></div><div><span>Latest drift</span><b className={latestDriftDetected?"result-drift-alert":""}>{latestDriftScore!=null?latestDriftScore.toFixed(3):latestDriftReport?.status||"Not enabled"}</b></div></div></div>}
       {result&&<button className="secondary results-cta" onClick={onResults}><ShieldCheck size={13}/> Open detailed results</button>}
     </div>
     {history.length>0&&<div className="live-charts">
@@ -1294,11 +1294,15 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
   const [overlayOpacity,setOverlayOpacity]=useState(48);
   const latest=rows.find(x=>x.filename===selectedFilename)||rows[0];
   const latestIsAnomaly=Boolean(latest)&&(threshold!=null?Number(latest.anomaly_score)>=Number(threshold):Boolean(latest.is_anomaly));
+  const latestDriftReport=latest?.drift_report;
+  const latestDriftScore=latestDriftReport?.drift_score!=null?Number(latestDriftReport.drift_score):null;
+  const latestDriftThreshold=latestDriftReport?.threshold!=null?Number(latestDriftReport.threshold):(config?.drift?.threshold!=null?Number(config.drift.threshold):0.2);
+  const latestDriftDetected=Boolean(latestDriftReport)&&(latestDriftReport.status==="drift"||(latestDriftScore!=null&&latestDriftScore>=latestDriftThreshold));
   const heatmapSrc=latest?.heatmap_image_base64?"data:image/png;base64,"+latest.heatmap_image_base64:null;
   function exportCsv(){
     const escapeCsv=(value:unknown)=>'"'+String(value??"").replace(/"/g,'""')+'"';
-    const lines=[["Image","Anomaly score","Latency (ms)","Decision","Status"].map(escapeCsv).join(","),
-      ...history.map(x=>[x.filename,x.error?"":x.anomaly_score,x.error?"":x.latency_ms,x.error?"":(threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly))?"Anomaly":"Normal",x.error?"Error":"Completed"].map(escapeCsv).join(","))];
+    const lines=[["Image","Anomaly score","Latency (ms)","Decision","Drift score","Drift status","Status"].map(escapeCsv).join(","),
+      ...history.map(x=>[x.filename,x.error?"":x.anomaly_score,x.error?"":x.latency_ms,x.error?"":(threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly))?"Anomaly":"Normal",x.error?"":x.drift_report?.drift_score??"",x.error?"":x.drift_report?.status??"",x.error?"Error":"Completed"].map(escapeCsv).join(","))];
     const blob=new Blob(["\uFEFF"+lines.join("\r\n")],{type:"text/csv;charset=utf-8;"});
     const url=URL.createObjectURL(blob);const link=document.createElement("a");
     link.href=url;link.download="anomavision-inference-results.csv";document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
@@ -1323,7 +1327,7 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
     </div>
 
     {latest && <section className="card result-hero">
-      <div className="section-head"><div><div className="section-title">Latest result</div><div className="subtitle">{latest.filename}</div></div><span className={`result-status ${threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"anomaly":"normal"}`}>{threshold!=null&&Number(latest.anomaly_score)>=Number(threshold)?"ANOMALY":"NORMAL"}</span></div>
+      <div className="section-head"><div><div className="section-title">Latest result</div><div className="subtitle">{latest.filename}</div></div><div className="result-status-group"><span className={`result-status ${latestIsAnomaly?"anomaly":"normal"}`}>{latestIsAnomaly?"ANOMALY":"NORMAL"}</span>{latestDriftReport&&<span className={`result-status ${latestDriftDetected?"anomaly":"normal"}`}>{latestDriftDetected?"DRIFT ALERT":latestDriftReport.status==="warming_up"?"DRIFT WARMING":"NO DRIFT ALERT"}</span>}</div></div>
       <div className="result-score"><strong>{Number(latest.anomaly_score).toFixed(4)}</strong><span>Anomaly score</span><small>Decision threshold: {threshold!=null?Number(threshold).toFixed(4):"not available"}</small><div className="result-score-context"><span className={latestIsAnomaly?"result-context-anomaly":"result-context-normal"}>{latestIsAnomaly?"Above threshold · review recommended":"Below threshold · classified as normal"}</span><span>{latest.latency_ms!=null?"Inference "+Number(latest.latency_ms).toFixed(1)+" ms":"Latency unavailable"}</span></div></div>
       <div className="batch-result-list">
         {latest && <article className="batch-result-item" key={latest.filename || "current-result"}>
@@ -1346,8 +1350,8 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
 
     <section className="card">
       <div className="section-head"><div><div className="section-title">Inference history</div><div className="subtitle">Results from the current Studio session.</div></div></div>
-      <div className="table-wrap"><table className="data-table"><thead><tr><th>Image</th><th>Score</th><th>Latency</th><th>Decision</th><th>Status</th></tr></thead><tbody>
-        {history.map((x,i)=>{const anomaly=!x.error&&(threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly));const selected=x.filename===latest?.filename;return <tr key={i} onClick={()=>setSelectedFilename(x.filename||"")} className={selected?"result-history-selected":""} tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelectedFilename(x.filename||"")}}} aria-selected={selected}><td><button className="result-history-open" onClick={e=>{e.stopPropagation();setSelectedFilename(x.filename||"")}}>{x.filename||"Image"}</button></td><td>{x.error?"—":Number(x.anomaly_score).toFixed(4)}</td><td>{x.error?"—":Number(x.latency_ms||0).toFixed(1)+" ms"}</td><td>{x.error?"—":anomaly?"Anomaly":"Normal"}</td><td>{x.error?"Error":"Completed"}</td></tr>})}
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>Image</th><th>Score</th><th>Latency</th><th>Decision</th><th>Drift</th><th>Status</th></tr></thead><tbody>
+        {history.map((x,i)=>{const anomaly=!x.error&&(threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly));const rowDriftScore=x.drift_report?.drift_score!=null?Number(x.drift_report.drift_score):null;const rowDriftThreshold=x.drift_report?.threshold!=null?Number(x.drift_report.threshold):(config?.drift?.threshold!=null?Number(config.drift.threshold):0.2);const rowDriftDetected=Boolean(x.drift_report)&&(x.drift_report.status==="drift"||(rowDriftScore!=null&&rowDriftScore>=rowDriftThreshold));const selected=x.filename===latest?.filename;return <tr key={i} onClick={()=>setSelectedFilename(x.filename||"")} className={selected?"result-history-selected":""} tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelectedFilename(x.filename||"")}}} aria-selected={selected}><td><button className="result-history-open" onClick={e=>{e.stopPropagation();setSelectedFilename(x.filename||"")}}>{x.filename||"Image"}</button></td><td>{x.error?"—":Number(x.anomaly_score).toFixed(4)}</td><td>{x.error?"—":Number(x.latency_ms||0).toFixed(1)+" ms"}</td><td>{x.error?"—":anomaly?"Anomaly":"Normal"}</td><td className={rowDriftDetected?"drift-cell":""}>{x.drift_report?<span className={rowDriftDetected?"drift-cell-value is-alert":"drift-cell-value"}>{rowDriftScore!=null?rowDriftScore.toFixed(3):"—"} · {x.drift_report.status||"observed"}</span>:"—"}</td><td>{x.error?"Error":"Completed"}</td></tr>})}
       </tbody></table></div>
     </section>
 
