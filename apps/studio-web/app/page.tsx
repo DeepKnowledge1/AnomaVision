@@ -1222,6 +1222,14 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
   const latest=rows.find(x=>x.filename===selectedFilename)||rows[0];
   const latestIsAnomaly=Boolean(latest)&&(threshold!=null?Number(latest.anomaly_score)>=Number(threshold):Boolean(latest.is_anomaly));
   const heatmapSrc=latest?.heatmap_image_base64?"data:image/png;base64,"+latest.heatmap_image_base64:null;
+  function exportCsv(){
+    const escapeCsv=(value:unknown)=>'"'+String(value??"").replace(/"/g,'""')+'"';
+    const lines=[["Image","Anomaly score","Latency (ms)","Decision","Status"].map(escapeCsv).join(","),
+      ...history.map(x=>[x.filename,x.error?"":x.anomaly_score,x.error?"":x.latency_ms,x.error?"":(threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly))?"Anomaly":"Normal",x.error?"Error":"Completed"].map(escapeCsv).join(","))];
+    const blob=new Blob(["\\uFEFF"+lines.join("\\r\\n")],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);const link=document.createElement("a");
+    link.href=url;link.download="anomavision-inference-results.csv";document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+  }
 
   if(!session || !result) return <div className="page-head">
     <div><div className="eyebrow">Results</div><h1>No results yet</h1><p className="subtitle">Run an image or batch inference first. Your latest session will appear here.</p></div>
@@ -1231,7 +1239,7 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
   return <>
     <div className="page-head">
       <div><div className="eyebrow">Inference results</div><h1>Results</h1><p className="subtitle">A clear view of the latest anomaly decisions, scores and visual evidence.</p></div>
-      <button className="secondary" onClick={()=>onNavigate("Inference")}><Play size={13}/> New inference</button>
+      <div className="form-actions"><button className="secondary" onClick={exportCsv} disabled={!history.length}>Export CSV</button>{latest?.original_image_data_url&&<a className="secondary" href={latest.original_image_data_url} download={(latest.filename||"anomavision-result").replace(/[^a-zA-Z0-9._-]/g,"_")+".jpg"}>Save original</a>}<button className="secondary" onClick={()=>onNavigate("Inference")}><Play size={13}/> New inference</button></div>
     </div>
 
     <div className="grid-4 section">
