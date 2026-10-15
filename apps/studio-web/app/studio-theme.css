@@ -556,3 +556,69 @@ label { color: #34475a !important; font-size: 13px !important; font-weight: 650 
 .data-table tbody tr:nth-child(even):hover td.drift-cell {
   background: #fecdca !important;
 }
+
+
+/* Follow-up UX pass: narrower reading width and reliable small-text contrast. */
+.content {
+  max-width: 1280px !important;
+  padding-left: clamp(16px, 2.2vw, 28px) !important;
+  padding-right: clamp(16px, 2.2vw, 28px) !important;
+}
+body, .main, .content { color: #172536 !important; }
+.subtitle, .form-help, .stat-meta, .model-row-copy small, .model-run,
+.model-meta, .dataset-tip, .dataset-source, .dataset-config-card small,
+.dataset-guide-step p, .project-card-main span, .project-next span,
+.training-step small, .algorithm-option small, .monitoring-note span,
+.settings-note span, .performance-explanations span, .check-row,
+.resolution-row, .failure-row, .config-note, .live-config {
+  color: #475569 !important;
+  font-size: 12px !important;
+  line-height: 1.55 !important;
+}
+.eyebrow { color: #475569 !important; }
+.panel-head .eyebrow, .project-create-head .eyebrow,
+.dataset-hero .eyebrow, .training-advanced .eyebrow,
+.overview-lower .eyebrow, .section-head .eyebrow {
+  display: none !important;
+}
+.dataset-config-label, .dataset-config-card > div > span,
+.metric-card span, .performance-grid span, .live-metrics span,
+.technical-grid span, .training-result-grid span, .drift-metric-grid > div > span {
+  color: #475569 !important;
+  font-size: 12px !important;
+}
+.data-table td, .data-table th { font-size: 13px !important; }
+.stat-label { color: #334155 !important; font-size: 13px !important; }
+.project-next { color: #172536 !important; }
+.project-next > div:first-child strong { color: #172536 !important; font-size: 14px !important; }
+.project-flow { gap: 9px !important; font-size: 12px !important; }
+.project-flow span { color: #475569 !important; }
+.project-flow span.done { color: #087443 !important; font-weight: 750 !important; }
+.project-card .project-meta b, .project-card .project-meta small {
+  font-size: 12px !important; font-weight: 700 !important;
+}
+.training-step { font-size: 13px !important; }
+.training-step small { font-size: 12px !important; }
+.algorithm-option.selected {
+  border: 2px solid #2457d6 !important;
+  background: #eef4ff !important;
+  box-shadow: inset 0 0 0 1px rgba(36,87,214,.12) !important;
+}
+.algorithm-option.selected .algorithm-radio {
+  background: #2457d6 !important; color: #fff !important;
+  border-color: #2457d6 !important; font-weight: 800 !important;
+}
+.algorithm-option:not(.selected) .algorithm-radio {
+  border: 1.5px solid #94a3b8 !important; background: #fff !important;
+}
+.monitor-status.attention {
+  background: #fffaeb !important; border-color: #fedf89 !important;
+  box-shadow: inset 3px 0 0 #b54708 !important;
+}
+.monitor-status.attention .monitor-status-icon { background: #fff3d6 !important; }
+.monitor-status.attention .status-dot { background: #b54708 !important; }
+.monitor-status.attention strong { color: #854a0e !important; }
+.monitor-status.attention span { color: #854a0e !important; }
+@media (min-width: 1500px) {
+  .content { max-width: 1280px !important; }
+}
