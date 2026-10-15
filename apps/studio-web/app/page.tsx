@@ -1226,7 +1226,7 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
     const escapeCsv=(value:unknown)=>'"'+String(value??"").replace(/"/g,'""')+'"';
     const lines=[["Image","Anomaly score","Latency (ms)","Decision","Status"].map(escapeCsv).join(","),
       ...history.map(x=>[x.filename,x.error?"":x.anomaly_score,x.error?"":x.latency_ms,x.error?"":(threshold!=null?Number(x.anomaly_score)>=Number(threshold):Boolean(x.is_anomaly))?"Anomaly":"Normal",x.error?"Error":"Completed"].map(escapeCsv).join(","))];
-    const blob=new Blob(["\\uFEFF"+lines.join("\\r\\n")],{type:"text/csv;charset=utf-8;"});
+    const blob=new Blob(["\uFEFF"+lines.join("\r\n")],{type:"text/csv;charset=utf-8;"});
     const url=URL.createObjectURL(blob);const link=document.createElement("a");
     link.href=url;link.download="anomavision-inference-results.csv";document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
   }
