@@ -797,3 +797,9 @@ body, .main, .content { color: #172536 !important; }
   color: #912018 !important;
   font-weight: 850 !important;
 }
+
+
+/* Results page: distinguish drift alerts from the image-level anomaly decision. */
+.result-status-group { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; }
+.result-drift-alert { color: #b42318 !important; background: #fee4e2 !important; border-radius: 5px; padding: 3px 6px; }
+.result-history-selected td.drift-cell { background: #fee4e2 !important; color: #912018 !important; }
