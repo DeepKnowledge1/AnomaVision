@@ -196,7 +196,7 @@ export default function StudioPage() {
 
           {page === "Overview" && <Overview project={project} projects={projects} models={models} apiHealthy={apiHealthy} onNavigate={navigate}/>}
           {page === "Projects" && <ProjectsPage projects={projects} selectedProject={selectedProject} onSelect={setSelectedProject} onCreated={loadProjects}/>}
-          {page === "Datasets" && <DatasetsPage project={project}/>}
+          {page === "Datasets" && <DatasetsPage project={project} onNavigate={navigate}/>}
           {page === "Training" && <TrainingPage key={selectedProject || "no-project"} project={project} onFinished={() => loadModels(selectedProject)} onNavigate={navigate}/>}
           {page === "Models" && <ModelsPage models={models} onRefresh={() => loadModels(selectedProject)} onNavigate={navigate} onDeploy={(id) => { setDeploymentModelId(id); navigate("Deployments"); }}/>}
           {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>}
@@ -260,12 +260,16 @@ function ProjectsPage({ projects, selectedProject, onSelect, onCreated }: { proj
     <div className="card project-next"><div><strong>Next step</strong><span>{selectedProject ? "Your workspace is ready. Check the dataset before training." : "Create or select a project to unlock the workflow."}</span></div><div className="project-flow"><span className={selectedProject?"done":""}>1 · Project</span><span>→</span><span>2 · Dataset</span><span>→</span><span>3 · Train</span></div></div>
   </>;
 }
-function DatasetsPage({ project }: { project?: Project }) {
+function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(page:Page)=>void }) {
   const [path,setPath]=useState("");
   const [configPath,setConfigPath]=useState("");
   const [configClass,setConfigClass]=useState("default");
   const [configLoaded,setConfigLoaded]=useState(false);
   const [report,setReport]=useState<DatasetReport|null>(null);
+  useEffect(()=>{
+    if(!project || typeof window==="undefined" || !path.trim())return;
+    window.localStorage.setItem("anomavision:dataset-path:"+project.id,path.trim());
+  },[path,project?.id]);
   useEffect(()=>{
     fetch(API_BASE+"/api/config",{cache:"no-store"})
       .then(r=>r.ok?r.json():null)
@@ -316,7 +320,7 @@ function DatasetsPage({ project }: { project?: Project }) {
   }
 
   const issueCount=(report?.failed_count||0)+(report?.duplicate_count||0);
-  const ready=Boolean(report && report.image_count>0 && report.failed_count===0);
+  const ready=Boolean(report && report.image_count>0 && report.failed_count===0 && report.duplicate_count===0);
   const resolutionEntries=report?Object.entries(report.resolutions).sort((a,b)=>b[1]-a[1]):[];
   const commonResolution=resolutionEntries[0]?.[0]||"—";
 
@@ -361,7 +365,7 @@ function DatasetsPage({ project }: { project?: Project }) {
             <label>
               Dataset folder
               <div className="dataset-path-control">
-                <input value={path} onChange={e=>{setPath(e.target.value);setReport(null)}} placeholder={configLoaded?"Enter or select a local dataset folder":"Loading config…"} />
+                <input value={path} onChange={e=>{setPath(e.target.value);setReport(null);if(project&&!e.target.value.trim()&&typeof window!=="undefined")window.localStorage.removeItem("anomavision:dataset-path:"+project.id)}} placeholder={configLoaded?"Enter or select a local dataset folder":"Loading config…"} />
               </div>
             </label>
             <button className="primary" onClick={inspect} disabled={busy||!path.trim()}>
@@ -390,13 +394,15 @@ function DatasetsPage({ project }: { project?: Project }) {
             <div>
               <strong>{ready?"Ready for training":"Review your dataset first"}</strong>
               <span>{ready
-                ? `${report.valid_count} readable images found. You can continue to training.`
+                ? report.valid_count+" readable images found. You can continue to training."
                 : report.image_count===0
                   ? "No readable images were found in this folder."
-                  : `${report.failed_count} image(s) could not be read. Fix those files and check again.`}</span>
+                  : report.failed_count>0
+                    ? report.failed_count+" image(s) could not be read. Fix those files and check again."
+                    : report.duplicate_count+" duplicate image(s) found. Review them before training."}</span>
             </div>
+            <button className="primary" onClick={()=>onNavigate("Training")} disabled={!ready}>Continue to training</button>
           </div>
-
           <div className="grid-4 section">
             <Stat icon={<Database size={15}/>} label="Images" value={String(report.image_count)} meta={`${report.valid_count} readable`}/>
             <Stat icon={<ShieldCheck size={15}/>} label="Issues" value={String(report.failed_count)} meta={report.failed_count?"files need attention":"no read failures"} green={!report.failed_count}/>
@@ -512,7 +518,9 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
       .then(r=>r.ok?r.json():null)
       .then(d=>{
         if(!d)return;
-        if(d.dataset_path)setDataset(String(d.dataset_path));
+        const savedDataset=project&&typeof window!=="undefined"?window.localStorage.getItem("anomavision:dataset-path:"+project.id):null;
+        if(savedDataset)setDataset(savedDataset);
+        else if(d.dataset_path)setDataset(String(d.dataset_path));
         if(d.class_name)setClassName(String(d.class_name));
         if(Array.isArray(d.resize)&&d.resize.length===2)setResize(d.resize.join(","));
       })
