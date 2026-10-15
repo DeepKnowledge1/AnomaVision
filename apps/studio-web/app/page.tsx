@@ -909,6 +909,11 @@ function PerformancePage({project,session}:{project?:Project;session:{result:any
   const latest=session?.history?.[0];
   const latency=latest?.latency_ms!=null?Number(latest.latency_ms):null;
   const fps=latency&&latency>0?1000/latency:null;
+  const latencySamples=(session?.history||[]).map((item:any)=>Number(item?.latency_ms)).filter((value:number)=>Number.isFinite(value)&&value>0);
+  const sortedLatencies=[...latencySamples].sort((a:number,b:number)=>a-b);
+  const percentile=(p:number)=>sortedLatencies.length?sortedLatencies[Math.max(0,Math.ceil((p/100)*sortedLatencies.length)-1)]:null;
+  const recentLatencies=latencySamples.slice(0,12).reverse();
+  const maxRecentLatency=Math.max(...recentLatencies,0);
   const device=latest?.device||config?.device||"auto";
   const algorithm=config?.algorithm||latest?.algorithm||"—";
   return <>
@@ -929,6 +934,15 @@ function PerformancePage({project,session}:{project?:Project;session:{result:any
         <Stat icon={<Activity size={15}/>} label="Throughput" value={fps!=null?`${fps.toFixed(1)} img/s`:"—"} meta="derived from latest latency"/>
         <Stat icon={<BrainCircuit size={15}/>} label="Algorithm" value={String(algorithm).toUpperCase()} meta="active configuration"/>
         <Stat icon={<MonitorCog size={15}/>} label="Device" value={String(device)} meta="runtime selection"/>
+      </div>
+      <div className="performance-percentiles section">
+        <div className="section-head"><div><div className="section-title">Latency distribution</div><div className="subtitle">Percentiles are calculated from recorded inference results only.</div></div><span className="performance-sample-count">{latencySamples.length} sample{latencySamples.length===1?"":"s"}</span></div>
+        {latencySamples.length ? <>
+          <div className="performance-percentile-grid">
+            {([["p50",percentile(50),"Typical latency"],["p95",percentile(95),"95% of samples at or below"],["p99",percentile(99),"99% of samples at or below"]] as [string,number|null,string][]).map(([label,value,description])=><div className="performance-percentile" key={label}><span>{label}</span><strong>{value!=null?`${value.toFixed(1)} ms`:"—"}</strong><small>{description}</small></div>)}
+          </div>
+          {recentLatencies.length>1 && <div className="latency-sparkline-wrap"><div className="latency-sparkline-head"><b>Recent observations</b><span>Older <span aria-hidden="true">→</span> newer</span></div><div className="latency-sparkline" role="img" aria-label="Relative latency of the most recent inference samples">{recentLatencies.map((value:number,index:number)=><div className="latency-bar-column" key={`${index}-${value}`}><span className="latency-bar-value">{value.toFixed(1)} ms</span><div className="latency-bar" style={{height:`${Math.max(6,(value/maxRecentLatency)*100)}%`}}/><small>{index+1}</small></div>)}</div></div>}
+        </> : <div className="performance-no-samples"><CircleGauge size={20}/><div><strong>No latency distribution yet</strong><span>Run inference on one or more images from the Inference page. Percentiles will appear here when results include measured latency.</span></div></div>}
       </div>
       <div className="two-column">
         <section className="card">
