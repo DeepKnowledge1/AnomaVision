@@ -691,7 +691,7 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
   );
 }
 function ModelsPage({models,onRefresh,onNavigate,onDeploy}:{models:Model[];onRefresh:()=>Promise<void>;onNavigate:(p:Page)=>void;onDeploy:(id:string)=>void}) {
-  const trainedCount=models.filter(m=>m.status==="trained").length;
+  const trainedCount=models.filter(m=>Boolean(m.path)||["trained","ready","completed","validated"].includes(String(m.status).toLowerCase())).length;
   const latest=models[0];
 
   return <>
@@ -706,9 +706,9 @@ function ModelsPage({models,onRefresh,onNavigate,onDeploy}:{models:Model[];onRef
 
     <div className="grid-4 section">
       <Stat icon={<BrainCircuit size={15}/>} label="Models" value={String(models.length)} meta={models.length ? "trained artifacts" : "train your first model"}/>
-      <Stat icon={<ShieldCheck size={15}/>} label="Trained" value={String(trainedCount)} meta="available for validation" green={trainedCount > 0}/>
+      <Stat icon={<ShieldCheck size={15}/>} label="Ready to validate" value={String(trainedCount)} meta={trainedCount ? "model artifacts available" : "train or inspect a model"} green={trainedCount > 0}/>
       <Stat icon={<FlaskConical size={15}/>} label="Latest method" value={latest?.algorithm ? latest.algorithm.toUpperCase() : "—"} meta={latest?.class_name || "no model yet"}/>
-      <Stat icon={<Rocket size={15}/>} label="Next step" value={models.length ? "Deploy" : "Train"} meta={models.length ? "validate a model first" : "build your first artifact"}/>
+      <Stat icon={<Rocket size={15}/>} label="Next step" value={models.length && trainedCount ? "Validate" : "Train"} meta={models.length && trainedCount ? "check model before deployment" : "create a deployable artifact"}/>
     </div>
 
     <section className="section">
@@ -1034,12 +1034,12 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
             <div><div className="section-title">Latest drift report</div><div className="subtitle">The latest available drift report and sample statistics.</div></div>
           </div>
           {latest ? <div className="check-list">
-            <div className="check-row"><span>Reference samples</span><b>{latest.reference_samples}</b></div>
+            <div className="check-row"><span>Reference samples</span><b>{latest.reference_samples ?? "—"}</b></div>
             <div className="check-row"><span>Current samples</span><b>{latest.current_samples ?? latest.samples_seen ?? "—"}</b></div>
-            <div className="check-row"><span>Feature dimensions</span><b>{latest.feature_dimensions}</b></div>
-            <div className="check-row"><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div>
-            <div className="check-row"><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div>
-            <div className="check-row"><span>Cosine shift</span><b>{Number(latest.cosine_shift).toFixed(4)}</b></div>
+            <div className="check-row"><span>Feature dimensions</span><b>{latest.feature_dimensions ?? "—"}</b></div>
+            <div className="check-row"><span>Mean shift</span><b>{latest.mean_shift != null ? Number(latest.mean_shift).toFixed(4) : "—"}</b></div>
+            <div className="check-row"><span>Std shift</span><b>{latest.std_shift != null ? Number(latest.std_shift).toFixed(4) : "—"}</b></div>
+            <div className="check-row"><span>Cosine shift</span><b>{latest.cosine_shift != null ? Number(latest.cosine_shift).toFixed(4) : "—"}</b></div>
           </div> : <div className="monitor-empty"><Activity size={18}/><strong>No report yet</strong><span>Run production monitoring to populate this view.</span></div>}
         </section>
 
