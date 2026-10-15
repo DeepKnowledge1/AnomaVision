@@ -202,9 +202,9 @@ export default function StudioPage() {
           {page === "Deployments" && <DeploymentsPage project={project} models={models} initialModelId={deploymentModelId}/>}
           {page === "Performance" && <PerformancePage project={project} session={inferenceSession}/>}
           <MonitoringPage project={project} visible={page === "Monitoring"} />
-          
+
           {page === "Results" && <ResultsPage session={inferenceSession} onNavigate={navigate}/>}
-          
+
           {page === "Settings" && <SettingsPage apiHealthy={apiHealthy}/>}
           <div className={page === "Inference" || page === "Live" ? "" : "inference-session-background"}>
             <LivePage apiHealthy={apiHealthy} projectId={selectedProject} projectAlgorithm={project?.algorithm} visible={page === "Inference" || page === "Live"} onResult={(result, history, config) => setInferenceSession({result, history, config})} onResults={() => navigate("Results")}/>
@@ -451,8 +451,7 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
   const [progress,setProgress]=useState<number|null>(null);
   const [startedAt,setStartedAt]=useState<number|null>(null);
   const [elapsedSeconds,setElapsedSeconds]=useState(0);
-  const [resolved,setResolved=useState<{dataset_path:string;class_name:string;train_good:string}|null>(null);
-  const [availableAlgorithms,setAvailableAlgorithms]=useState<Catalog["algorithms"]>({});
+const [resolved, setResolved] = useState<{dataset_path:string;class_name:string;train_good:string} | null>(null);  const [availableAlgorithms,setAvailableAlgorithms]=useState<Catalog["algorithms"]>({});
   const [catalogLoading,setCatalogLoading]=useState(true);
   const [catalogError,setCatalogError]=useState("");
   const onFinishedRef=useRef(onFinished);
