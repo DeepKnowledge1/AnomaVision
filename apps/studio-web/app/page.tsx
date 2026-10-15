@@ -223,9 +223,10 @@ function Overview({ project, projects, models, apiHealthy, onNavigate }: { proje
  <section className="overview-lower"><div className="card recent-panel"><div className="panel-head"><div><div className="eyebrow">RECENT MODELS</div><h3>Model library</h3></div><button className="text-button" onClick={()=>onNavigate("Models")}>View models →</button></div>{models.length?<div className="model-list">{models.slice(0,3).map(m=><button className="model-row" key={m.id} onClick={()=>onNavigate("Models")}><span className="model-avatar"><BrainCircuit size={16}/></span><span className="model-row-copy"><strong>{m.algorithm.toUpperCase()} · {m.class_name}</strong><small>{m.run_name}</small></span><span className="model-status">{m.status}</span><span>→</span></button>)}</div>:<div className="panel-empty"><div className="empty-icon"><BrainCircuit size={18}/></div><strong>No trained models</strong><span>Validate your dataset, then train the first detector.</span><button className="secondary" onClick={()=>onNavigate("Datasets")}>Check dataset</button></div>}</div><div className="card quick-panel"><div className="panel-head"><div><div className="eyebrow">QUICK ACTIONS</div><h3>What do you want to do?</h3></div></div><button className="quick-action" onClick={()=>onNavigate("Datasets")}><span className="quick-icon"><Database size={16}/></span><span><strong>Check a dataset</strong><small>Validate images and structure</small></span><b>→</b></button><button className="quick-action" onClick={()=>onNavigate("Inference")}><span className="quick-icon"><Wifi size={16}/></span><span><strong>Inspect an image</strong><small>Run anomaly detection</small></span><b>→</b></button><button className="quick-action" onClick={()=>onNavigate("Monitoring")}><span className="quick-icon"><Activity size={16}/></span><span><strong>Check monitoring</strong><small>Review drift and production health</small></span><b>→</b></button></div></section></>;
 }
 function ProjectsPage({ projects, selectedProject, onSelect, onCreated }: { projects: Project[]; selectedProject: string; onSelect: (id:string)=>void; onCreated:()=>Promise<void> }) {
-  const [name,setName]=useState(""); const [description,setDescription]=useState(""); const [algorithm,setAlgorithm]=useState("patchcore"); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
+  const [name,setName]=useState(""); const [description,setDescription]=useState(""); const [algorithm,setAlgorithm]=useState(projects.find(p=>p.id===selectedProject)?.algorithm || projects[0]?.algorithm || "patchcore"); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
   const [jobId,setJobId]=useState("");
   const [jobStatus,setJobStatus]=useState("");
+  useEffect(()=>{setAlgorithm(projects.find(p=>p.id===selectedProject)?.algorithm || projects[0]?.algorithm || "patchcore")},[selectedProject,projects]);
   async function create() {
     setError(""); if (!name.trim()) { setError("Give your project a name first."); return; }
     setBusy(true); try {
@@ -324,7 +325,7 @@ function DatasetsPage({ project }: { project?: Project }) {
       <div>
         <div className="eyebrow">Data readiness</div>
         <h1>Dataset</h1>
-        <p className="subtitle">Check your images before training. Studio only inspects the folder — your images stay where they are.</p>
+        <p className="subtitle">Check image quality, duplicates and dimensions before training.</p>
       </div>
     </div>
 
@@ -372,7 +373,7 @@ function DatasetsPage({ project }: { project?: Project }) {
             <span>{path ? "Selected: "+path : "Choose a folder to continue."}</span>
             {configClass && <span>Class: <strong>{configClass}</strong></span>}
           </div>
-          <div className="dataset-tip">Studio uses the canonical dataset_path from config.yml by default. Choose another folder only when you intentionally want to override it for this check.</div>
+          <div className="dataset-tip">The configured folder is selected by default. Choose another folder to inspect a different dataset.</div>
         </section>
 
         {error&&<div className="form-error">{error}</div>}
@@ -581,7 +582,7 @@ function TrainingPage({ project, onFinished, onNavigate }: { project?: Project; 
         <div>
           <div className="eyebrow">Build a model</div>
           <h1>Training</h1>
-          <p className="subtitle">Set up your experiment, then let the existing AnomaVision engine do the training.</p>
+          <p className="subtitle">Configure the dataset and detector, then start a training run.</p>
         </div>
       </div>
 
@@ -929,7 +930,7 @@ function PerformancePage({project,session}:{project?:Project;session:{result:any
           <div><span>Pin memory</span><b>{config?.pin_memory == null ? "—" : String(config.pin_memory)}</b></div>
         </div>
       </details>
-      <div className="performance-note"><CircleGauge size={15}/><div><strong>Benchmarking stays reproducible</strong><span>Studio only presents existing configuration and observed inference results. It does not modify benchmark methodology or core runtime calculations.</span></div></div>
+      <div className="performance-note"><CircleGauge size={15}/><div><strong>Benchmarking stays reproducible</strong><span>Measured from the current runtime configuration and observed inference results.</span></div></div>
     </>}
   </>;
 }
@@ -974,7 +975,7 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
   const healthy=!driftDetected && (status==="ok" || status==="healthy" || status==="stable" || status==="no_data");
   const statusLabel=status==="no_data"?"No data":status.replaceAll("_"," ");
 
-  return <div className={visible ? "" : "studio-page-hidden"}>\n  return <>
+  return <div className={visible ? "" : "studio-page-hidden"}>
     <div className="page-head">
       <div>
         <div className="eyebrow">Production health</div>
@@ -1040,7 +1041,7 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
       <div className="two-column">
         <section className="card">
           <div className="section-head">
-            <div><div className="section-title">Latest drift report</div><div className="subtitle">The most recent report produced by the existing monitoring engine.</div></div>
+            <div><div className="section-title">Latest drift report</div><div className="subtitle">The latest available drift report and sample statistics.</div></div>
           </div>
           {latest ? <div className="check-list">
             <div className="check-row"><span>Reference samples</span><b>{latest.reference_samples}</b></div>
@@ -1070,12 +1071,7 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
           <div><span>Minimum samples</span><b>{summary?.min_samples ?? latest?.min_samples ?? "—"}</b></div>
         </div>
       </details>
-      <div className="card monitoring-note">
-        <ShieldCheck size={15}/>
-        <div><strong>Observer only</strong><span>Studio displays the stored drift reports. It does not change anomaly scores, drift calculations, reference embeddings, or monitoring thresholds.</span></div>
-      </div>
     </>}
-  </>;
   </div>;
 }
 
