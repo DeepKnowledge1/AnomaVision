@@ -755,3 +755,31 @@ body, .main, .content { color: #172536 !important; }
   .deployment-steps { gap: 8px; }
   .deployment-next-steps { padding: 10px; }
 }
+
+
+/* Monitoring: make drift severity, sample sufficiency, and warnings easy to scan. */
+.monitor-drift-score { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 16px; padding: 16px; border: 1px solid #d7e2ed; border-radius: 10px; background: #f8fafc; }
+.monitor-drift-score > div:first-child { display: grid; gap: 4px; }
+.monitor-drift-score > div:first-child span, .monitor-sample-progress span { color: #526274; font-size: 12px; }
+.monitor-drift-score > div:first-child strong { color: #203348; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.monitor-drift-score-meta { display: grid; justify-items: end; gap: 6px; }
+.monitor-drift-score-meta span { color: #66788d; font-size: 11px; }
+.monitor-drift-score-meta b { padding: 5px 7px; border-radius: 5px; background: #e7f5ed; color: #087443; font-size: 10px; letter-spacing: .04em; }
+.monitor-drift-score.is-drift { border-color: #fecdca; background: #fff1f0; box-shadow: inset 3px 0 0 #d92d20; }
+.monitor-drift-score.is-drift > div:first-child strong, .monitor-drift-score.is-drift .monitor-drift-score-meta b { color: #b42318; }
+.monitor-drift-score.is-drift .monitor-drift-score-meta b { background: #fee4e2; }
+.monitor-drift-score.is-preliminary { border-color: #fedf89; background: #fffaeb; }
+.monitor-drift-score.is-preliminary .monitor-drift-score-meta b { color: #854a0e; background: #fef0c7; }
+.monitor-sample-progress { display: grid; gap: 8px; margin: 0 0 14px; padding: 12px; border: 1px solid #e1e7ef; border-radius: 8px; }
+.monitor-sample-progress > div:first-child { display: flex; justify-content: space-between; gap: 10px; }
+.monitor-sample-progress > div:first-child b { color: #203348; font-size: 12px; font-variant-numeric: tabular-nums; }
+.monitor-sample-track { height: 7px; overflow: hidden; border-radius: 99px; background: #e8edf3; }
+.monitor-sample-track > span { display: block; height: 100%; border-radius: inherit; background: #168354; transition: width .2s ease; }
+.monitor-sample-progress small { color: #66788d; font-size: 11px; line-height: 1.45; }
+.drift-metric-grid.drift-metric-alert > div { border-color: #fecdca !important; background: #fff1f0 !important; }
+.drift-metric-grid.drift-metric-alert > div b { color: #b42318 !important; }
+.drift-sample-alert { box-shadow: inset 3px 0 0 #d92d20; }
+.monitor-warning-row { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border: 1px solid #fedf89; border-radius: 8px; background: #fffaeb; color: #854a0e; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.monitor-warning-mark { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: 0 0 18px; border-radius: 50%; background: #fef0c7; color: #854a0e; font-size: 12px; font-weight: 800; }
+.monitor-warnings { display: grid; gap: 8px; }
+@media (max-width: 600px) { .monitor-drift-score { align-items: flex-start; } .monitor-drift-score-meta { justify-items: start; } .monitor-sample-progress > div:first-child { align-items: flex-start; flex-direction: column; gap: 4px; } }
