@@ -798,6 +798,14 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
   useEffect(()=>{setModelId(initialModelId || models[0]?.id || "")},[models,initialModelId]);
 
   const selected=models.find(m=>m.id===modelId);
+  const checks=result?.validation?.checks as Record<string,boolean>|undefined;
+  const checkEntries=checks?Object.entries(checks):[];
+  const passed=checkEntries.filter(([,ok])=>Boolean(ok)).length;
+  const failed=checkEntries.filter(([,ok])=>!ok).map(([name])=>name.replaceAll("_"," "));
+  const performance=result?.validation?.performance;
+  const validation=result?.validation;
+  const ready=result?.ready_for_deployment===true;
+  const artifact=typeof result?.artifact==="string"&&result.artifact.trim()?result.artifact:null;
 
   async function deploy(){
     if(!project){setError("Select a project first.");return}
@@ -809,23 +817,18 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
         body:JSON.stringify({model_id:modelId,target,runs:5,warmup_runs:1})
       });
       const d=await r.json();
-      if(!r.ok)throw new Error(d.detail||"Deployment failed");
+      if(!r.ok)throw new Error(typeof d.detail==="string"?d.detail:"Deployment validation request failed. Check the Studio API logs for details.");
       setResult(d);
-    }catch(e){setError(e instanceof Error?e.message:"Deployment failed")}
+    }catch(e){setError(e instanceof Error?e.message:"Deployment validation request failed")}
     finally{setBusy(false)}
   }
-
-  const checks=result?.validation?.checks as Record<string,boolean>|undefined;
-  const passed=checks?Object.values(checks).filter(Boolean).length:0;
-  const total=checks?Object.keys(checks).length:0;
-  const performance=result?.validation?.performance;
 
   return <>
     <div className="page-head">
       <div>
         <div className="eyebrow">Production readiness</div>
         <h1>Deployments</h1>
-        <p className="subtitle">Choose a target, export the trained artifact, then validate it with the existing AnomaVision pipeline.</p>
+        <p className="subtitle">Export a trained artifact and validate the selected runtime using the existing AnomaVision pipeline.</p>
       </div>
     </div>
 
@@ -834,84 +837,90 @@ function DeploymentsPage({project,models,initialModelId}:{project?:Project;model
       <strong>Select a project first</strong>
       <span>Your project contains the models and deployment artifacts for this workflow.</span>
     </div> : <>
-      <div className="deployment-readiness"><ShieldCheck size={16}/><div><strong>Validate before you deploy</strong><span>Studio runs the existing checks against the selected artifact. A failed check means the result needs review before deployment.</span></div></div>
+      <div className="deployment-readiness"><ShieldCheck size={16}/><div><strong>Validate before deployment</strong><span>Only treat an artifact as ready when the API explicitly reports readiness. Review each failed check before using the output.</span></div></div>
       <div className="deployment-steps">
         <div className="deployment-step active"><span>1</span><div><b>Select model</b><small>Choose a trained artifact</small></div></div>
-        <div className="deployment-step"><span>2</span><div><b>Choose target</b><small>Pick the runtime format</small></div></div>
-        <div className="deployment-step"><span>3</span><div><b>Validate</b><small>Check integrity and performance</small></div></div>
+        <div className="deployment-step active"><span>2</span><div><b>Choose target</b><small>Pick the runtime format</small></div></div>
+        <div className={result?"deployment-step active":"deployment-step"}><span>3</span><div><b>Validate</b><small>Inspect the reported outcome</small></div></div>
       </div>
 
       <div className="two-column">
         <section className="card deployment-config">
           <div className="section-title">Prepare validation</div>
-          <p className="form-help">Choose an existing trained model and target. Studio orchestrates export and validation without changing the model or algorithm.</p>
+          <p className="form-help">Select a registered model and target. Validation uses the existing API and does not modify the model or algorithm.</p>
 
           <label>Model
-            <select value={modelId} onChange={e=>{setModelId(e.target.value);setResult(null)}} disabled={busy}>
-              {models.length?models.map(m=><option key={m.id} value={m.id}>{m.algorithm.toUpperCase()} · {m.class_name} · {m.run_name}</option>):<option value="">No trained models</option>}
+            <select value={modelId} onChange={e=>{setModelId(e.target.value);setResult(null);setError("")}} disabled={busy}>
+              {models.length?models.map(m=><option key={m.id} value={m.id}>{m.algorithm.toUpperCase()} · {m.class_name} · {m.run_name}</option>):<option value="">No registered models</option>}
             </select>
           </label>
 
           {selected && <div className="selected-model">
             <div className="icon-box"><BrainCircuit size={14}/></div>
-            <div><b>{selected.algorithm.toUpperCase()} · {selected.class_name}</b><span>{selected.run_name}</span></div>
-            <span className="badge">{selected.status}</span>
+            <div className="selected-model-copy"><b>{selected.algorithm.toUpperCase()} · {selected.class_name}</b><span>{selected.run_name}</span><small>Model ID: {selected.id}</small>{selected.path&&<small className="selected-artifact-path" title={selected.path}>Artifact: {selected.path}</small>}</div>
+            <span className="badge">{selected.status||"Status not reported"}</span>
           </div>}
 
           <div className="target-label">Deployment target</div>
           <div className="target-grid">
             {[
-              ["cpu","CPU","Validate existing model"],
+              ["cpu","CPU","Validate current runtime"],
               ["onnx","ONNX","Portable runtime artifact"],
-              ["openvino","OpenVINO","Intel / CPU deployment"],
+              ["openvino","OpenVINO","Intel deployment"],
               ["tensorrt","TensorRT","NVIDIA deployment"],
               ["torchscript","TorchScript","PyTorch runtime"],
-              ["hailo","Hailo","Manual deployment flow"],
-              ["kv260","KV260","Manual deployment flow"],
-            ].map(([id,name,desc])=><button key={id} className={`target-card ${target===id?"selected":""}`} onClick={()=>{setTarget(id);setResult(null)}} disabled={busy}>
+              ["hailo","Hailo","Target-specific validation"],
+              ["kv260","KV260","Target-specific validation"],
+            ].map(([id,name,desc])=><button type="button" key={id} className={`target-card ${target===id?"selected":""}`} onClick={()=>{setTarget(id);setResult(null);setError("")}} disabled={busy}>
               <strong>{name}</strong><span>{desc}</span>
             </button>)}
           </div>
 
-          {error&&<div className="form-error">{error}</div>}
-          <button className="primary full" onClick={deploy} disabled={busy||!models.length}>
+          <div className="deployment-run-config"><span>Validation runs</span><b>5</b><span>Warm-up runs</span><b>1</b><small>Fixed by the existing Studio validation request.</small></div>
+          {error&&<div className="deployment-error" role="alert"><strong>Validation request failed</strong><span>{error}</span><small>Check that the Studio API is running, the selected model has a usable artifact, and the API logs contain no export/runtime errors.</small></div>}
+          <button className="primary full" onClick={deploy} disabled={busy||!models.length||!modelId}>
             <Rocket size={13}/>{busy?"Exporting and validating…":"Export & validate"}
           </button>
         </section>
 
         <section className="card deployment-result-card">
           <div className="section-head">
-            <div><div className="section-title">Validation result</div><div className="subtitle">{result?"Latest validation run":"The validation outcome will appear here."}</div></div>
-            {result&&<div className={`badge ${result.ready_for_deployment?"success-badge":"failure-badge"}`}>{result.ready_for_deployment?"READY":"FAILED"}</div>}
+            <div><div className="section-title">Validation result</div><div className="subtitle">{result?"Latest response from the validation API":"The validation outcome will appear here."}</div></div>
+            {result&&<div className={`badge ${ready?"success-badge":"failure-badge"}`}>{ready?"READY":"NOT READY"}</div>}
           </div>
 
           {!result ? <div className="deployment-empty">
             <div className="deployment-empty-icon"><ShieldCheck size={22}/></div>
             <strong>Validate before deployment</strong>
-            <span>Studio will export the selected target, run the existing validation checks, and report the result here.</span>
+            <span>The result panel will show the API-reported readiness, checks, performance and artifact details after a run.</span>
           </div> : <>
-            <div className={`deployment-outcome ${result.ready_for_deployment?"ready":"failed"}`}>
-              <div className="outcome-icon">{result.ready_for_deployment?"✓":"!"}</div>
-              <div><strong>{result.ready_for_deployment?"Ready for deployment":"Validation failed"}</strong><span>{result.ready_for_deployment?"All required checks passed.":"Review the failed checks before using this artifact."}</span></div>
+            <div className={`deployment-outcome ${ready?"ready":"failed"}`}>
+              <div className="outcome-icon">{ready?"✓":"!"}</div>
+              <div><strong>{ready?"Ready for deployment":result.ready_for_deployment===false?"Not ready for deployment":"Readiness not confirmed"}</strong><span>{ready?"The API explicitly marked this result ready.":failed.length? "One or more reported checks failed. Review them before using this artifact.":"The API did not confirm readiness. Inspect the checks and technical details before proceeding."}</span></div>
             </div>
 
-            {checks&&<div className="validation-summary"><b>{passed}/{total}</b><span>validation checks passed</span></div>}
+            {checks ? <div className="validation-summary"><b>{passed}/{checkEntries.length}</b><span>validation checks passed</span>{failed.length>0&&<small>{failed.length} check{failed.length===1?"":"s"} need attention</small>}</div> : <div className="validation-no-checks">The API response did not include individual validation checks.</div>}
 
-            <div className="check-list">{checks&&Object.entries(checks).map(([name,ok])=><div className="check-row" key={name}><span>{ok?"✓":"✕"} {name.replaceAll("_"," ")}</span><b>{ok?"PASS":"FAIL"}</b></div>)}</div>
+            {checkEntries.length>0&&<div className="check-list">{checkEntries.map(([name,ok])=><div className={`check-row ${ok?"check-pass":"check-fail"}`} key={name}><span><i aria-hidden="true">{ok?"✓":"✕"}</i>{name.replaceAll("_"," ")}</span><b>{ok?"PASS":"FAIL"}</b></div>)}</div>}
 
-            {performance?.latency_ms!=null&&<div className="perf-grid">
-              <Stat icon={<CircleGauge size={15}/>} label="Latency" value={`${performance.latency_ms} ms`} meta={`${performance.fps} FPS`}/>
-              <Stat icon={<ShieldCheck size={15}/>} label="Format" value={String(result.validation.format).toUpperCase()} meta="validated artifact"/>
+            {failed.length>0&&<div className="deployment-next-steps"><strong>Recommended next step</strong><span>Review: {failed.join(", ")}. Check the model artifact, export/runtime compatibility, and the Studio API logs for the failing validation stage.</span></div>}
+
+            {performance&&<div className="perf-grid">
+              {performance.latency_ms!=null&&<Stat icon={<CircleGauge size={15}/>} label="Latency" value={`${performance.latency_ms} ms`} meta={performance.fps!=null?`${performance.fps} FPS`:"FPS not reported"}/>}
+              {validation?.format&&<Stat icon={<ShieldCheck size={15}/>} label="Format" value={String(validation.format).toUpperCase()} meta="reported validation format"/>}
             </div>}
 
-            <details className="technical-details deployment-technical"><summary>Technical details</summary><div className="technical-grid"><div><span>Target</span><b>{String(target).toUpperCase()}</b></div><div><span>Format</span><b>{String(result.validation.format||target).toUpperCase()}</b></div><div><span>Validation runs</span><b>{result.validation.runs ?? "—"}</b></div><div><span>Warm-up runs</span><b>{result.validation.warmup_runs ?? "—"}</b></div></div><div className="artifact-box"><span>Artifact path</span><code>{result.artifact}</code></div></details>
+            <details className="technical-details deployment-technical" open={!ready}>
+              <summary>Technical details</summary>
+              <div className="technical-grid"><div><span>Project</span><b>{project.name}</b></div><div><span>Model</span><b>{selected?selected.algorithm.toUpperCase()+" · "+selected.class_name:"—"}</b></div><div><span>Target requested</span><b>{String(target).toUpperCase()}</b></div><div><span>Format reported</span><b>{String(validation?.format||"Not reported").toUpperCase()}</b></div><div><span>Validation runs</span><b>{validation?.runs ?? "—"}</b></div><div><span>Warm-up runs</span><b>{validation?.warmup_runs ?? "—"}</b></div></div>
+              <div className="artifact-box"><span>Artifact path</span><code>{artifact||"Artifact path not reported by API"}</code></div>
+            </details>
           </>}
         </section>
       </div>
     </>}
   </>;
 }
-
 function PerformancePage({project,session}:{project?:Project;session:{result:any;history:any[];config:any}|null}) {
   const config=session?.config;
   const benchmark=config?.inference_benchmark;
