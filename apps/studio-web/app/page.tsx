@@ -1079,11 +1079,11 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
         <Stat icon={<CircleGauge size={15}/>} label="Reports" value={String(summary?.report_count||0)} meta="Stored monitoring reports"/>
       </div>
       {latest && (
-        <div className={`drift-metric-grid ${driftDetected?"drift-metric-alert":""}`}>
-          <div><span>Mean shift</span><b>{Number(latest.mean_shift).toFixed(4)}</b></div>
-          <div><span>Std shift</span><b>{Number(latest.std_shift).toFixed(4)}</b></div>
-          <div><span>Cosine shift</span><b>{Number(latest.cosine_shift).toFixed(4)}</b></div>
-          <div><span>Current samples</span><b>{latest.current_samples ?? "—"}</b></div>
+        <div className={`drift-metric-grid ${displayDriftDetected?"drift-metric-alert":""}`}>
+          <div><span>Mean shift</span><b>{latest.mean_shift != null ? Number(latest.mean_shift).toFixed(4) : "—"}</b></div>
+          <div><span>Std shift</span><b>{latest.std_shift != null ? Number(latest.std_shift).toFixed(4) : "—"}</b></div>
+          <div><span>Cosine shift</span><b>{latest.cosine_shift != null ? Number(latest.cosine_shift).toFixed(4) : "—"}</b></div>
+          <div className={displayDriftDetected?"drift-sample-alert":""}><span>Current samples</span><b>{latest.current_samples ?? "—"}</b></div>
         </div>
       )}
 
@@ -1092,21 +1092,32 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
           <div className="section-head">
             <div><div className="section-title">Latest drift report</div><div className="subtitle">The latest available drift report and sample statistics.</div></div>
           </div>
-          {latest ? <div className="check-list">
-            <div className="check-row"><span>Reference samples</span><b>{latest.reference_samples ?? "—"}</b></div>
-            <div className="check-row"><span>Current samples</span><b>{latest.current_samples ?? latest.samples_seen ?? "—"}</b></div>
-            <div className="check-row"><span>Feature dimensions</span><b>{latest.feature_dimensions ?? "—"}</b></div>
-            <div className="check-row"><span>Mean shift</span><b>{latest.mean_shift != null ? Number(latest.mean_shift).toFixed(4) : "—"}</b></div>
-            <div className="check-row"><span>Std shift</span><b>{latest.std_shift != null ? Number(latest.std_shift).toFixed(4) : "—"}</b></div>
-            <div className="check-row"><span>Cosine shift</span><b>{latest.cosine_shift != null ? Number(latest.cosine_shift).toFixed(4) : "—"}</b></div>
-          </div> : <div className="monitor-empty"><Activity size={18}/><strong>No report yet</strong><span>Run production monitoring to populate this view.</span></div>}
+          {latest ? <>
+            <div className={`monitor-drift-score ${displayDriftDetected?"is-drift":lowConfidence?"is-preliminary":"is-stable"}`}>
+              <div><span>Drift score</span><strong>{driftScore!=null?driftScore.toFixed(3):"—"}</strong></div>
+              <div className="monitor-drift-score-meta"><span>{latest.threshold!=null?"Reported threshold: "+Number(latest.threshold).toFixed(3):"Threshold not reported"}</span><b>{lowConfidence?"PRELIMINARY":displayDriftDetected?"THRESHOLD BREACHED":healthy?"WITHIN RANGE":"REVIEW"}</b></div>
+            </div>
+            <div className="monitor-sample-progress">
+              <div><span>Current samples</span><b>{currentSamples} / {minimumSamples} minimum</b></div>
+              <div className="monitor-sample-track" role="progressbar" aria-label="Minimum sample collection progress" aria-valuemin={0} aria-valuemax={minimumSamples} aria-valuenow={Math.min(currentSamples,minimumSamples)}><span style={{width:(minimumSamples>0?Math.min(100,currentSamples/minimumSamples*100):0)+"%"}}/></div>
+              <small>{lowConfidence?"Collect more samples before treating the signal as conclusive.":"Minimum sample requirement met, or no minimum-sample limitation was reported."}</small>
+            </div>
+            <div className="check-list">
+              <div className="check-row"><span>Reference samples</span><b>{latest.reference_samples ?? "—"}</b></div>
+              <div className="check-row"><span>Feature dimensions</span><b>{latest.feature_dimensions ?? "—"}</b></div>
+              <div className="check-row"><span>PSI</span><b>{psi!=null?psi.toFixed(4):"—"}</b></div>
+              <div className="check-row"><span>Mean shift</span><b>{latest.mean_shift != null ? Number(latest.mean_shift).toFixed(4) : "—"}</b></div>
+              <div className="check-row"><span>Std shift</span><b>{latest.std_shift != null ? Number(latest.std_shift).toFixed(4) : "—"}</b></div>
+              <div className="check-row"><span>Cosine shift</span><b>{latest.cosine_shift != null ? Number(latest.cosine_shift).toFixed(4) : "—"}</b></div>
+            </div>
+          </> : <div className="monitor-empty"><Activity size={18}/><strong>No report yet</strong><span>Run production monitoring to populate this view.</span></div>}
         </section>
 
         <section className="card">
           <div className="section-head">
             <div><div className="section-title">Signals to review</div><div className="subtitle">Warnings reported by the monitoring engine.</div></div>
           </div>
-          {warnings.length ? <div className="warning-list monitor-warnings">{warnings.map((w:string)=><span className="warning-chip" key={w}>{w.replaceAll("_"," ")}</span>)}</div>
+          {warnings.length ? <div className="warning-list monitor-warnings">{warnings.map((w:string)=><div className="monitor-warning-row" key={w}><span className="monitor-warning-mark">!</span><span>{w.replaceAll("_"," ")}</span></div>)}</div>
             : <div className="monitor-empty"><ShieldCheck size={18}/><strong>No warnings</strong><span>The latest stored report contains no warning signals.</span></div>}
         </section>
       </div>
