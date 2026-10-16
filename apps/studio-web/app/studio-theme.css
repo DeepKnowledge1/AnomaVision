@@ -815,3 +815,15 @@ body, .main, .content { color: #172536 !important; }
   .result-view-controls { align-items: flex-start; }
   .result-view-controls .overlay-opacity-control { flex-basis: 100%; }
 }
+
+/* Monitoring drift alarm: high-visibility, pulsing alert without changing detection logic. */
+.monitor-status.drift { animation: monitor-drift-flash 1.15s ease-in-out infinite; }
+.monitor-status.drift .status-dot { animation: monitor-drift-pulse .85s ease-in-out infinite; }
+.monitor-alarm-indicator { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border: 1px solid #f04438; border-radius: 7px; background: #b42318; color: #fff !important; font-size: 11px !important; font-weight: 800; letter-spacing: .07em; white-space: nowrap; box-shadow: 0 0 0 2px rgba(217,45,32,.12); }
+.monitor-alarm-light { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.2); animation: monitor-alarm-light 0.7s ease-in-out infinite alternate; }
+@keyframes monitor-drift-flash { 0%, 100% { background: #fff1f0; border-color: #fecdca; } 50% { background: #fee4e2; border-color: #d92d20; } }
+@keyframes monitor-drift-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(217,45,32,.25); } 50% { box-shadow: 0 0 0 6px rgba(217,45,32,.12); } }
+@keyframes monitor-alarm-light { from { opacity: .45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .monitor-status.drift, .monitor-status.drift .status-dot, .monitor-alarm-light { animation: none !important; }
+}
