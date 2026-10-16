@@ -1031,7 +1031,9 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
   const driftScore=latest?.drift_score!=null?Number(latest.drift_score):null;
   const psi=latest?.psi!=null?Number(latest.psi):null;
   const driftDetected=["drift","drift_detected","drifted","warning"].includes(normalizedStatus) || (latest?.threshold!=null && driftScore!=null && driftScore>=Number(latest.threshold));
-  const currentSamples=Number(latest?.current_samples ?? summary?.window_fill ?? summary?.samples_seen ?? 0);
+  // Use cumulative samples_seen for warm-up progress. window_fill is capped at
+  // window_size, so prioritizing it can leave a 50/100 counter stuck forever.
+  const currentSamples=Number(summary?.samples_seen ?? latest?.samples_seen ?? latest?.current_samples ?? summary?.window_fill ?? 0);
   const minimumSamples=Number(summary?.min_samples ?? latest?.min_samples ?? 100);
   const lowConfidence=Boolean(latest) && (currentSamples < minimumSamples || normalizedStatus==="warming_up");
   const displayDriftDetected=driftDetected && !lowConfidence;
