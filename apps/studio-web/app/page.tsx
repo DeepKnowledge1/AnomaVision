@@ -1058,6 +1058,7 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
           <strong>{latest ? (lowConfidence?"Low confidence — collect more samples":driftDetected?"Drift detected":healthy?"Monitoring is healthy":"Review drift signals") : "Monitoring is ready"}</strong>
           <span>{latest ? (lowConfidence ? `${currentSamples} of ${minimumSamples} minimum samples collected · treat this signal as preliminary` : `Latest report · ${warnings.length} warning${warnings.length===1?"":"s"} · ${summary?.report_count||0} stored reports`) : "No monitoring data yet. Run inference to begin collecting production samples."}</span>
         </div>
+        {displayDriftDetected&&<div className="monitor-alarm-indicator" role="alert" aria-live="assertive"><span className="monitor-alarm-light"/> DRIFT ALARM</div>}
         <div className="monitor-status-value">{statusLabel}</div>
       </div>
 
