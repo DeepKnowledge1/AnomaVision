@@ -1025,17 +1025,18 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
   },[project?.id]);
 
   const latest=summary?.latest;
-  const status=String(summary?.status||"no_data");
+  const status=String(summary?.status||"no_data").toLowerCase();
+  const normalizedStatus=status.replaceAll("-","_").replaceAll(" ","_");
   const warnings=(latest?.warnings||[]) as string[];
   const driftScore=latest?.drift_score!=null?Number(latest.drift_score):null;
   const psi=latest?.psi!=null?Number(latest.psi):null;
-  const driftDetected=status==="drift" || (latest?.threshold!=null && driftScore!=null && driftScore>=Number(latest.threshold));
+  const driftDetected=["drift","drift_detected","drifted","warning"].includes(normalizedStatus) || (latest?.threshold!=null && driftScore!=null && driftScore>=Number(latest.threshold));
   const currentSamples=Number(latest?.current_samples ?? summary?.window_fill ?? summary?.samples_seen ?? 0);
   const minimumSamples=Number(summary?.min_samples ?? latest?.min_samples ?? 100);
-  const lowConfidence=Boolean(latest) && currentSamples < minimumSamples;
+  const lowConfidence=Boolean(latest) && (currentSamples < minimumSamples || normalizedStatus==="warming_up");
   const displayDriftDetected=driftDetected && !lowConfidence;
-  const healthy=!driftDetected && (status==="ok" || status==="healthy" || status==="stable" || status==="no_data");
-  const statusLabel=lowConfidence?"Low confidence":status==="no_data"?"No data":status.replaceAll("_"," ");
+  const healthy=!driftDetected && ["ok","healthy","stable"].includes(normalizedStatus) && !lowConfidence;
+  const statusLabel=lowConfidence?"Warming up":normalizedStatus==="no_data"?"No data":status.replaceAll("_"," ");
 
   return <div className={visible ? "" : "studio-page-hidden"}>
     <div className="page-head">
@@ -1055,7 +1056,7 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
       <div className={`monitor-status ${displayDriftDetected?"drift":healthy?"healthy":"attention"}`}>
         <div className="monitor-status-icon"><span className="status-dot"/></div>
         <div>
-          <strong>{latest ? (lowConfidence?"Low confidence — collect more samples":driftDetected?"Drift detected":healthy?"Monitoring is healthy":"Review drift signals") : "Monitoring is ready"}</strong>
+          <strong>{latest ? (lowConfidence?"Collecting production samples":displayDriftDetected?"Drift detected":healthy?"Monitoring is healthy":"Review production health") : "Waiting for production samples"}</strong>
           <span>{latest ? (lowConfidence ? `${currentSamples} of ${minimumSamples} minimum samples collected · treat this signal as preliminary` : `Latest report · ${warnings.length} warning${warnings.length===1?"":"s"} · ${summary?.report_count||0} stored reports`) : "No monitoring data yet. Run inference to begin collecting production samples."}</span>
         </div>
         {displayDriftDetected&&<div className="monitor-alarm-indicator" role="alert" aria-live="assertive"><span className="monitor-alarm-light"/> DRIFT ALARM</div>}
