@@ -122,15 +122,27 @@ See the [Production Data Drift guide](docs/anomaly_detection_production_data_dri
 
 AnomaVision includes a reproducible benchmark workflow for comparing anomaly-detection performance and runtime characteristics.
 
-The benchmark reports **Image AUROC, Pixel AUROC, latency, P95 latency, FPS, model/artifact size, and memory usage**. The current comparison script uses a shared evaluation contract so results can be reproduced consistently.
+The benchmark reports **Image AUROC, Pixel AUROC, latency, P95 latency, FPS, model/artifact size, and memory usage**. The comparison script uses a shared evaluation contract so results can be reproduced consistently.
+
+### ⚠️ Anomalib version
+
+The benchmark depends on Anomalib APIs that change frequently. For reproducible results, pin Anomalib to the tested commit:
+
+```powershell
+git clone https://github.com/open-edge-platform/anomalib.git
+cd anomalib
+git checkout 4207f163a556c5dbf59ed58ed372d8c47dc526a0
+```
+
+Do **not** run the benchmark against the latest Anomalib `main` branch unless the integration has been updated and validated for that API version.
 
 ### Quick example
 
 Run a single class:
 
 ```powershell
-python scripts\\benchmarks\\compare_with_anomalib.py `
-  --dataset_path D:\\01-DATA `
+python scripts/benchmarks/compare_with_anomalib.py `
+  --dataset_path D:/01-DATA/Visa_pytorch `
   --class_name bottle `
   --algorithms padim `
   --device cpu
@@ -140,17 +152,17 @@ Run all available MVTec classes:
 
 ```powershell
 python scripts/benchmarks/compare_with_anomalib.py `
-  --dataset_path D:/01-DATA/VisA_pytorch `
+  --dataset_path D:/01-DATA/Visa_pytorch `
   --all_classes `
   --algorithms padim `
   --device cpu
 ```
 
-With `--all_classes`, the script automatically discovers supported MVTec class directories present under the dataset path and runs the same AnomaVision-vs-Anomalib comparison for each available class. `--class_name` and `--all_classes` are mutually exclusive. Results are written separately under `benchmark_results/<algorithm>/<class_name>/`.
+With `--all_classes`, the script automatically discovers supported class directories under the dataset path and runs the same AnomaVision-vs-Anomalib comparison for each available class. `--class_name` and `--all_classes` are mutually exclusive. Results are saved under `benchmark_results/<backbone>/<algorithm>/<image_size>/<class_name>/`.
 
-Historical benchmark results are available for **MVTec AD and VisA**, including per-class results and visual comparisons. These results are retained for reference; the corrected benchmark should be rerun before making current performance claims.
+Historical benchmark results are available for **MVTec AD and VisA**, including per-class results and visual comparisons. These results are retained for reference; rerun the corrected benchmark before making current performance claims.
 
-See the [Benchmark guide](docs/benchmark.md) for the methodology, commands, metrics, and detailed results.
+See the [Benchmark guide](docs/benchmark.md) for the methodology, commands, metrics, Anomalib version/commit, and detailed results.
 
 ---
 
