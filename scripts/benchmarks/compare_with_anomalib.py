@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import gc
 import inspect
+import io
 import json
 import platform
 import random
@@ -66,7 +67,7 @@ def add_local_anomalib_to_path() -> Path:
     )
 
 
-IMAGE_SIZE = (224, 224)
+IMAGE_SIZE = (416, 416)
 NORMALIZE = True
 BATCH_SIZE = 8
 TIMING_BATCH_SIZE = 1
@@ -77,6 +78,11 @@ BACKBONE = "resnet18"
 LAYERS = ["layer1"]
 LAYER_INDICES = [0]
 N_FEATURES = 50
+
+ANOMA_BACKBONE = {
+    "resnet18": "resnet18",
+    "wide_resnet50": "wide_resnet50_2",
+}
 
 MVTec_CLASSES = [
     "bottle",
@@ -119,19 +125,38 @@ class AnomaVisionCompatiblePool(torch.nn.Module):
 
 
 def load_torchvision_weights_into_anomalib(model) -> None:
-    """Make Anomalib use the same torchvision ResNet18 weights as AnomaVision.
+    """Load matching torchvision pretrained weights into Anomalib's extractor."""
+    from torchvision.models import (
+        ResNet18_Weights,
+        Wide_ResNet50_2_Weights,
+        resnet18,
+        wide_resnet50_2,
+    )
 
-    Anomalib builds its backbone with timm (default weights: resnet18.a1_in1k),
-    while AnomaVision uses torchvision ResNet18_Weights.DEFAULT. Key names match,
-    so the torchvision weights can be loaded directly into the timm extractor.
-    """
-    from torchvision.models import ResNet18_Weights, resnet18
+    backbones = {
+        "resnet18": (resnet18, ResNet18_Weights.DEFAULT),
+        "wide_resnet50": (
+            wide_resnet50_2,
+            Wide_ResNet50_2_Weights.DEFAULT,
+        ),
+    }
 
-    tv_state = resnet18(weights=ResNet18_Weights.DEFAULT).state_dict()
-    target = model.model.feature_extractor.feature_extractor  # timm features_only net
+    if BACKBONE not in backbones:
+        raise ValueError(f"Unsupported benchmark backbone: {BACKBONE}")
+
+    model_fn, weights = backbones[BACKBONE]
+    torchvision_model = model_fn(weights=weights)
+    tv_state = torchvision_model.state_dict()
+
+    target = model.model.feature_extractor.feature_extractor
     result = target.load_state_dict(tv_state, strict=False)
+
     if result.missing_keys:
-        raise RuntimeError(f"Backbone weights not fully loaded: {result.missing_keys}")
+        raise RuntimeError(
+            f"Backbone weights not fully loaded. "
+            f"Missing keys: {result.missing_keys}"
+        )
+
     target.eval()
 
 
@@ -148,11 +173,13 @@ class ModelMetrics:
     state_dict_size_mb: float = float("nan")
     training_memory_mb: float = float("nan")
     inference_memory_mb: float = float("nan")
-    backbone: str = BACKBONE
-    layers: str = "layer1"
+    backbone: str = ANOMA_BACKBONE[BACKBONE]
+    image_size: str = f"{IMAGE_SIZE[0]}x{IMAGE_SIZE[1]}"
+    layer_indices: list[int] = field(default_factory=lambda: list(LAYER_INDICES))
+    layers: str = ",".join(LAYERS)
     n_features: int = N_FEATURES
     device: str = ""
-    environment: Dict[str, str] = field(default_factory=dict)
+    environment: dict[str, str] = field(default_factory=dict)
 
 
 def set_seed(seed: int = SEED) -> None:
@@ -305,9 +332,10 @@ def environment(device: torch.device, seed: int) -> Dict[str, str]:
         "cuda": str(torch.version.cuda),
         "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else "CPU",
         "seed": str(seed),
-        "image_size": "224x224",
+        "image_size": f"{IMAGE_SIZE[0]}x{IMAGE_SIZE[1]}",
         "normalization": "ImageNet",
-        "backbone": BACKBONE,
+        "backbone": ANOMA_BACKBONE[BACKBONE],
+        "layer_indices": json.dumps(LAYER_INDICES),
         "layers": ",".join(LAYERS),
         "n_features": str(N_FEATURES),
         "batch_size": str(BATCH_SIZE),
@@ -331,15 +359,32 @@ class BenchmarkEngineMixin:
 
 class BenchmarkRunner:
     def __init__(
-        self, dataset_path: str, class_name: str, device: str = "auto", seed: int = SEED
+        self,
+        dataset_path: str,
+        class_name: str,
+        device: str = "auto",
+        seed: int = SEED,
+        save_models: bool = False,
     ) -> None:
         self.dataset_path = Path(dataset_path)
         self.class_name = class_name
         self.device = self._setup_device(device)
         self.seed = int(seed)
+        self.save_models = bool(save_models)
         set_seed(self.seed)
-        self.output_dir = Path("benchmark_results")
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_root = Path("benchmark_results")
+
+    def _result_dir(self, algorithm: str) -> Path:
+        """Return the output folder for this backbone/algorithm/size/class."""
+        result_dir = (
+            self.output_root
+            / BACKBONE
+            / algorithm
+            / f"{IMAGE_SIZE[0]}x{IMAGE_SIZE[1]}"
+            / self.class_name
+        )
+        result_dir.mkdir(parents=True, exist_ok=True)
+        return result_dir
 
     @staticmethod
     def _setup_device(device: str) -> torch.device:
@@ -429,11 +474,11 @@ class BenchmarkRunner:
         datamodule.setup()
         return datamodule
 
-    @staticmethod
-    def _state_dict_size_mb(model: torch.nn.Module, path: Path) -> float:
+    def _state_dict_size_mb(self, model: torch.nn.Module, path: Path) -> float:
+        """Measure serialized state size; save a .pt file only when requested."""
         # Count only what inference actually uses: drop ResNet stages above the
         # highest requested layer (and the classifier head). AnomaVision keeps the
-        # full ResNet18 registered, Anomalib's timm extractor is already truncated.
+        # full ResNet registered; Anomalib's timm extractor is already truncated.
         unused = tuple(f".layer{i}." for i in range(max(LAYER_INDICES) + 2, 5))
         unused += (".fc.",)
         state = {
@@ -441,8 +486,16 @@ class BenchmarkRunner:
             for key, value in model.state_dict().items()
             if not any(tag in f".{key}" for tag in unused)
         }
-        torch.save(state, path)
-        return path.stat().st_size / 1024**2
+
+        buffer = io.BytesIO()
+        torch.save(state, buffer)
+        size_bytes = buffer.tell()
+
+        if self.save_models:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(state, path)
+
+        return size_bytes / 1024**2
 
     def _benchmark_latency(
         self, model, batch: torch.Tensor, call_model
@@ -510,14 +563,15 @@ class BenchmarkRunner:
 
         if algorithm == "padim":
             return Padim(
-                backbone=BACKBONE,
+                backbone=ANOMA_BACKBONE[BACKBONE],
                 layers=LAYERS,
                 pre_trained=True,
                 n_features=N_FEATURES,
+                pre_processor=Padim.configure_pre_processor(image_size=IMAGE_SIZE),
             )
         # if algorithm == "patchcore":
         #     return Patchcore(
-        #         backbone=BACKBONE,
+        #         backbone=ANOMA_BACKBONE[BACKBONE],
         #         layers=LAYERS,
         #         pre_trained=True,
         #         coreset_sampling_ratio=coreset_sampling_ratio,
@@ -527,7 +581,7 @@ class BenchmarkRunner:
 
         # if algorithm == "patchcore":
         #     return Patchcore(
-        #         backbone=BACKBONE,
+        #         backbone=ANOMA_BACKBONE[BACKBONE],
         #         layers=LAYERS,
         #         pre_trained=True,
         #         coreset_sampling_ratio=coreset_sampling_ratio,
@@ -540,7 +594,7 @@ class BenchmarkRunner:
 
         # if algorithm == "patchcore":
         #     model = Patchcore(
-        #         backbone=BACKBONE,
+        #         backbone=ANOMA_BACKBONE[BACKBONE],
         #         layers=LAYERS,
         #         pre_trained=True,
         #         coreset_sampling_ratio=coreset_sampling_ratio,
@@ -556,7 +610,7 @@ class BenchmarkRunner:
 
         if algorithm == "patchcore":
             model = Patchcore(
-                backbone=BACKBONE,
+                backbone=ANOMA_BACKBONE[BACKBONE],
                 layers=LAYERS,
                 pre_trained=True,
                 coreset_sampling_ratio=2048 / (900 * 14 * 14),
@@ -604,19 +658,39 @@ class BenchmarkRunner:
 
     @staticmethod
     def _anomalib_preprocess(model, images):
-        """Apply the SAME transform Lightning applies during fit.
+        """Apply the same transform used during fitting."""
+        processed = model.pre_processor.transform(images)
 
-        Do NOT use ``model.pre_processor(images)``: its forward() uses the
-        export transform (Resize without antialiasing), which does not match
-        the antialiased Resize used when the memory bank was built.
-        """
-        return model.pre_processor.transform(images)
+        if not getattr(model, "_debug_shapes_printed", False):
+            print(f"[DEBUG] Input images: {tuple(images.shape)}")
+            print(f"[DEBUG] After preprocessing: {tuple(processed.shape)}")
+            model._debug_shapes_printed = True
+
+        return processed
 
     @staticmethod
     def _anomalib_raw(model, images):
         """Torch model on already pre-processed images, skipping Anomalib's
         post-processor (min-max normalisation + clamping), like AnomaVision."""
-        return model.model(images)
+        output = model.model(images)
+
+        if not getattr(model, "_debug_features_printed", False):
+            print(f"[DEBUG] Model input: {tuple(images.shape)}")
+            print(f"[DEBUG] Model output type: {type(output).__name__}")
+
+            if isinstance(output, dict):
+                print(
+                    "[DEBUG] Feature/output shapes:",
+                    {
+                        key: tuple(value.shape)
+                        for key, value in output.items()
+                        if hasattr(value, "shape")
+                    },
+                )
+
+            model._debug_features_printed = True
+
+        return output
 
     def _evaluate_anomalib(self, model, test_loader) -> Tuple[float, float]:
         image_labels, image_scores, masks, maps = [], [], [], []
@@ -670,7 +744,7 @@ class BenchmarkRunner:
         metrics.training_memory_mb = self._memory_now_mb()
         metrics.state_dict_size_mb = self._state_dict_size_mb(
             model,
-            self.output_dir
+            self._result_dir(algorithm)
             / f"anomavision_{algorithm}_{self.class_name}_state_dict.pt",
         )
         timing_batch = next(iter(test_loader))[0][:TIMING_BATCH_SIZE]
@@ -732,7 +806,8 @@ class BenchmarkRunner:
         metrics.training_memory_mb = self._memory_now_mb()
         metrics.state_dict_size_mb = self._state_dict_size_mb(
             model,
-            self.output_dir / f"anomalib_{algorithm}_{self.class_name}_state_dict.pt",
+            self._result_dir(algorithm)
+            / f"anomalib_{algorithm}_{self.class_name}_state_dict.pt",
         )
         timing_batch = _get_anomalib_batch_value(next(iter(test_loader)), "image")[
             :TIMING_BATCH_SIZE
@@ -766,18 +841,14 @@ class BenchmarkRunner:
         frame["environment"] = frame["environment"].apply(
             lambda value: json.dumps(value, sort_keys=True)
         )
-        # stem = self.output_dir /  f"benchmark_{self.class_name}"
-
+        algorithms = {item.algorithm for item in results}
+        if len(algorithms) != 1:
+            raise ValueError(
+                "report() expects results for exactly one algorithm; "
+                f"received: {sorted(algorithms)}"
+            )
         algorithm = results[0].algorithm
-
-        stem = (
-            self.output_dir
-            / algorithm
-            / self.class_name
-            / f"benchmark_{algorithm}_{self.class_name}"
-        )
-
-        stem.parent.mkdir(parents=True, exist_ok=True)
+        stem = self._result_dir(algorithm) / f"benchmark_{algorithm}_{self.class_name}"
 
         frame.to_csv(f"{stem}.csv", index=False)
         with open(f"{stem}.json", "w", encoding="utf-8") as handle:
@@ -800,6 +871,14 @@ class BenchmarkRunner:
         with open(f"{stem}.txt", "w", encoding="utf-8") as handle:
             handle.write("AnomaVision vs Anomalib Benchmark\n")
             handle.write("=" * 80 + "\n\n")
+            config = rows[0]
+            handle.write("Benchmark Configuration\n")
+            handle.write("-" * 80 + "\n")
+            handle.write(f"Backbone      : {config['backbone']}\n")
+            handle.write(f"Image size    : {config['image_size']}\n")
+            handle.write(f"Layer indices : {config['layer_indices']}\n")
+            handle.write(f"Layers        : {config['layers']}\n")
+            handle.write(f"N features    : {config['n_features']}\n\n")
             handle.write(
                 tabulate(
                     summary,
@@ -834,7 +913,8 @@ class BenchmarkRunner:
                 )
                 + "</tr>"
             )
-        html = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnomaVision Benchmark - {self.class_name}</title><style>body{{font-family:Inter,Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}}main{{max-width:1400px;margin:40px auto;padding:24px}}h1{{margin-bottom:6px}}.sub{{color:#94a3b8;margin-bottom:28px}}.card{{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin-bottom:24px;overflow:auto}}table{{width:100%;border-collapse:collapse;white-space:nowrap}}th,td{{padding:12px 14px;border-bottom:1px solid #334155;text-align:left}}th{{color:#93c5fd;background:#1e293b;position:sticky;top:0}}tr:hover{{background:#1e293b}}.pill{{display:inline-block;padding:6px 10px;border-radius:999px;background:#1e293b;margin-right:6px}}</style></head><body><main><h1>🔬 AnomaVision Benchmark</h1><div class="sub">MVTec AD · {self.class_name} · 224×224 · {self.device}</div><div class="card"><span class="pill">PaDiM</span><span class="pill">PatchCore</span><span class="pill">EfficientAD</span><span class="pill">AnomaVision vs Anomalib</span></div><div class="card"><table><thead><tr><th>Algorithm</th><th>Implementation</th><th>Image AUROC</th><th>Pixel AUROC</th><th>Fit Time (s)</th><th>Latency (ms)</th><th>P95 (ms)</th><th>FPS</th><th>Model (MB)</th></tr></thead><tbody>{''.join(html_rows)}</tbody></table></div></main></body></html>"""
+        config = rows[0]
+        html = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnomaVision Benchmark - {self.class_name}</title><style>body{{font-family:Inter,Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}}main{{max-width:1400px;margin:40px auto;padding:24px}}h1{{margin-bottom:6px}}.sub{{color:#94a3b8;margin-bottom:28px}}.card{{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin-bottom:24px;overflow:auto}}table{{width:100%;border-collapse:collapse;white-space:nowrap}}th,td{{padding:12px 14px;border-bottom:1px solid #334155;text-align:left}}th{{color:#93c5fd;background:#1e293b;position:sticky;top:0}}tr:hover{{background:#1e293b}}.pill{{display:inline-block;padding:6px 10px;border-radius:999px;background:#1e293b;margin-right:6px}}.config{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}}.config span{{display:block;color:#94a3b8;font-size:12px;margin-bottom:5px}}.config strong{{font-size:15px}}</style></head><body><main><h1>🔬 AnomaVision Benchmark</h1><div class="sub">{self.class_name} · {config['image_size']} · {self.device}</div><div class="card"><span class="pill">PaDiM</span><span class="pill">PatchCore</span><span class="pill">EfficientAD</span><span class="pill">AnomaVision vs Anomalib</span></div><div class="card"><h2>Benchmark Configuration</h2><div class="config"><div><span>Backbone</span><strong>{config['backbone']}</strong></div><div><span>Image size</span><strong>{config['image_size']}</strong></div><div><span>Layer indices</span><strong>{config['layer_indices']}</strong></div><div><span>Layers</span><strong>{config['layers']}</strong></div><div><span>N features</span><strong>{config['n_features']}</strong></div></div></div><div class="card"><table><thead><tr><th>Algorithm</th><th>Implementation</th><th>Image AUROC</th><th>Pixel AUROC</th><th>Fit Time (s)</th><th>Latency (ms)</th><th>P95 (ms)</th><th>FPS</th><th>Model (MB)</th></tr></thead><tbody>{''.join(html_rows)}</tbody></table></div></main></body></html>"""
         with open(f"{stem}.html", "w", encoding="utf-8") as handle:
             handle.write(html)
         print("\nReports:")
@@ -842,15 +922,15 @@ class BenchmarkRunner:
             print(f"  {stem}.{suffix}")
 
     def run(self, algorithms: List[str]) -> None:
-        results = []
         for algorithm in algorithms:
-            results.append(self.benchmark_anomavision(algorithm))
+            # Save each algorithm independently under its own result directory.
+            results = [self.benchmark_anomavision(algorithm)]
             gc.collect()
             set_seed(self.seed)
             results.append(self.benchmark_anomalib(algorithm))
             gc.collect()
             set_seed(self.seed)
-        self.report(results)
+            self.report(results)
 
 
 def main() -> None:
@@ -866,6 +946,11 @@ def main() -> None:
     )
     parser.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda"))
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument(
+        "--save-models",
+        action="store_true",
+        help="Also save model state dictionaries as .pt files (disabled by default).",
+    )
     parser.add_argument(
         "--algorithms", nargs="+", choices=ALGORITHMS, default=list(ALGORITHMS)
     )
@@ -897,6 +982,7 @@ def main() -> None:
         print(f"Dataset  : {dataset_path}")
         print(f"Classes  : {len(classes)}")
         print(f"Algorithms: {', '.join(args.algorithms)}")
+        print(f"Backbone : {ANOMA_BACKBONE[BACKBONE]}")
         print(f"Device   : {args.device}")
         print("\nClasses:")
         for class_name in classes:
@@ -913,6 +999,7 @@ def main() -> None:
                 class_name,
                 args.device,
                 args.seed,
+                args.save_models,
             ).run(args.algorithms)
 
             gc.collect()
@@ -927,6 +1014,7 @@ def main() -> None:
             args.class_name,
             args.device,
             args.seed,
+            args.save_models,
         ).run(args.algorithms)
 
 
