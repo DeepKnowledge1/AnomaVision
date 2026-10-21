@@ -23,7 +23,7 @@ def list_models(project_dir: Path | str) -> list[dict[str, Any]]:
                 metadata = {}
         models.append(
             {
-                "id": str(model_path.relative_to(root)),
+                "id": model_path.relative_to(root).as_posix(),
                 "path": str(model_path),
                 "algorithm": metadata.get("algorithm", model_path.parts[-4]),
                 "class_name": metadata.get("class_name", model_path.parts[-3]),
