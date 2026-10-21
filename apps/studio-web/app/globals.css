@@ -1993,3 +1993,10 @@ input::placeholder{color:#a0a7b3}
 
 /* Highlight inference rows when the reported drift exceeds its configured threshold. */
 .data-table td.drift-cell{background:#fef2f2;color:#b91c1c;font-weight:700;box-shadow:inset 3px 0 0 #dc2626}
+
+
+/* Align camera inference actions and interval selector on one consistent baseline. */
+.camera-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.camera-controls>button.live-control-button{height:38px;min-height:38px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.camera-controls .compact-control{height:38px;min-height:38px;box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+.camera-controls .compact-control select{height:28px;min-width:110px;box-sizing:border-box;align-self:center}
