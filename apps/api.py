@@ -400,10 +400,23 @@ def _apply_project_config(project_id: Optional[str]) -> None:
         return
 
     cfg = load_config(str(config_path)) or {}
-    # Keep the rolling monitor alive across inference requests. Rebuilding it
-    # for every camera frame resets samples_seen and leaves drift stuck warming up.
-    if _drift_monitor is None or _drift_project_id != project_id:
-        _load_project_drift_monitor(project_id, cfg)
+    global _drift_monitor, _drift_project_id, _drift_config
+    # Drift monitoring is opt-in. A missing/invalid reference must never prevent
+    # model reload or inference, and disabled monitoring must not retain a stale
+    # monitor from a previously selected project.
+    if not cfg.get("enable_drift_monitoring", False):
+        _drift_monitor = None
+        _drift_project_id = None
+        _drift_config = {}
+    elif _drift_monitor is None or _drift_project_id != project_id:
+        try:
+            # Keep the rolling monitor alive across inference requests.
+            _load_project_drift_monitor(project_id, cfg)
+        except Exception as exc:
+            _drift_monitor = None
+            _drift_project_id = None
+            _drift_config = {}
+            print(f"[monitoring] Could not initialize project monitoring: {exc}")
     algorithm = str(cfg.get("algorithm", "padim")).lower()
     threshold_keys = {
         "padim": "thresh_padim",
