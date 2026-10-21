@@ -135,9 +135,105 @@ def inspect_dataset(
 
     root_path = Path(root).expanduser()
     split_summary = _split_summary(root_path)
+
+    # Dataset quality signals are advisory; they never change model behavior.
+    image_records = [
+        item for item in records
+        if not any(part.lower() in {"ground_truth", "masks", "mask"} for part in Path(item["path"]).parts)
+    ]
+    train_hashes: dict[str, list[str]] = {}
+    test_hashes: dict[str, list[str]] = {}
+    for item in image_records:
+        parts = [part.lower() for part in Path(item["path"]).parts]
+        if "train" in parts:
+            train_hashes.setdefault(item["sha256"], []).append(item["path"])
+        if "test" in parts:
+            test_hashes.setdefault(item["sha256"], []).append(item["path"])
+    leakage_groups = [
+        {"train": train_paths, "test": test_hashes[digest]}
+        for digest, train_paths in train_hashes.items()
+        if digest in test_hashes
+    ]
+
+    test_root = root_path / "test"
+    ground_truth_root = root_path / "ground_truth"
+    defect_test_images: list[Path] = []
+    missing_masks: list[str] = []
+    empty_masks: list[str] = []
+    invalid_mask_labels: list[str] = []
+    if test_root.is_dir() and ground_truth_root.is_dir():
+        for class_dir in sorted(test_root.iterdir()):
+            if not class_dir.is_dir() or class_dir.name.lower() in {"good", "normal"}:
+                continue
+            for image_path in sorted(class_dir.rglob("*")):
+                if not image_path.is_file() or image_path.suffix.lower() not in IMAGE_EXTENSIONS:
+                    continue
+                defect_test_images.append(image_path)
+                mask_dir = ground_truth_root / class_dir.name
+                candidates = [
+                    mask_dir / f"{image_path.stem}_mask{suffix}"
+                    for suffix in IMAGE_EXTENSIONS
+                ]
+                mask_path = next((candidate for candidate in candidates if candidate.is_file()), None)
+                if mask_path is None:
+                    missing_masks.append(str(image_path.relative_to(root_path)))
+                    continue
+                try:
+                    with Image.open(mask_path) as mask:
+                        mask.load()
+                        mask_values = mask.convert("L")
+                        if mask_values.getbbox() is None:
+                            empty_masks.append(str(mask_path.relative_to(root_path)))
+                        values = set(mask_values.getdata())
+                        if not values.issubset({0, 1, 255}):
+                            invalid_mask_labels.append(str(mask_path.relative_to(root_path)))
+                except Exception:
+                    invalid_mask_labels.append(str(mask_path.relative_to(root_path)))
+
+    dimensions = [(item["width"], item["height"]) for item in image_records]
+    modes: dict[str, int] = {}
+    for item in image_records:
+        modes[item["mode"]] = modes.get(item["mode"], 0) + 1
+    dimension_summary = {
+        "min_width": min((w for w, _ in dimensions), default=None),
+        "max_width": max((w for w, _ in dimensions), default=None),
+        "avg_width": round(sum(w for w, _ in dimensions) / len(dimensions), 1) if dimensions else None,
+        "min_height": min((h for _, h in dimensions), default=None),
+        "max_height": max((h for _, h in dimensions), default=None),
+        "avg_height": round(sum(h for _, h in dimensions) / len(dimensions), 1) if dimensions else None,
+    }
+    test_classes = split_summary["test_classes"] if split_summary else []
+    defect_classes = [item for item in test_classes if item["name"].lower() not in {"good", "normal"}]
+    sparse_classes = [item for item in defect_classes if item["image_count"] < 10]
+    normal_count = sum(item["image_count"] for item in test_classes if item["name"].lower() in {"good", "normal"})
+    defect_count = sum(item["image_count"] for item in defect_classes)
+    quality_summary = {
+        "dataset_class": root_path.name,
+        "total_images": len(image_records),
+        "normal_test_images": normal_count,
+        "defect_test_images": defect_count,
+        "defect_categories": len(defect_classes),
+        "corrupted_images": len(failures),
+        "duplicate_images": sum(len(group) - 1 for group in duplicate_groups),
+        "train_test_leakage_groups": len(leakage_groups),
+        "leakage_groups": leakage_groups[:10],
+        "missing_masks": len(missing_masks),
+        "missing_mask_files": missing_masks[:10],
+        "empty_masks": len(empty_masks),
+        "empty_mask_files": empty_masks[:10],
+        "invalid_masks": len(invalid_mask_labels),
+        "invalid_mask_files": invalid_mask_labels[:10],
+        "image_modes": modes,
+        "image_dimensions": dimension_summary,
+        "sparse_defect_classes": sparse_classes,
+        "preprocessing_compatible": all(item["width"] > 0 and item["height"] > 0 for item in image_records),
+        "preprocessing_note": "Images are readable and can be resized; model-specific normalization is applied by the existing pipeline.",
+        "near_duplicates_checked": False,
+    }
     return {
         "root": str(root_path),
         "split_summary": split_summary,
+        "quality_summary": quality_summary,
         "image_count": len(records),
         "valid_count": len(records),
         "failed_count": len(failures),
