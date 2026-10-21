@@ -40,6 +40,9 @@ store = ProjectStore(STORE_ROOT)
 _training_jobs: dict[str, dict[str, Any]] = {}
 _training_lock = threading.Lock()
 
+_dataset_jobs: dict[str, dict[str, Any]] = {}
+_dataset_lock = threading.Lock()
+
 
 def _training_worker(job_id: str, project_id: str, request: TrainingRequest) -> None:
     try:
