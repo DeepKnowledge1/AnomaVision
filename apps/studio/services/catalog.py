@@ -15,10 +15,13 @@ ALGORITHMS = {
     },
 }
 
+# Keep this list aligned with deployment_service.TARGET_FORMATS plus
+# its CPU validation target. Hardware targets without export adapters must
+# not be offered as deployable options in Studio.
 DEPLOYMENT_TARGETS = {
-    "cpu": "CPU / ONNX Runtime",
-    "openvino": "OpenVINO",
-    "tensorrt": "TensorRT",
-    "hailo": "Hailo",
-    "kv260": "KV260 / Vitis AI",
+    "cpu": "Validate existing model on CPU",
+    "onnx": "Portable ONNX Runtime artifact",
+    "openvino": "OpenVINO IR",
+    "tensorrt": "TensorRT engine",
+    "torchscript": "TorchScript artifact",
 }
