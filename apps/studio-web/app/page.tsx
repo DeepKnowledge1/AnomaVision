@@ -12,14 +12,16 @@ type Project = { id: string; name: string; description?: string; algorithm: stri
 type Model = { id: string; algorithm: string; class_name: string; run_name: string; status: string; path?: string; };
 type DatasetReport = {
   image_count: number; valid_count: number; failed_count: number; duplicate_count: number;
-  resolutions: Record<string, number>;\n  records?: { path: string; name: string; width: number; height: number; mode: string; brightness: number; bytes: number }[];\n  failures?: { path: string; error: string }[];
+  resolutions: Record<string, number>;
+  records?: { path: string; name: string; width: number; height: number; mode: string; brightness: number; bytes: number }[];
+  failures?: { path: string; error: string }[];
 };
 type Catalog = {
   algorithms: Record<string, { name?: string; description?: string }>;
   deployment_targets: Record<string, unknown>;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_STUDIO_API_URL ?? "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_STUDIO_API_URL ?? "http://127.0.0.1:8000").replace("://localhost:", "://127.0.0.1:");
 const navGroups: { label: string; items: { label: Page; icon: React.ElementType }[] }[] = [
   { label: "Workspace", items: [
     { label: "Overview", icon: LayoutDashboard },
