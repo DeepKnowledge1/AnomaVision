@@ -1998,5 +1998,6 @@ input::placeholder{color:#a0a7b3}
 /* Align camera inference actions and interval selector on one consistent baseline. */
 .camera-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .camera-controls>button.live-control-button{height:38px;min-height:38px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:7px}
-.camera-controls .compact-control{height:38px;min-height:38px;box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
-.camera-controls .compact-control select{height:28px;min-width:110px;box-sizing:border-box;align-self:center}
+.camera-controls .compact-control{height:38px;min-height:38px;box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);line-height:1;white-space:nowrap}
+.camera-controls .compact-control>span{display:inline-flex;align-items:center;line-height:1}
+.camera-controls .compact-control select{height:28px;min-height:28px;min-width:110px;box-sizing:border-box;align-self:center;margin:0;line-height:normal}
