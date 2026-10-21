@@ -1,5 +1,11 @@
 import json
+import sys
 from pathlib import Path
+
+# apps/api.py is also run as a script, so make its sibling inference module importable.
+_APPS_DIR = str(Path(__file__).resolve().parents[1] / "apps")
+if _APPS_DIR not in sys.path:
+    sys.path.insert(0, _APPS_DIR)
 
 import pytest
 
@@ -59,6 +65,11 @@ def test_invalid_drift_monitor_initialization_does_not_block_config(tmp_path, mo
     monkeypatch.setattr(studio_inference_api, "_drift_project_id", None)
     monkeypatch.setattr(studio_inference_api, "_drift_config", {})
     monkeypatch.setattr(
+        studio_inference_api.engine,
+        "ANOMALY_THRESHOLD",
+        studio_inference_api.engine.ANOMALY_THRESHOLD,
+    )
+    monkeypatch.setattr(
         studio_inference_api,
         "_load_project_drift_monitor",
         lambda *_args: (_ for _ in ()).throw(ValueError("invalid reference")),
@@ -73,9 +84,8 @@ def test_invalid_drift_monitor_initialization_does_not_block_config(tmp_path, mo
 
 
 def test_algorithm_resolution_uses_metadata_for_model_project(tmp_path, monkeypatch):
-    project_id = "patchcore-project"
     project_dir = _write_project_config(
-        tmp_path, project_id, {"algorithm": "patchcore"}
+        tmp_path, "patchcore-project", {"algorithm": "patchcore"}
     )
     model_path = project_dir / "deployments" / "run-1" / "onnx" / "model.onnx"
     model_path.parent.mkdir(parents=True)
@@ -86,9 +96,7 @@ def test_algorithm_resolution_uses_metadata_for_model_project(tmp_path, monkeypa
 
 
 def test_algorithm_resolution_does_not_use_another_projects_metadata(tmp_path, monkeypatch):
-    other_project = _write_project_config(
-        tmp_path, "other-project", {"algorithm": "patchcore"}
-    )
+    _write_project_config(tmp_path, "other-project", {"algorithm": "patchcore"})
     model_path = tmp_path / "model-padim.onnx"
     model_path.write_bytes(b"test artifact")
     monkeypatch.setattr("apps.inference_engine.STUDIO_ROOT", str(tmp_path))
