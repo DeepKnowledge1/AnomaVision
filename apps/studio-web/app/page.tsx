@@ -12,7 +12,7 @@ type Project = { id: string; name: string; description?: string; algorithm: stri
 type Model = { id: string; algorithm: string; class_name: string; run_name: string; status: string; path?: string; };
 type DatasetReport = {
   image_count: number; valid_count: number; failed_count: number; duplicate_count: number;
-  resolutions: Record<string, number>; failures?: { path: string; error: string }[];
+  resolutions: Record<string, number>;\n  records?: { path: string; name: string; width: number; height: number; mode: string; brightness: number; bytes: number }[];\n  failures?: { path: string; error: string }[];
 };
 type Catalog = {
   algorithms: Record<string, { name?: string; description?: string }>;
