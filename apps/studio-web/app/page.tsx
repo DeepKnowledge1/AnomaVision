@@ -13,6 +13,11 @@ type Model = { id: string; algorithm: string; class_name: string; run_name: stri
 type DatasetReport = {
   image_count: number; valid_count: number; failed_count: number; duplicate_count: number;
   resolutions: Record<string, number>;
+  split_summary?: {
+    training_count: number; testing_count: number; test_class_count: number;
+    test_classes: { name: string; image_count: number }[];
+    training_previews: { name: string; path: string; data_url: string }[];
+  } | null;
   records?: { path: string; name: string; width: number; height: number; mode: string; brightness: number; bytes: number }[];
   failures?: { path: string; error: string }[];
 };
@@ -434,6 +439,28 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
               <div className="section-link">{issueCount ? `${issueCount} item(s) to review` : "Looks clean"}</div>
             </div>
             <div className="card">
+              {report.split_summary&&<div className="dataset-failures">
+                <div className="dataset-subtitle">Dataset split · MVTec layout</div>
+                <div className="grid-4">
+                  <Stat icon={<Database size={15}/>} label="Training images" value={String(report.split_summary.training_count)} meta="under train/"/>
+                  <Stat icon={<Database size={15}/>} label="Testing images" value={String(report.split_summary.testing_count)} meta="under test/"/>
+                  <Stat icon={<Box size={15}/>} label="Test classes" value={String(report.split_summary.test_class_count)} meta="folders under test/"/>
+                  <Stat icon={<Sparkles size={15}/>} label="Training previews" value={String(report.split_summary.training_previews.length)} meta="sample images"/>
+                </div>
+                <div className="dataset-subtitle" style={{marginTop:16}}>Test class breakdown</div>
+                <div className="table-wrap"><table className="data-table"><thead><tr><th>Test class</th><th>Images</th></tr></thead><tbody>
+                  {report.split_summary.test_classes.map(item=><tr key={item.name}><td>{item.name}</td><td>{item.image_count}</td></tr>)}
+                </tbody></table></div>
+                {report.split_summary.training_previews.length>0&&<>
+                  <div className="dataset-subtitle" style={{marginTop:16}}>Training examples · up to 2 images</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
+                    {report.split_summary.training_previews.map(sample=><figure key={sample.path} style={{margin:0,border:"1px solid var(--border, #e5e7eb)",borderRadius:10,padding:10}}>
+                      <img src={sample.data_url} alt={"Training sample "+sample.path} style={{width:"100%",height:180,objectFit:"contain",borderRadius:6,background:"var(--surface-muted, #f8fafc)"}}/>
+                      <figcaption style={{fontSize:12,marginTop:8,overflowWrap:"anywhere"}}>{sample.path}</figcaption>
+                    </figure>)}
+                  </div>
+                </>}
+              </div>}
               {resolutionEntries.length
                 ? <div className="resolution-list">
                     {resolutionEntries.map(([resolution,count])=><div className="resolution-row" key={resolution}><span>{resolution}</span><b>{count}</b></div>)}
