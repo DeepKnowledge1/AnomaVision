@@ -154,16 +154,17 @@ Run all available MVTec classes:
 
 ```powershell
 python scripts/benchmarks/compare_with_anomalib.py `
-  --dataset_path D:/01-DATA/VisA_pytorch `
+  --dataset_path D:/01-DATA/Visa_pytorch `
   --all_classes `
   --algorithms padim `
   --device cpu
 ```
 
-With `--all_classes`, the script automatically discovers supported MVTec class directories present under the dataset path and runs the same AnomaVision-vs-Anomalib comparison for each available class. `--class_name` and `--all_classes` are mutually exclusive. Results are written separately under `benchmark_results/<algorithm>/<class_name>/`.
+With `--all_classes`, the script automatically discovers supported class directories under the dataset path and runs the same AnomaVision-vs-Anomalib comparison for each available class. `--class_name` and `--all_classes` are mutually exclusive. Results are saved under `benchmark_results/<backbone>/<algorithm>/<image_size>/<class_name>/`.
 
-Historical benchmark results are available for **MVTec AD and VisA**, including per-class results and visual comparisons. These results are retained for reference; the corrected benchmark should be rerun before making current performance claims.
+Historical benchmark results are available for **MVTec AD and VisA**, including per-class results and visual comparisons. These results are retained for reference; rerun the corrected benchmark before making current performance claims.
 
+See the [Benchmark guide](docs/benchmark.md) for the methodology, commands, metrics, Anomalib version/commit, and detailed results.
 See the [Benchmark guide](docs/benchmark.md) for the methodology, commands, metrics, Anomalib version/commit, and detailed results.
 
 ---
