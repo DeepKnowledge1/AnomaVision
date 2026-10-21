@@ -22,7 +22,7 @@ type DatasetReport = {
     dataset_class: string; total_images: number; normal_test_images: number; defect_test_images: number;
     defect_categories: number; corrupted_images: number; duplicate_images: number;
     train_test_leakage_groups: number; leakage_groups: { train: string[]; test: string[] }[];
-    missing_masks: number; missing_mask_files: string[]; empty_masks: number; empty_mask_files: string[];
+    mask_check_available: boolean; missing_masks: number; missing_mask_files: string[]; empty_masks: number; empty_mask_files: string[];
     invalid_masks: number; invalid_mask_files: string[]; image_modes: Record<string, number>;
     image_dimensions: { min_width: number | null; max_width: number | null; avg_width: number | null; min_height: number | null; max_height: number | null; avg_height: number | null };
     sparse_defect_classes: { name: string; image_count: number }[];
@@ -482,7 +482,7 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
                 </div>
                 <div className="grid-4" style={{marginTop:12}}>
                   <Stat icon={<ShieldCheck size={15}/>} label="Corrupted images" value={String(report.quality_summary.corrupted_images)} meta={report.quality_summary.corrupted_images?"cannot be opened":"all scanned files readable"} green={!report.quality_summary.corrupted_images}/>
-                  <Stat icon={<Database size={15}/>} label="Missing masks" value={String(report.quality_summary.missing_masks)} meta="defect test images without masks" alert={report.quality_summary.missing_masks>0}/>
+                  <Stat icon={<Database size={15}/>} label="Missing masks" value={report.quality_summary.mask_check_available?String(report.quality_summary.missing_masks):"N/A"} meta={report.quality_summary.mask_check_available?"defect test images without masks":"no test/defect layout detected"} alert={report.quality_summary.mask_check_available&&report.quality_summary.missing_masks>0}/>
                   <Stat icon={<Sparkles size={15}/>} label="Duplicates" value={String(report.quality_summary.duplicate_images)} meta="exact duplicate files" alert={report.quality_summary.duplicate_images>0}/>
                   <Stat icon={<Box size={15}/>} label="Image channels" value={String(Object.keys(report.quality_summary.image_modes).length)} meta={Object.entries(report.quality_summary.image_modes).map(([mode,count])=>mode+" "+count).join(" · ")||"no readable images"}/>
                 </div>
@@ -494,6 +494,7 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
                     <div><span>Image channels / modes</span><b>{Object.entries(report.quality_summary.image_modes).map(([mode,count])=>mode+": "+count).join(" · ")||"Unavailable"}</b></div>
                     <div><span>Preprocessing compatibility</span><b>{report.quality_summary.preprocessing_compatible?"Readable and resizable":"Review invalid dimensions"} · {report.quality_summary.preprocessing_note}</b></div>
                     <div><span>Near-duplicate check</span><b>{report.quality_summary.near_duplicates_checked?"Checked":"Not checked; exact file hashes only"}</b></div>
+                    <div><span>Ground-truth mask check</span><b>{report.quality_summary.mask_check_available?"Applicable to this dataset layout":"Not assessed for this folder layout"}</b></div>
                     <div><span>Empty masks</span><b>{report.quality_summary.empty_masks}</b></div>
                     <div><span>Invalid masks / labels</span><b>{report.quality_summary.invalid_masks}</b></div>
                     <div><span>Defect categories with fewer than 10 test images</span><b>{report.quality_summary.sparse_defect_classes.length?report.quality_summary.sparse_defect_classes.map(item=>item.name+" ("+item.image_count+")").join(", "):"None detected"}</b></div>
