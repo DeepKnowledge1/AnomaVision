@@ -18,6 +18,16 @@ type DatasetReport = {
     test_classes: { name: string; image_count: number }[];
     training_previews: { name: string; path: string; data_url: string }[];
   } | null;
+  quality_summary?: {
+    dataset_class: string; total_images: number; normal_test_images: number; defect_test_images: number;
+    defect_categories: number; corrupted_images: number; duplicate_images: number;
+    train_test_leakage_groups: number; leakage_groups: { train: string[]; test: string[] }[];
+    missing_masks: number; missing_mask_files: string[]; empty_masks: number; empty_mask_files: string[];
+    invalid_masks: number; invalid_mask_files: string[]; image_modes: Record<string, number>;
+    image_dimensions: { min_width: number | null; max_width: number | null; avg_width: number | null; min_height: number | null; max_height: number | null; avg_height: number | null };
+    sparse_defect_classes: { name: string; image_count: number }[];
+    preprocessing_compatible: boolean; preprocessing_note: string; near_duplicates_checked: boolean;
+  };
   records?: { path: string; name: string; width: number; height: number; mode: string; brightness: number; bytes: number }[];
   failures?: { path: string; error: string }[];
 };
@@ -461,17 +471,43 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
                   </div>
                 </>}
               </div>}
+              {report.quality_summary&&<section className="dataset-health">
+                <div className="dataset-subtitle">Dataset Health · {report.quality_summary.dataset_class}</div>
+                <p className="subtitle" style={{marginTop:0}}>A class-level summary of data readiness, evaluation balance and common quality risks.</p>
+                <div className="grid-4">
+                  <Stat icon={<Database size={15}/>} label="Dataset images" value={String(report.quality_summary.total_images)} meta="excluding ground-truth masks"/>
+                  <Stat icon={<ShieldCheck size={15}/>} label="Normal test" value={String(report.quality_summary.normal_test_images)} meta="good / normal samples"/>
+                  <Stat icon={<Activity size={15}/>} label="Defect test" value={String(report.quality_summary.defect_test_images)} meta={report.quality_summary.defect_categories+" defect categories"}/>
+                  <Stat icon={<CircleGauge size={15}/>} label="Data leakage" value={String(report.quality_summary.train_test_leakage_groups)} meta={report.quality_summary.train_test_leakage_groups?"train/test duplicates found":"no exact overlap found"} alert={report.quality_summary.train_test_leakage_groups>0}/>
+                </div>
+                <div className="grid-4" style={{marginTop:12}}>
+                  <Stat icon={<ShieldCheck size={15}/>} label="Corrupted images" value={String(report.quality_summary.corrupted_images)} meta={report.quality_summary.corrupted_images?"cannot be opened":"all scanned files readable"} green={!report.quality_summary.corrupted_images}/>
+                  <Stat icon={<Database size={15}/>} label="Missing masks" value={String(report.quality_summary.missing_masks)} meta="defect test images without masks" alert={report.quality_summary.missing_masks>0}/>
+                  <Stat icon={<Sparkles size={15}/>} label="Duplicates" value={String(report.quality_summary.duplicate_images)} meta="exact duplicate files" alert={report.quality_summary.duplicate_images>0}/>
+                  <Stat icon={<Box size={15}/>} label="Image channels" value={String(Object.keys(report.quality_summary.image_modes).length)} meta={Object.entries(report.quality_summary.image_modes).map(([mode,count])=>mode+" "+count).join(" · ")||"no readable images"}/>
+                </div>
+                <details className="technical-details" style={{marginTop:14}}>
+                  <summary>Detailed quality checks</summary>
+                  <div className="settings-list" style={{marginTop:12}}>
+                    <div><span>Image dimensions (W × H)</span><b>{report.quality_summary.image_dimensions.min_width!=null?String(report.quality_summary.image_dimensions.min_width)+" × "+String(report.quality_summary.image_dimensions.min_height)+" min · "+String(report.quality_summary.image_dimensions.max_width)+" × "+String(report.quality_summary.image_dimensions.max_height)+" max":"Unavailable"}</b></div>
+                    <div><span>Average dimensions</span><b>{report.quality_summary.image_dimensions.avg_width!=null?String(report.quality_summary.image_dimensions.avg_width)+" × "+String(report.quality_summary.image_dimensions.avg_height):"Unavailable"}</b></div>
+                    <div><span>Image channels / modes</span><b>{Object.entries(report.quality_summary.image_modes).map(([mode,count])=>mode+": "+count).join(" · ")||"Unavailable"}</b></div>
+                    <div><span>Preprocessing compatibility</span><b>{report.quality_summary.preprocessing_compatible?"Readable and resizable":"Review invalid dimensions"} · {report.quality_summary.preprocessing_note}</b></div>
+                    <div><span>Near-duplicate check</span><b>{report.quality_summary.near_duplicates_checked?"Checked":"Not checked; exact file hashes only"}</b></div>
+                    <div><span>Empty masks</span><b>{report.quality_summary.empty_masks}</b></div>
+                    <div><span>Invalid masks / labels</span><b>{report.quality_summary.invalid_masks}</b></div>
+                    <div><span>Defect categories with fewer than 10 test images</span><b>{report.quality_summary.sparse_defect_classes.length?report.quality_summary.sparse_defect_classes.map(item=>item.name+" ("+item.image_count+")").join(", "):"None detected"}</b></div>
+                  </div>
+                  {report.quality_summary.leakage_groups.length>0&&<div className="dataset-failures"><div className="dataset-subtitle">Exact train/test overlaps</div>{report.quality_summary.leakage_groups.map((group,index)=><div className="failure-row" key={index}><span>Train: {group.train.join(", ")}</span><small>Test: {group.test.join(", ")}</small></div>)}</div>}
+                  {report.quality_summary.missing_mask_files.length>0&&<div className="dataset-failures"><div className="dataset-subtitle">Missing ground-truth masks</div>{report.quality_summary.missing_mask_files.map(file=><div className="failure-row" key={file}><span>{file}</span></div>)}</div>}
+                  {(report.quality_summary.empty_mask_files.length>0||report.quality_summary.invalid_mask_files.length>0)&&<div className="dataset-failures"><div className="dataset-subtitle">Mask files to review</div>{[...report.quality_summary.empty_mask_files,...report.quality_summary.invalid_mask_files].map(file=><div className="failure-row" key={file}><span>{file}</span></div>)}</div>}
+                </details>
+              </section>}
               {resolutionEntries.length
                 ? <div className="resolution-list">
                     {resolutionEntries.map(([resolution,count])=><div className="resolution-row" key={resolution}><span>{resolution}</span><b>{count}</b></div>)}
                   </div>
                 : <div className="empty">No valid images found.</div>}
-              {report.records?.length>0&&<div className="dataset-failures">
-                <div className="dataset-subtitle">Sample images · first {Math.min(8,report.records.length)} readable files</div>
-                <div className="table-wrap"><table className="data-table"><thead><tr><th>File</th><th>Dimensions</th><th>Mode</th><th>Brightness</th><th>Size</th></tr></thead><tbody>
-                  {report.records.slice(0,8).map((sample:any)=><tr key={sample.path}><td title={sample.path}>{sample.name}</td><td>{sample.width} × {sample.height}</td><td>{sample.mode}</td><td>{sample.brightness}</td><td>{(sample.bytes/1024).toFixed(1)} KB</td></tr>)}
-                </tbody></table></div>
-              </div>}
               {report.failures&&report.failures.length>0&&<div className="dataset-failures">
                 <div className="dataset-subtitle">Files that could not be read</div>
                 {report.failures.slice(0,5).map((failure)=><div className="failure-row" key={failure.path}><span title={failure.path}>{failure.path}</span><small>{failure.error}</small></div>)}
