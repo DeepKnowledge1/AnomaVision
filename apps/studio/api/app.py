@@ -319,8 +319,25 @@ def _dataset_inspection_worker(job_id: str, project_id: str, request: DatasetIns
     try:
         with _dataset_lock:
             _dataset_jobs[job_id].update(status="running", message="Discovering image files")
+        inspection_root = Path(request.path).expanduser()
+        config_data = (
+            load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
+        )
+        class_name = str(
+            request.class_name or config_data.get("class_name", "") or ""
+        ).strip()
+        # When the configured path is an MVTec dataset root (e.g. mvtec),
+        # inspect only the selected class folder (e.g. mvtec/bottle).
+        # If the user already selected that class folder, do not append it twice.
+        class_dir = inspection_root / class_name if class_name else None
+        if (
+            class_dir is not None
+            and inspection_root.name.casefold() != class_name.casefold()
+            and class_dir.is_dir()
+        ):
+            inspection_root = class_dir
         report = inspect_dataset(
-            request.path, recursive=request.recursive, progress_callback=report_progress
+            inspection_root, recursive=request.recursive, progress_callback=report_progress
         )
         manifest = _project_dir(project_id) / "datasets" / "dataset_report.json"
         save_dataset_manifest(manifest, report)
