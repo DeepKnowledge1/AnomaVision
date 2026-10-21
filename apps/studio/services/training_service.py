@@ -47,9 +47,9 @@ def normalize_dataset_source(
         class_dir = selected.parent
         return class_dir.parent, class_dir.name
 
-    # A class folder: .../<class>/train/good
+    # A selected class folder: .../<class>/train/good
     if (selected / "train" / "good").is_dir():
-        return selected.parent, selected.name
+        return selected, selected.name
 
     # Dataset root with a named class.
     requested_class = (class_name or "").strip()
@@ -116,6 +116,11 @@ def create_training_config(
     """
     dataset_path, detected_class = normalize_dataset_source(dataset_source, class_name)
     effective_class = detected_class if detected_class != "default" else class_name
+
+    # The training entry point expects the parent dataset root plus class_name.
+    # normalize_dataset_source intentionally preserves a selected class folder.
+    if (dataset_path / "train" / "good").is_dir():
+        dataset_path = dataset_path.parent
 
     run_id = (
         re.sub(r"[^a-zA-Z0-9_-]+", "-", f"{algorithm}-{effective_class}")
