@@ -95,10 +95,14 @@ app.add_middleware(
     allow_origins=[
         origin.strip()
         for origin in os.getenv(
-            "ANOMAVISION_STUDIO_CORS", "http://localhost:3000"
+            "ANOMAVISION_STUDIO_CORS",
+            "http://localhost:3000,http://127.0.0.1:3000",
         ).split(",")
         if origin.strip()
     ],
+    # Local Studio may be opened through localhost, IPv4, or IPv6 loopback.
+    # Permit loopback frontend origins while keeping remote origins explicit.
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
