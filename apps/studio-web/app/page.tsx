@@ -579,7 +579,7 @@ const [resolved, setResolved] = useState<{dataset_path:string;class_name:string;
     if(batch.trim()&&(!Number.isInteger(Number(batch))||Number(batch)<1)){setError("Batch size must be a positive whole number.");return;}
     if(resize.trim()){
       const dims=resize.split(",").map(v=>v.trim());
-      if(dims.length!==2||dims.some(v=>!/^\\d+$/.test(v)||Number(v)<1)){setError("Image size must contain two positive whole numbers, for example 224,224.");return;}
+      if(dims.length!==2||dims.some(v=>!/^\d+$/.test(v)||Number(v)<1)){setError("Image size must contain two positive whole numbers, for example 224,224.");return;}
     }
     setBusy(true);setError("");setResult(null);setProgress(null);setJobStatus("Validating dataset…");
     try{
@@ -1412,3 +1412,4 @@ function Placeholder({page}:{page:Page}) { const descriptions:Record<Page,string
 function Stat({icon,label,value,meta,green,alert}:{icon:React.ReactNode;label:string;value:string;meta:string;green?:boolean;alert?:boolean}){return <div className={`card stat-card ${alert?"drift-alert":""}`} tabIndex={0}><div className="stat-label">{icon}<span>{label}</span></div><div className="stat-value">{value}</div><div className="stat-meta">{green&&<span className="status-dot"/>}{meta}</div></div>}
 function ActivityRow({icon,title,sub,badge}:{icon:React.ReactNode;title:string;sub:string;badge:string}){return <div className="row"><div className="row-main"><div className="icon-box">{icon}</div><div><div className="row-title">{title}</div><div className="row-sub">{sub}</div></div></div><div className="badge">{badge}</div></div>}
 function HealthRow({title,sub,ok}:{title:string;sub:string;ok:boolean}){return <div className="row"><div className="row-main"><div className="icon-box"><CircleGauge size={14}/></div><div><div className="row-title">{title}</div><div className="row-sub">{sub}</div></div></div><div className="badge"><span className={`status-dot ${ok?"":"offline-dot"}`}/>{ok?"Healthy":"Offline"}</div></div>}
+
