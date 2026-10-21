@@ -60,6 +60,55 @@ VIZ_COLOR = tuple(map(int, os.getenv("ANOMAVISION_VIZ_COLOR", "128,0,128").split
 # -----------------------------------------------------------------------------
 _sess: Optional[ort.InferenceSession] = None
 _input_name: Optional[str] = None
+_MODEL_ALGORITHM = "padim"
+
+
+def _algorithm_for_model(project_id: Optional[str], model_path: str) -> str:
+    """Resolve the trained algorithm from Studio metadata when available."""
+    import json
+
+    project_dirs = (
+        [os.path.join(STUDIO_ROOT, project_id)]
+        if project_id
+        else [
+            os.path.join(STUDIO_ROOT, name)
+            for name in os.listdir(STUDIO_ROOT)
+            if os.path.isdir(os.path.join(STUDIO_ROOT, name))
+        ]
+        if os.path.isdir(STUDIO_ROOT)
+        else []
+    )
+    for project_dir in project_dirs:
+        # When no project is explicitly selected, only use metadata from the
+        # project that actually contains the resolved model artifact.
+        resolved_project = os.path.realpath(project_dir)
+        resolved_model = os.path.realpath(model_path)
+        try:
+            if os.path.commonpath([resolved_project, resolved_model]) != resolved_project:
+                continue
+        except ValueError:
+            continue
+        metadata_path = os.path.join(project_dir, "models", "latest_training.json")
+        try:
+            with open(metadata_path, encoding="utf-8") as handle:
+                metadata = json.load(handle)
+            config_value = str(metadata.get("config", "")).strip()
+            config_path = config_value
+            if not os.path.isfile(config_path) and config_value:
+                config_path = os.path.join(project_dir, config_value)
+            if os.path.isfile(config_path):
+                from anomavision.config import load_config
+
+                algorithm = str((load_config(config_path) or {}).get("algorithm", "")).lower()
+                if algorithm in {"padim", "patchcore", "efficientad"}:
+                    return algorithm
+        except (OSError, ValueError, TypeError):
+            continue
+    normalized = os.path.normpath(model_path).lower()
+    for algorithm in ("patchcore", "efficientad", "padim"):
+        if algorithm in normalized:
+            return algorithm
+    return "padim"
 
 
 def _is_valid_onnx(path: str) -> bool:
@@ -223,13 +272,15 @@ def load_model(project_id: Optional[str] = None) -> str:
     Load the selected Studio project's ONNX model and run two warmup passes.
     If no trained model exists yet, keep the API alive and report that state.
     """
-    global _sess, _input_name
+    global _sess, _input_name, _MODEL_ALGORITHM
 
     model_path = _resolve_model_path(project_id) or _export_latest_model(project_id)
     if not model_path:
         _sess = None
         _input_name = None
         return "No trained Studio model is available yet."
+
+    _MODEL_ALGORITHM = _algorithm_for_model(project_id, model_path)
 
     available = ort.get_available_providers()
     use_gpu = "CUDAExecutionProvider" in available
@@ -321,43 +372,44 @@ def run(
     # Visualizations are optional. Live/camera inference does not need them;
     # skipping this CPU-heavy path keeps latency close to the raw ONNX runtime.
     if include_visualizations:
-        # The image score decides whether the frame is anomalous.
-        # Localization is derived independently from the spatial PatchCore map.
-        #
-        # Do not use a fixed normalized threshold such as 0.60 here: for a
-        # localized defect that can select a large portion of the object/image.
-        # Instead, keep only the strongest spatial response (top 5% of pixels)
-        # and then retain the connected high-score regions. This makes the
-        # contour follow the defect rather than the whole image.
-        raw_map = np.asarray(score_maps, dtype=np.float32)
-        flat_map = raw_map.reshape(raw_map.shape[0], -1)
-        map_min = flat_map.min(axis=1)[:, None, None]
-        map_max = flat_map.max(axis=1)[:, None, None]
-        normalized_maps = (raw_map - map_min) / np.maximum(map_max - map_min, 1e-8)
+        # Preserve the established per-pixel classification thresholds for
+        # PaDiM and EfficientAD. The top-response localization heuristic was
+        # introduced specifically to improve PatchCore masks and must not
+        # silently change the other algorithms' visualization behavior.
+        if _MODEL_ALGORITHM != "patchcore":
+            score_map_cls = np.asarray(classification(score_maps, threshold), dtype=np.uint8)
+            if score_map_cls.ndim == 2:
+                score_map_cls = score_map_cls[None, ...]
+        else:
+            raw_map = np.asarray(score_maps, dtype=np.float32)
+            flat_map = raw_map.reshape(raw_map.shape[0], -1)
+            map_min = flat_map.min(axis=1)[:, None, None]
+            map_max = flat_map.max(axis=1)[:, None, None]
+            normalized_maps = (raw_map - map_min) / np.maximum(map_max - map_min, 1e-8)
 
-        score_map_cls = np.zeros_like(normalized_maps, dtype=np.uint8)
-        for i, normalized_map in enumerate(normalized_maps):
-            localization_threshold = float(np.quantile(normalized_map, 0.95))
-            mask = (normalized_map >= localization_threshold).astype(np.uint8)
+            score_map_cls = np.zeros_like(normalized_maps, dtype=np.uint8)
+            for i, normalized_map in enumerate(normalized_maps):
+                localization_threshold = float(np.quantile(normalized_map, 0.95))
+                mask = (normalized_map >= localization_threshold).astype(np.uint8)
 
-            # Close small gaps without expanding the defect excessively.
-            kernel = np.ones((3, 3), dtype=np.uint8)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+                # Close small gaps without expanding the defect excessively.
+                kernel = np.ones((3, 3), dtype=np.uint8)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-            # Keep only connected regions containing one of the strongest
-            # PatchCore responses. This removes scattered background pixels.
-            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-                mask, connectivity=8
-            )
-            if num_labels > 1:
-                peaks = []
-                for label in range(1, num_labels):
-                    component = normalized_map[labels == label]
-                    peaks.append((float(component.max()), label))
-                keep = {label for _, label in sorted(peaks, reverse=True)[:3]}
-                mask = np.isin(labels, list(keep)).astype(np.uint8)
+                # Keep only connected regions containing one of the strongest
+                # PatchCore responses. This removes scattered background pixels.
+                num_labels, labels, _, _ = cv2.connectedComponentsWithStats(
+                    mask, connectivity=8
+                )
+                if num_labels > 1:
+                    peaks = []
+                    for label in range(1, num_labels):
+                        component = normalized_map[labels == label]
+                        peaks.append((float(component.max()), label))
+                    keep = {label for _, label in sorted(peaks, reverse=True)[:3]}
+                    mask = np.isin(labels, list(keep)).astype(np.uint8)
 
-            score_map_cls[i] = mask
+                score_map_cls[i] = mask
 
         # The image-level score is the anomaly decision. The score map is
         # localization data and must not determine the outer anomaly frame.
