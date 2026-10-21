@@ -147,6 +147,7 @@ def train_project(
     dataset_source: str,
     algorithm: str,
     class_name: str = "default",
+    progress_callback=None,
     **overrides: Any,
 ) -> dict[str, Any]:
     """Run the existing AnomaVision training implementation and register metadata."""
@@ -155,7 +156,7 @@ def train_project(
         project_dir, dataset_source, algorithm, class_name, **overrides
     )
 
-    args = Namespace(config=str(config_path))
+    args = Namespace(config=str(config_path), progress_callback=progress_callback)
     _, config, run_dir, _ = run_training(args)
 
     metadata = {

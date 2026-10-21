@@ -167,6 +167,28 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
     return parser
 
 
+class _ProgressDataset(torch.utils.data.Dataset):
+    """Track real image samples consumed by the existing training DataLoader."""
+
+    def __init__(self, dataset, callback):
+        self.dataset = dataset
+        self.callback = callback
+        self.total = len(dataset)
+        self.seen = 0
+
+    def __len__(self):
+        return self.total
+
+    def __getitem__(self, index):
+        item = self.dataset[index]
+        self.seen += 1
+        if self.callback:
+            # Reserve the final 10% for fitting finalization and artifact saving.
+            self.callback(5.0 + 85.0 * self.seen / max(1, self.total),
+                          f"Processing training images: {self.seen}/{self.total}")
+        return item
+
+
 def run_training(args):
     cfg = load_config(args.config)
     config = edict(merge_config(args, cfg))
@@ -222,6 +244,10 @@ def run_training(args):
     if len(ds) == 0:
         raise ValueError(f"No training images found in {root}")
 
+    progress_callback = getattr(args, "progress_callback", None)
+    if progress_callback:
+        progress_callback(5.0, f"Loaded {len(ds)} training images")
+        ds = _ProgressDataset(ds, progress_callback)
     dl = DataLoader(ds, batch_size=int(config.batch_size), shuffle=False)
     logger.info("dataset: %d images | batch_size=%d", len(ds), config.batch_size)
 
@@ -272,8 +298,12 @@ def run_training(args):
         )
 
     t_fit = time.perf_counter()
+    if progress_callback:
+        progress_callback(5.0, "Fitting detector")
     model.fit(dl)
     logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
+    if progress_callback:
+        progress_callback(92.0, "Saving trained model")
 
     model_path = Path(run_dir) / config.output_model
     torch.save(model, str(model_path))
@@ -288,6 +318,8 @@ def run_training(args):
     save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
     logger.info("saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml")
     logger.info("=== Training done in %.2fs ===", time.perf_counter() - t0)
+    if progress_callback:
+        progress_callback(100.0, "Training completed")
     return model, config, run_dir, {"train": dl}
 
 

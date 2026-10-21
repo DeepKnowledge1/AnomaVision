@@ -45,7 +45,7 @@ def _training_worker(job_id: str, project_id: str, request: TrainingRequest) -> 
     try:
         with _training_lock:
             _training_jobs[job_id].update(
-                status="running", message="Training in progress"
+                status="running", message="Training in progress", progress_percent=1.0
             )
         algorithm = request.algorithm.lower()
         config_data = (
@@ -61,16 +61,23 @@ def _training_worker(job_id: str, project_id: str, request: TrainingRequest) -> 
                 overrides[name] = value
         if request.resize is not None:
             overrides["resize"] = request.resize
+        def report_progress(percent: float, message: str) -> None:
+            with _training_lock:
+                job = _training_jobs.get(job_id)
+                if job and job.get("status") == "running":
+                    job.update(progress_percent=round(max(0.0, min(100.0, percent)), 1), message=message)
+
         result = train_project(
             project_dir=_project_dir(project_id),
             dataset_source=request.dataset_path,
             algorithm=algorithm,
             class_name=class_name,
+            progress_callback=report_progress,
             **overrides,
         )
         with _training_lock:
             _training_jobs[job_id].update(
-                status="completed", message="Training completed", result=result
+                status="completed", message="Training completed", progress_percent=100.0, result=result
             )
     except Exception as exc:
         with _training_lock:
