@@ -161,7 +161,11 @@ def inspect_dataset(
     missing_masks: list[str] = []
     empty_masks: list[str] = []
     invalid_mask_labels: list[str] = []
-    if test_root.is_dir() and ground_truth_root.is_dir():
+    mask_check_available = test_root.is_dir() and any(
+        child.is_dir() and child.name.lower() not in {"good", "normal"}
+        for child in test_root.iterdir()
+    )
+    if test_root.is_dir():
         for class_dir in sorted(test_root.iterdir()):
             if not class_dir.is_dir() or class_dir.name.lower() in {"good", "normal"}:
                 continue
@@ -176,7 +180,8 @@ def inspect_dataset(
                 ]
                 mask_path = next((candidate for candidate in candidates if candidate.is_file()), None)
                 if mask_path is None:
-                    missing_masks.append(str(image_path.relative_to(root_path)))
+                    if mask_check_available:
+                        missing_masks.append(str(image_path.relative_to(root_path)))
                     continue
                 try:
                     with Image.open(mask_path) as mask:
@@ -202,6 +207,10 @@ def inspect_dataset(
         "max_height": max((h for _, h in dimensions), default=None),
         "avg_height": round(sum(h for _, h in dimensions) / len(dimensions), 1) if dimensions else None,
     }
+    image_hashes: dict[str, int] = {}
+    for item in image_records:
+        image_hashes[item["sha256"]] = image_hashes.get(item["sha256"], 0) + 1
+    duplicate_image_count = sum(count - 1 for count in image_hashes.values() if count > 1)
     test_classes = split_summary["test_classes"] if split_summary else []
     defect_classes = [item for item in test_classes if item["name"].lower() not in {"good", "normal"}]
     sparse_classes = [item for item in defect_classes if item["image_count"] < 10]
@@ -214,9 +223,10 @@ def inspect_dataset(
         "defect_test_images": defect_count,
         "defect_categories": len(defect_classes),
         "corrupted_images": len(failures),
-        "duplicate_images": sum(len(group) - 1 for group in duplicate_groups),
+        "duplicate_images": duplicate_image_count,
         "train_test_leakage_groups": len(leakage_groups),
         "leakage_groups": leakage_groups[:10],
+        "mask_check_available": mask_check_available,
         "missing_masks": len(missing_masks),
         "missing_mask_files": missing_masks[:10],
         "empty_masks": len(empty_masks),
