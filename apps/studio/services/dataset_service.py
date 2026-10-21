@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import io
 import json
 from pathlib import Path
 from typing import Any, Callable
@@ -30,6 +32,59 @@ def _sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
         for chunk in iter(lambda: handle.read(chunk_size), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _training_previews(root: Path) -> list[dict[str, str]]:
+    """Return up to two small previews from the dataset's training split."""
+    train_root = root / "train"
+    if not train_root.is_dir():
+        return []
+    candidates = sorted(
+        path for path in train_root.rglob("*")
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+    )
+    previews: list[dict[str, str]] = []
+    for path in candidates[:2]:
+        try:
+            with Image.open(path) as image:
+                image.thumbnail((320, 240))
+                preview = image.convert("RGB")
+                buffer = io.BytesIO()
+                preview.save(buffer, format="JPEG", quality=78, optimize=True)
+            previews.append({
+                "name": path.name,
+                "path": str(path.relative_to(root)),
+                "data_url": "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii"),
+            })
+        except Exception:
+            continue
+    return previews
+
+
+def _split_summary(root: Path) -> dict[str, Any] | None:
+    """Summarize standard train/test class folders when present (e.g. MVTec AD)."""
+    train_root, test_root = root / "train", root / "test"
+    if not train_root.is_dir() or not test_root.is_dir():
+        return None
+
+    def count_images(folder: Path) -> int:
+        return sum(
+            1 for path in folder.rglob("*")
+            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+        )
+
+    test_classes = [
+        {"name": folder.name, "image_count": count_images(folder)}
+        for folder in sorted(test_root.iterdir())
+        if folder.is_dir()
+    ]
+    return {
+        "training_count": count_images(train_root),
+        "testing_count": count_images(test_root),
+        "test_class_count": len(test_classes),
+        "test_classes": test_classes,
+        "training_previews": _training_previews(root),
+    }
 
 
 def inspect_dataset(
@@ -78,8 +133,11 @@ def inspect_dataset(
         key = f'{record["width"]} × {record["height"]}'
         resolutions[key] = resolutions.get(key, 0) + 1
 
+    root_path = Path(root).expanduser()
+    split_summary = _split_summary(root_path)
     return {
-        "root": str(Path(root).expanduser()),
+        "root": str(root_path),
+        "split_summary": split_summary,
         "image_count": len(records),
         "valid_count": len(records),
         "failed_count": len(failures),
