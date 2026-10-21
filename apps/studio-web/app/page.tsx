@@ -288,10 +288,29 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
     window.localStorage.setItem("anomavision:dataset-path:"+project.id,path.trim());
   },[path,project?.id]);
   useEffect(()=>{
+    if(!project || typeof window==="undefined" || !path.trim())return;
+    const key="anomavision:dataset-report:"+project.id+":"+path.trim();
+    try{
+      const saved=window.localStorage.getItem(key);
+      if(saved)setReport(JSON.parse(saved) as DatasetReport);
+    }catch{
+      window.localStorage.removeItem(key);
+    }
+  },[path,project?.id]);
+  useEffect(()=>{
+    if(!project || typeof window==="undefined" || !path.trim() || !report)return;
+    const key="anomavision:dataset-report:"+project.id+":"+path.trim();
+    try{window.localStorage.setItem(key,JSON.stringify(report));}catch{}
+  },[report,path,project?.id]);
+  useEffect(()=>{
     fetch(API_BASE+"/api/config",{cache:"no-store"})
       .then(r=>r.ok?r.json():null)
       .then(d=>{
-        if(d?.dataset_path){setConfigPath(String(d.dataset_path));setPath(current=>current||String(d.dataset_path));}
+        if(d?.dataset_path){
+          setConfigPath(String(d.dataset_path));
+          const savedPath=project?window.localStorage.getItem("anomavision:dataset-path:"+project.id):null;
+          setPath(current=>current||(savedPath||String(d.dataset_path)));
+        }
         if(d?.class_name)setConfigClass(String(d.class_name));
       })
       .catch(()=>{})
