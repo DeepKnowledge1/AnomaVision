@@ -297,17 +297,65 @@ def models(project_id: str) -> list[dict[str, Any]]:
     return list_models(_project_dir(project_id))
 
 
-@app.post("/api/projects/{project_id}/datasets/inspect")
+def _dataset_inspection_worker(job_id: str, project_id: str, request: DatasetInspect) -> None:
+    def report_progress(checked: int, total: int, message: str) -> None:
+        with _dataset_lock:
+            job = _dataset_jobs.get(job_id)
+            if job and job.get("status") == "running":
+                job.update(
+                    checked=checked,
+                    total=total,
+                    progress_percent=round(checked / total * 100, 1) if total else 100.0,
+                    message=message,
+                )
+
+    try:
+        with _dataset_lock:
+            _dataset_jobs[job_id].update(status="running", message="Discovering image files")
+        report = inspect_dataset(
+            request.path, recursive=request.recursive, progress_callback=report_progress
+        )
+        manifest = _project_dir(project_id) / "datasets" / "dataset_report.json"
+        save_dataset_manifest(manifest, report)
+        with _dataset_lock:
+            _dataset_jobs[job_id].update(
+                status="completed", progress_percent=100.0,
+                checked=report["image_count"] + report["failed_count"],
+                total=report["image_count"] + report["failed_count"],
+                message=f"Inspection complete · {report['image_count']} readable image(s)",
+                report=report,
+            )
+    except Exception as exc:
+        with _dataset_lock:
+            job = _dataset_jobs.get(job_id)
+            if job:
+                job.update(status="failed", message=str(exc))
+
+
+@app.post("/api/projects/{project_id}/datasets/inspect", status_code=202)
 def inspect_project_dataset(project_id: str, request: DatasetInspect) -> dict[str, Any]:
     _project_or_404(project_id)
-    try:
-        report = inspect_dataset(request.path, recursive=request.recursive)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    job_id = uuid.uuid4().hex
+    with _dataset_lock:
+        _dataset_jobs[job_id] = {
+            "job_id": job_id, "project_id": project_id, "status": "queued",
+            "message": "Dataset inspection queued", "checked": 0, "total": 0,
+            "progress_percent": 0.0, "report": None,
+        }
+    threading.Thread(
+        target=_dataset_inspection_worker, args=(job_id, project_id, request), daemon=True
+    ).start()
+    return {"job_id": job_id, "status": "queued", "progress_percent": 0.0, "message": "Dataset inspection queued"}
 
-    manifest = _project_dir(project_id) / "datasets" / "dataset_report.json"
-    save_dataset_manifest(manifest, report)
-    return report
+
+@app.get("/api/projects/{project_id}/datasets/inspect/{job_id}")
+def dataset_inspection_status(project_id: str, job_id: str) -> dict[str, Any]:
+    _project_or_404(project_id)
+    with _dataset_lock:
+        job = _dataset_jobs.get(job_id)
+        if not job or job.get("project_id") != project_id:
+            raise HTTPException(status_code=404, detail="Dataset inspection job not found")
+        return dict(job)
 
 
 @app.post("/api/projects/{project_id}/datasets/resolve")

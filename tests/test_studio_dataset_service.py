@@ -25,3 +25,20 @@ def test_inspect_dataset_reports_invalid_image(tmp_path: Path):
 
     assert report["image_count"] == 0
     assert report["failed_count"] == 1
+
+
+
+def test_inspect_dataset_reports_progress_for_each_image(tmp_path: Path):
+    Image.new("RGB", (32, 24), "white").save(tmp_path / "one.png")
+    Image.new("RGB", (16, 16), "black").save(tmp_path / "two.png")
+    updates = []
+
+    report = inspect_dataset(
+        tmp_path,
+        progress_callback=lambda checked, total, message: updates.append((checked, total, message)),
+    )
+
+    assert report["image_count"] == 2
+    assert updates[0][0:2] == (0, 2)
+    assert updates[-1][0:2] == (2, 2)
+    assert "two.png" in updates[-1][2]

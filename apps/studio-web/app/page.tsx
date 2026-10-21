@@ -301,19 +301,30 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
     }finally{setPickerBusy(false);}
   }
 
+  const [inspectProgress,setInspectProgress]=useState({checked:0,total:0,percent:0,message:""});
   async function inspect(){
     if(!project){setError("Select a project first.");return;}
     if(!path.trim()){setError("Choose a local image folder first.");return;}
-    setBusy(true);setError("");
+    setBusy(true);setError("");setReport(null);
+    setInspectProgress({checked:0,total:0,percent:0,message:"Starting dataset inspection…"});
     try{
       const r=await fetch(`${API_BASE}/api/projects/${project.id}/datasets/inspect`,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({path,recursive:true})
       });
-      const d=await r.json();
-      if(!r.ok)throw new Error(d.detail||"Dataset inspection failed");
-      setReport(d);
+      const started=await r.json();
+      if(!r.ok)throw new Error(started.detail||"Dataset inspection failed");
+      if(!started.job_id) { setReport(started); return; }
+      while(true){
+        await new Promise(resolve=>setTimeout(resolve,700));
+        const statusResponse=await fetch(`${API_BASE}/api/projects/${project.id}/datasets/inspect/${started.job_id}`,{cache:"no-store"});
+        const status=await statusResponse.json();
+        if(!statusResponse.ok)throw new Error(status.detail||"Could not read inspection progress");
+        setInspectProgress({checked:status.checked||0,total:status.total||0,percent:status.progress_percent||0,message:status.message||"Checking images…"});
+        if(status.status==="completed"){setReport(status.report);break;}
+        if(status.status==="failed")throw new Error(status.message||"Dataset inspection failed");
+      }
     }catch(e){
       setError(e instanceof Error?e.message:"Dataset inspection failed");
     }finally{setBusy(false);}
@@ -372,6 +383,11 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
               <ShieldCheck size={13}/>{busy?"Checking…":"Check dataset"}
             </button>
           </div>
+          {busy&&<div className="dataset-progress" role="status" aria-live="polite" style={{marginTop:16,padding:14,border:"1px solid var(--border, #e5e7eb)",borderRadius:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:12,marginBottom:8,fontSize:13}}><strong>{inspectProgress.message||"Checking images…"}</strong><span>{inspectProgress.total? `${inspectProgress.checked} / ${inspectProgress.total}`:"Preparing…"}</span></div>
+            <div style={{height:8,background:"var(--surface-muted, #eef1f4)",borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:`${inspectProgress.percent}%`,background:"var(--accent, #2563eb)",transition:"width 180ms ease"}}/></div>
+            <small style={{display:"block",marginTop:7,color:"var(--muted, #64748b)"}}>{inspectProgress.total? `${Math.round(inspectProgress.percent)}% complete`:"Finding image files first; large folders may take a moment."}</small>
+          </div>}
           <div className="dataset-source">
             <span className="badge">{configPath && path===configPath ? "From config.yml" : "Custom folder"}</span>
             <span>{path ? "Selected: "+path : "Choose a folder to continue."}</span>
@@ -421,6 +437,12 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
                     {resolutionEntries.map(([resolution,count])=><div className="resolution-row" key={resolution}><span>{resolution}</span><b>{count}</b></div>)}
                   </div>
                 : <div className="empty">No valid images found.</div>}
+              {report.records?.length>0&&<div className="dataset-failures">
+                <div className="dataset-subtitle">Sample images · first {Math.min(8,report.records.length)} readable files</div>
+                <div className="table-wrap"><table className="data-table"><thead><tr><th>File</th><th>Dimensions</th><th>Mode</th><th>Brightness</th><th>Size</th></tr></thead><tbody>
+                  {report.records.slice(0,8).map((sample:any)=><tr key={sample.path}><td title={sample.path}>{sample.name}</td><td>{sample.width} × {sample.height}</td><td>{sample.mode}</td><td>{sample.brightness}</td><td>{(sample.bytes/1024).toFixed(1)} KB</td></tr>)}
+                </tbody></table></div>
+              </div>}
               {report.failures&&report.failures.length>0&&<div className="dataset-failures">
                 <div className="dataset-subtitle">Files that could not be read</div>
                 {report.failures.slice(0,5).map((failure)=><div className="failure-row" key={failure.path}><span title={failure.path}>{failure.path}</span><small>{failure.error}</small></div>)}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PIL import Image, ImageStat
 
@@ -32,13 +32,20 @@ def _sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
-def inspect_dataset(root: Path | str, recursive: bool = True) -> dict[str, Any]:
+def inspect_dataset(
+    root: Path | str,
+    recursive: bool = True,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> dict[str, Any]:
     paths = discover_images(root, recursive=recursive)
+    total = len(paths)
+    if progress_callback:
+        progress_callback(0, total, f"Found {total} image file(s); starting inspection")
     records: list[dict[str, Any]] = []
     failures: list[dict[str, str]] = []
     hashes: dict[str, list[str]] = {}
 
-    for path in paths:
+    for index, path in enumerate(paths, start=1):
         relative = str(path.relative_to(Path(root).expanduser()))
         try:
             with Image.open(path) as image:
@@ -61,6 +68,9 @@ def inspect_dataset(root: Path | str, recursive: bool = True) -> dict[str, Any]:
             hashes.setdefault(file_hash, []).append(relative)
         except Exception as exc:
             failures.append({"path": relative, "error": str(exc)})
+        finally:
+            if progress_callback:
+                progress_callback(index, total, f"Checked {index} of {total}: {path.name}")
 
     duplicate_groups = [items for items in hashes.values() if len(items) > 1]
     resolutions: dict[str, int] = {}
