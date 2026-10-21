@@ -161,6 +161,7 @@ def inspect_dataset(
     missing_masks: list[str] = []
     empty_masks: list[str] = []
     invalid_mask_labels: list[str] = []
+    mask_dimension_mismatches: list[str] = []
     mask_check_available = test_root.is_dir() and any(
         child.is_dir() and child.name.lower() not in {"good", "normal"}
         for child in test_root.iterdir()
@@ -184,8 +185,11 @@ def inspect_dataset(
                         missing_masks.append(str(image_path.relative_to(root_path)))
                     continue
                 try:
-                    with Image.open(mask_path) as mask:
+                    with Image.open(image_path) as source_image, Image.open(mask_path) as mask:
+                        source_size = source_image.size
                         mask.load()
+                        if mask.size != source_size:
+                            mask_dimension_mismatches.append(str(mask_path.relative_to(root_path)))
                         mask_values = mask.convert("L")
                         if mask_values.getbbox() is None:
                             empty_masks.append(str(mask_path.relative_to(root_path)))
@@ -233,6 +237,8 @@ def inspect_dataset(
         "empty_mask_files": empty_masks[:10],
         "invalid_masks": len(invalid_mask_labels),
         "invalid_mask_files": invalid_mask_labels[:10],
+        "mask_dimension_mismatches": len(mask_dimension_mismatches),
+        "mask_dimension_mismatch_files": mask_dimension_mismatches[:10],
         "image_modes": modes,
         "image_dimensions": dimension_summary,
         "sparse_defect_classes": sparse_classes,
