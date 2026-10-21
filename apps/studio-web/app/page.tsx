@@ -288,6 +288,11 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
     window.localStorage.setItem("anomavision:dataset-path:"+project.id,path.trim());
   },[path,project?.id]);
   useEffect(()=>{
+    if(!project || typeof window==="undefined")return;
+    const savedPath=window.localStorage.getItem("anomavision:dataset-path:"+project.id);
+    if(savedPath)setPath(current=>current||savedPath);
+  },[project?.id]);
+  useEffect(()=>{
     if(!project || typeof window==="undefined" || !path.trim())return;
     const key="anomavision:dataset-report:"+project.id+":"+path.trim();
     try{
