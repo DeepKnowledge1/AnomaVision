@@ -40,7 +40,8 @@ def _training_previews(root: Path) -> list[dict[str, str]]:
     if not train_root.is_dir():
         return []
     candidates = sorted(
-        path for path in train_root.rglob("*")
+        path
+        for path in train_root.rglob("*")
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     )
     previews: list[dict[str, str]] = []
@@ -51,11 +52,14 @@ def _training_previews(root: Path) -> list[dict[str, str]]:
                 preview = image.convert("RGB")
                 buffer = io.BytesIO()
                 preview.save(buffer, format="JPEG", quality=78, optimize=True)
-            previews.append({
-                "name": path.name,
-                "path": str(path.relative_to(root)),
-                "data_url": "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii"),
-            })
+            previews.append(
+                {
+                    "name": path.name,
+                    "path": str(path.relative_to(root)),
+                    "data_url": "data:image/jpeg;base64,"
+                    + base64.b64encode(buffer.getvalue()).decode("ascii"),
+                }
+            )
         except Exception:
             continue
     return previews
@@ -69,7 +73,8 @@ def _split_summary(root: Path) -> dict[str, Any] | None:
 
     def count_images(folder: Path) -> int:
         return sum(
-            1 for path in folder.rglob("*")
+            1
+            for path in folder.rglob("*")
             if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
         )
 
@@ -125,7 +130,9 @@ def inspect_dataset(
             failures.append({"path": relative, "error": str(exc)})
         finally:
             if progress_callback:
-                progress_callback(index, total, f"Checked {index} of {total}: {path.name}")
+                progress_callback(
+                    index, total, f"Checked {index} of {total}: {path.name}"
+                )
 
     duplicate_groups = [items for items in hashes.values() if len(items) > 1]
     resolutions: dict[str, int] = {}
@@ -138,8 +145,12 @@ def inspect_dataset(
 
     # Dataset quality signals are advisory; they never change model behavior.
     image_records = [
-        item for item in records
-        if not any(part.lower() in {"ground_truth", "masks", "mask"} for part in Path(item["path"]).parts)
+        item
+        for item in records
+        if not any(
+            part.lower() in {"ground_truth", "masks", "mask"}
+            for part in Path(item["path"]).parts
+        )
     ]
     train_hashes: dict[str, list[str]] = {}
     test_hashes: dict[str, list[str]] = {}
@@ -171,7 +182,10 @@ def inspect_dataset(
             if not class_dir.is_dir() or class_dir.name.lower() in {"good", "normal"}:
                 continue
             for image_path in sorted(class_dir.rglob("*")):
-                if not image_path.is_file() or image_path.suffix.lower() not in IMAGE_EXTENSIONS:
+                if (
+                    not image_path.is_file()
+                    or image_path.suffix.lower() not in IMAGE_EXTENSIONS
+                ):
                     continue
                 defect_test_images.append(image_path)
                 mask_dir = ground_truth_root / class_dir.name
@@ -179,23 +193,32 @@ def inspect_dataset(
                     mask_dir / f"{image_path.stem}_mask{suffix}"
                     for suffix in IMAGE_EXTENSIONS
                 ]
-                mask_path = next((candidate for candidate in candidates if candidate.is_file()), None)
+                mask_path = next(
+                    (candidate for candidate in candidates if candidate.is_file()), None
+                )
                 if mask_path is None:
                     if mask_check_available:
                         missing_masks.append(str(image_path.relative_to(root_path)))
                     continue
                 try:
-                    with Image.open(image_path) as source_image, Image.open(mask_path) as mask:
+                    with (
+                        Image.open(image_path) as source_image,
+                        Image.open(mask_path) as mask,
+                    ):
                         source_size = source_image.size
                         mask.load()
                         if mask.size != source_size:
-                            mask_dimension_mismatches.append(str(mask_path.relative_to(root_path)))
+                            mask_dimension_mismatches.append(
+                                str(mask_path.relative_to(root_path))
+                            )
                         mask_values = mask.convert("L")
                         if mask_values.getbbox() is None:
                             empty_masks.append(str(mask_path.relative_to(root_path)))
                         values = set(mask_values.getdata())
                         if not values.issubset({0, 1, 255}):
-                            invalid_mask_labels.append(str(mask_path.relative_to(root_path)))
+                            invalid_mask_labels.append(
+                                str(mask_path.relative_to(root_path))
+                            )
                 except Exception:
                     invalid_mask_labels.append(str(mask_path.relative_to(root_path)))
 
@@ -206,19 +229,35 @@ def inspect_dataset(
     dimension_summary = {
         "min_width": min((w for w, _ in dimensions), default=None),
         "max_width": max((w for w, _ in dimensions), default=None),
-        "avg_width": round(sum(w for w, _ in dimensions) / len(dimensions), 1) if dimensions else None,
+        "avg_width": (
+            round(sum(w for w, _ in dimensions) / len(dimensions), 1)
+            if dimensions
+            else None
+        ),
         "min_height": min((h for _, h in dimensions), default=None),
         "max_height": max((h for _, h in dimensions), default=None),
-        "avg_height": round(sum(h for _, h in dimensions) / len(dimensions), 1) if dimensions else None,
+        "avg_height": (
+            round(sum(h for _, h in dimensions) / len(dimensions), 1)
+            if dimensions
+            else None
+        ),
     }
     image_hashes: dict[str, int] = {}
     for item in image_records:
         image_hashes[item["sha256"]] = image_hashes.get(item["sha256"], 0) + 1
-    duplicate_image_count = sum(count - 1 for count in image_hashes.values() if count > 1)
+    duplicate_image_count = sum(
+        count - 1 for count in image_hashes.values() if count > 1
+    )
     test_classes = split_summary["test_classes"] if split_summary else []
-    defect_classes = [item for item in test_classes if item["name"].lower() not in {"good", "normal"}]
+    defect_classes = [
+        item for item in test_classes if item["name"].lower() not in {"good", "normal"}
+    ]
     sparse_classes = [item for item in defect_classes if item["image_count"] < 10]
-    normal_count = sum(item["image_count"] for item in test_classes if item["name"].lower() in {"good", "normal"})
+    normal_count = sum(
+        item["image_count"]
+        for item in test_classes
+        if item["name"].lower() in {"good", "normal"}
+    )
     defect_count = sum(item["image_count"] for item in defect_classes)
     quality_summary = {
         "dataset_class": root_path.name,
@@ -242,7 +281,9 @@ def inspect_dataset(
         "image_modes": modes,
         "image_dimensions": dimension_summary,
         "sparse_defect_classes": sparse_classes,
-        "preprocessing_compatible": all(item["width"] > 0 and item["height"] > 0 for item in image_records),
+        "preprocessing_compatible": all(
+            item["width"] > 0 and item["height"] > 0 for item in image_records
+        ),
         "preprocessing_note": "Images are readable and can be resized; model-specific normalization is applied by the existing pipeline.",
         "near_duplicates_checked": False,
     }

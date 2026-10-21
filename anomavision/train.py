@@ -184,8 +184,10 @@ class _ProgressDataset(torch.utils.data.Dataset):
         self.seen += 1
         if self.callback:
             # Reserve the final 10% for fitting finalization and artifact saving.
-            self.callback(5.0 + 85.0 * self.seen / max(1, self.total),
-                          f"Processing training images: {self.seen}/{self.total}")
+            self.callback(
+                5.0 + 85.0 * self.seen / max(1, self.total),
+                f"Processing training images: {self.seen}/{self.total}",
+            )
         return item
 
 

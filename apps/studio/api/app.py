@@ -64,11 +64,15 @@ def _training_worker(job_id: str, project_id: str, request: TrainingRequest) -> 
                 overrides[name] = value
         if request.resize is not None:
             overrides["resize"] = request.resize
+
         def report_progress(percent: float, message: str) -> None:
             with _training_lock:
                 job = _training_jobs.get(job_id)
                 if job and job.get("status") == "running":
-                    job.update(progress_percent=round(max(0.0, min(100.0, percent)), 1), message=message)
+                    job.update(
+                        progress_percent=round(max(0.0, min(100.0, percent)), 1),
+                        message=message,
+                    )
 
         result = train_project(
             project_dir=_project_dir(project_id),
@@ -80,7 +84,10 @@ def _training_worker(job_id: str, project_id: str, request: TrainingRequest) -> 
         )
         with _training_lock:
             _training_jobs[job_id].update(
-                status="completed", message="Training completed", progress_percent=100.0, result=result
+                status="completed",
+                message="Training completed",
+                progress_percent=100.0,
+                result=result,
             )
     except Exception as exc:
         with _training_lock:
@@ -304,7 +311,9 @@ def models(project_id: str) -> list[dict[str, Any]]:
     return list_models(_project_dir(project_id))
 
 
-def _dataset_inspection_worker(job_id: str, project_id: str, request: DatasetInspect) -> None:
+def _dataset_inspection_worker(
+    job_id: str, project_id: str, request: DatasetInspect
+) -> None:
     def report_progress(checked: int, total: int, message: str) -> None:
         with _dataset_lock:
             job = _dataset_jobs.get(job_id)
@@ -312,13 +321,17 @@ def _dataset_inspection_worker(job_id: str, project_id: str, request: DatasetIns
                 job.update(
                     checked=checked,
                     total=total,
-                    progress_percent=round(checked / total * 100, 1) if total else 100.0,
+                    progress_percent=(
+                        round(checked / total * 100, 1) if total else 100.0
+                    ),
                     message=message,
                 )
 
     try:
         with _dataset_lock:
-            _dataset_jobs[job_id].update(status="running", message="Discovering image files")
+            _dataset_jobs[job_id].update(
+                status="running", message="Discovering image files"
+            )
         inspection_root = Path(request.path).expanduser()
         config_data = (
             load_config(str(Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")))) or {}
@@ -337,13 +350,16 @@ def _dataset_inspection_worker(job_id: str, project_id: str, request: DatasetIns
         ):
             inspection_root = class_dir
         report = inspect_dataset(
-            inspection_root, recursive=request.recursive, progress_callback=report_progress
+            inspection_root,
+            recursive=request.recursive,
+            progress_callback=report_progress,
         )
         manifest = _project_dir(project_id) / "datasets" / "dataset_report.json"
         save_dataset_manifest(manifest, report)
         with _dataset_lock:
             _dataset_jobs[job_id].update(
-                status="completed", progress_percent=100.0,
+                status="completed",
+                progress_percent=100.0,
                 checked=report["image_count"] + report["failed_count"],
                 total=report["image_count"] + report["failed_count"],
                 message=f"Inspection complete · {report['image_count']} readable image(s)",
@@ -362,14 +378,26 @@ def inspect_project_dataset(project_id: str, request: DatasetInspect) -> dict[st
     job_id = uuid.uuid4().hex
     with _dataset_lock:
         _dataset_jobs[job_id] = {
-            "job_id": job_id, "project_id": project_id, "status": "queued",
-            "message": "Dataset inspection queued", "checked": 0, "total": 0,
-            "progress_percent": 0.0, "report": None,
+            "job_id": job_id,
+            "project_id": project_id,
+            "status": "queued",
+            "message": "Dataset inspection queued",
+            "checked": 0,
+            "total": 0,
+            "progress_percent": 0.0,
+            "report": None,
         }
     threading.Thread(
-        target=_dataset_inspection_worker, args=(job_id, project_id, request), daemon=True
+        target=_dataset_inspection_worker,
+        args=(job_id, project_id, request),
+        daemon=True,
     ).start()
-    return {"job_id": job_id, "status": "queued", "progress_percent": 0.0, "message": "Dataset inspection queued"}
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "progress_percent": 0.0,
+        "message": "Dataset inspection queued",
+    }
 
 
 @app.get("/api/projects/{project_id}/datasets/inspect/{job_id}")
@@ -378,7 +406,9 @@ def dataset_inspection_status(project_id: str, job_id: str) -> dict[str, Any]:
     with _dataset_lock:
         job = _dataset_jobs.get(job_id)
         if not job or job.get("project_id") != project_id:
-            raise HTTPException(status_code=404, detail="Dataset inspection job not found")
+            raise HTTPException(
+                status_code=404, detail="Dataset inspection job not found"
+            )
         return dict(job)
 
 
