@@ -23,7 +23,7 @@ type DatasetReport = {
     defect_categories: number; corrupted_images: number; duplicate_images: number;
     train_test_leakage_groups: number; leakage_groups: { train: string[]; test: string[] }[];
     mask_check_available: boolean; missing_masks: number; missing_mask_files: string[]; empty_masks: number; empty_mask_files: string[];
-    invalid_masks: number; invalid_mask_files: string[]; image_modes: Record<string, number>;
+    invalid_masks: number; invalid_mask_files: string[]; mask_dimension_mismatches: number; mask_dimension_mismatch_files: string[]; image_modes: Record<string, number>;
     image_dimensions: { min_width: number | null; max_width: number | null; avg_width: number | null; min_height: number | null; max_height: number | null; avg_height: number | null };
     sparse_defect_classes: { name: string; image_count: number }[];
     preprocessing_compatible: boolean; preprocessing_note: string; near_duplicates_checked: boolean;
@@ -497,11 +497,12 @@ function DatasetsPage({ project, onNavigate }: { project?: Project; onNavigate:(
                     <div><span>Ground-truth mask check</span><b>{report.quality_summary.mask_check_available?"Applicable to this dataset layout":"Not assessed for this folder layout"}</b></div>
                     <div><span>Empty masks</span><b>{report.quality_summary.empty_masks}</b></div>
                     <div><span>Invalid masks / labels</span><b>{report.quality_summary.invalid_masks}</b></div>
+                    <div><span>Image–mask dimension mismatches</span><b>{report.quality_summary.mask_dimension_mismatches}</b></div>
                     <div><span>Defect categories with fewer than 10 test images</span><b>{report.quality_summary.sparse_defect_classes.length?report.quality_summary.sparse_defect_classes.map(item=>item.name+" ("+item.image_count+")").join(", "):"None detected"}</b></div>
                   </div>
                   {report.quality_summary.leakage_groups.length>0&&<div className="dataset-failures"><div className="dataset-subtitle">Exact train/test overlaps</div>{report.quality_summary.leakage_groups.map((group,index)=><div className="failure-row" key={index}><span>Train: {group.train.join(", ")}</span><small>Test: {group.test.join(", ")}</small></div>)}</div>}
                   {report.quality_summary.missing_mask_files.length>0&&<div className="dataset-failures"><div className="dataset-subtitle">Missing ground-truth masks</div>{report.quality_summary.missing_mask_files.map(file=><div className="failure-row" key={file}><span>{file}</span></div>)}</div>}
-                  {(report.quality_summary.empty_mask_files.length>0||report.quality_summary.invalid_mask_files.length>0)&&<div className="dataset-failures"><div className="dataset-subtitle">Mask files to review</div>{[...report.quality_summary.empty_mask_files,...report.quality_summary.invalid_mask_files].map(file=><div className="failure-row" key={file}><span>{file}</span></div>)}</div>}
+                  {(report.quality_summary.empty_mask_files.length>0||report.quality_summary.invalid_mask_files.length>0||report.quality_summary.mask_dimension_mismatch_files.length>0)&&<div className="dataset-failures"><div className="dataset-subtitle">Mask files to review</div>{[...report.quality_summary.empty_mask_files,...report.quality_summary.invalid_mask_files,...report.quality_summary.mask_dimension_mismatch_files].map(file=><div className="failure-row" key={file}><span>{file}</span></div>)}</div>}
                 </details>
               </section>}
               {resolutionEntries.length
