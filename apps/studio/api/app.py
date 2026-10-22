@@ -7,8 +7,11 @@ Studio services and AnomaVision engine without duplicating ML logic.
 from __future__ import annotations
 
 import os
+import re
 import threading
 import uuid
+
+import yaml
 from pathlib import Path
 from typing import Any
 
@@ -141,6 +144,24 @@ class TrainingRequest(BaseModel):
     feat_dim: int | None = Field(default=None, ge=1)
     coreset_ratio: float | None = Field(default=None, gt=0, le=1)
 
+class SettingsUpdate(BaseModel):
+    algorithm: str
+    resize: list[int] = Field(min_length=2, max_length=2)
+    normalize: bool
+    thresh_padim: float = Field(ge=0)
+    thresh_patchcore: float = Field(ge=0)
+    thresh_efficientad: float = Field(ge=0)
+    enable_drift_monitoring: bool
+    drift_window: int = Field(ge=2, le=100000)
+    drift_min_samples: int = Field(ge=2, le=100000)
+    drift_threshold: float = Field(gt=0, le=10)
+    drift_evaluation_interval: int = Field(ge=1, le=100000)
+    batch_size: int = Field(ge=1, le=256)
+    num_workers: int = Field(ge=0, le=64)
+    viz_alpha: float = Field(ge=0, le=1)
+    viz_padding: int = Field(ge=0, le=500)
+
+
 
 def _project_or_404(project_id: str) -> dict[str, Any]:
     project = store.get(project_id)
@@ -157,6 +178,48 @@ def _project_dir(project_id: str) -> Path:
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "anomavision-studio"}
 
+
+@app.put("/api/config")
+def update_config(request: SettingsUpdate) -> dict[str, Any]:
+    """Validate and persist editable settings into the canonical config.yml."""
+    if request.algorithm.lower() not in {"padim", "patchcore", "efficientad"}:
+        raise HTTPException(status_code=422, detail="Unsupported algorithm.")
+    if any(int(value) < 32 or int(value) > 4096 for value in request.resize):
+        raise HTTPException(status_code=422, detail="Input dimensions must be between 32 and 4096.")
+    if request.drift_min_samples > request.drift_window:
+        raise HTTPException(status_code=422, detail="Minimum drift samples cannot exceed the drift window.")
+
+    config_path = Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")).expanduser()
+    try:
+        original = config_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot read config file: {exc}") from exc
+
+    updates: dict[str, Any] = request.model_dump()
+    updates["algorithm"] = request.algorithm.lower()
+    # Change only requested top-level values to preserve comments and unrelated settings.
+    lines = original.splitlines(keepends=True)
+    found: set[str] = set()
+    for index, line in enumerate(lines):
+        match = re.match(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:\s*)(.*?)(\r?\n)?$", line)
+        if not match or match.group(2) not in updates or match.group(1):
+            continue
+        key = match.group(2)
+        value_text = yaml.safe_dump(updates[key], default_flow_style=True, allow_unicode=True).splitlines()[0]
+        comment = re.search(r"(\s+#.*)$", match.group(4))
+        suffix = comment.group(1) if comment else ""
+        lines[index] = f"{match.group(1)}{key}{match.group(3)}{value_text}{suffix}{match.group(5) or ''}"
+        found.add(key)
+    missing = sorted(set(updates) - found)
+    if missing:
+        raise HTTPException(status_code=500, detail=f"Settings keys missing from config.yml: {', '.join(missing)}")
+    try:
+        temporary = config_path.with_suffix(config_path.suffix + ".tmp")
+        temporary.write_text("".join(lines), encoding="utf-8")
+        temporary.replace(config_path)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot write config file: {exc}") from exc
+    return config()
 
 @app.get("/api/config")
 def config() -> dict[str, Any]:
@@ -180,6 +243,10 @@ def config() -> dict[str, Any]:
         "class_name": str(data.get("class_name", "default") or "default"),
         "resize": resize,
         "normalize": bool(data.get("normalize", True)),
+        "batch_size": int(data.get("batch_size", 2)),
+        "num_workers": int(data.get("num_workers", 0)),
+        "viz_alpha": float(data.get("viz_alpha", 0.5)),
+        "viz_padding": int(data.get("viz_padding", 40)),
         "thresholds": thresholds,
         "stream": {
             "display_fps": bool(data.get("stream_display_fps", True)),

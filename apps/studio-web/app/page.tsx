@@ -1493,29 +1493,58 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
 }
 
 function SettingsPage({apiHealthy}:{apiHealthy:boolean}) {
-  const [config,setConfig]=useState<any>(null); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
-  async function load(){
-    setBusy(true);setError("");
-    try{const r=await fetch(`${API_BASE}/api/config`,{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Could not load configuration");setConfig(d);}
-    catch(e){setError(e instanceof Error?e.message:"Could not load configuration")}finally{setBusy(false)}
-  }
+  const [config,setConfig]=useState<any>(null);
+  const [error,setError]=useState(""); const [notice,setNotice]=useState("");
+  const [busy,setBusy]=useState(false); const [saving,setSaving]=useState(false);
+  async function load(){setBusy(true);setError("");setNotice("");try{const r=await fetch(`${API_BASE}/api/config`,{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.detail||"Could not load configuration");setConfig(d);}catch(e){setError(e instanceof Error?e.message:"Could not load configuration")}finally{setBusy(false)}}
   useEffect(()=>{void load()},[]);
-  const thresholds=config?.thresholds||{};
+  function update(key:string,value:any){setConfig((c:any)=>({...c,[key]:value}));}
+  function updateThreshold(key:string,value:string){setConfig((c:any)=>({...c,thresholds:{...c.thresholds,[key]:Number(value)}}));}
+  function updateDrift(key:string,value:any){setConfig((c:any)=>({...c,drift:{...c.drift,[key]:value}}));}
+  async function save(){
+    if(!config)return;setSaving(true);setError("");setNotice("");
+    const payload={algorithm:config.algorithm,resize:config.resize.map((v:number)=>Number(v)),normalize:Boolean(config.normalize),
+      thresh_padim:Number(config.thresholds.padim),thresh_patchcore:Number(config.thresholds.patchcore),thresh_efficientad:Number(config.thresholds.efficientad),
+      enable_drift_monitoring:Boolean(config.drift.enabled),drift_window:Number(config.drift.window),drift_min_samples:Number(config.drift.min_samples),
+      drift_threshold:Number(config.drift.threshold),drift_evaluation_interval:Number(config.drift.evaluation_interval),
+      batch_size:Number(config.batch_size),num_workers:Number(config.num_workers),viz_alpha:Number(config.viz_alpha),viz_padding:Number(config.viz_padding)};
+    try{
+      const r=await fetch(`${API_BASE}/api/config`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+      const d=await r.json();if(!r.ok)throw new Error(d.detail||"Could not save settings");setConfig(d);
+      let message="Settings saved to config.yml.";
+      try{
+        const threshold=payload.algorithm==="padim"?payload.thresh_padim:payload.algorithm==="efficientad"?payload.thresh_efficientad:payload.thresh_patchcore;
+        const runtime=await fetch("http://127.0.0.1:8001/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({threshold,resize_width:payload.resize[0],resize_height:payload.resize[1]})});
+        message+=runtime.ok?" The active inference threshold and input size were sent to the running inference service.":" Runtime settings may require reloading the active model.";
+      }catch{message+=" The inference service was unreachable; reload the active model to apply runtime settings.";}
+      setNotice(message);
+    }catch(e){setError(e instanceof Error?e.message:"Could not save settings")}finally{setSaving(false)}
+  }
+  const field=(label:string,value:any,onChange:(v:string)=>void,o:{min?:number;max?:number;step?:number;hint?:string}={})=><label className="settings-field"><span>{label}</span><input className="settings-input" type="number" min={o.min} max={o.max} step={o.step??1} value={value??""} onChange={e=>onChange(e.target.value)}/>{o.hint&&<small>{o.hint}</small>}</label>;
+  const toggle=(label:string,value:boolean,onChange:(v:boolean)=>void,detail:string)=><label className="settings-toggle"><span><b>{label}</b><small>{detail}</small></span><input type="checkbox" checked={Boolean(value)} onChange={e=>onChange(e.target.checked)}/></label>;
+  const t=config?.thresholds||{};
   return <>
-    <div className="page-head"><div><div className="eyebrow">System</div><h1>Settings</h1><p className="subtitle">View the configuration Studio uses. Changes still belong in the canonical config.yml.</p></div><button className="secondary" onClick={load} disabled={busy}><Settings2 size={13}/>{busy?"Refreshing…":"Refresh"}</button></div>
+    <div className="page-head"><div><div className="eyebrow">System · Configuration</div><h1>Settings</h1><p className="subtitle">Tune AnomaVision here. Saving updates the existing config.yml while preserving unrelated settings and comments.</p></div><div className="settings-actions"><button className="secondary" onClick={load} disabled={busy||saving}><Settings2 size={13}/>{busy?"Refreshing…":"Reload config"}</button><button className="primary" onClick={save} disabled={!apiHealthy||!config||busy||saving}><ShieldCheck size={14}/>{saving?"Saving…":"Save changes"}</button></div></div>
     {!apiHealthy&&<div className="api-warning"><CircleGauge size={14}/> Studio API is offline. Settings are unavailable until FastAPI is running.</div>}
-    {error&&<div className="form-error">{error}</div>}
-    {config&&<div className="settings-grid">
-      <section className="card"><div className="section-head"><div><div className="section-title">Inference</div><div className="subtitle">Read-only values from config.yml.</div></div><span className="badge">Canonical</span></div>
-        <div className="settings-list"><div><span>Algorithm</span><b>{String(config.algorithm||"—").toUpperCase()}</b></div><div><span>Input size</span><b>{config.resize?.join(" × ")||"—"}</b></div><div><span>Normalize images</span><b>{config.normalize?"Enabled":"Disabled"}</b></div></div>
+    {error&&<div className="form-error">{error}</div>}{notice&&<div className="settings-notice"><ShieldCheck size={16}/><span>{notice}</span></div>}
+    {config&&<div className="settings-grid settings-grid-edit">
+      <section className="card settings-panel"><div className="settings-panel-head"><div className="settings-icon"><SlidersHorizontal size={17}/></div><div><div className="section-title">Model & preprocessing</div><div className="subtitle">Model defaults and input pipeline.</div></div></div>
+        <div className="settings-form-grid"><label className="settings-field"><span>Default algorithm</span><select className="settings-input" value={config.algorithm} onChange={e=>update("algorithm",e.target.value)}><option value="padim">PaDiM</option><option value="patchcore">PatchCore</option><option value="efficientad">EfficientAD</option></select></label>
+        {field("Input width (px)",config.resize?.[0],v=>update("resize",[Number(v),Number(config.resize?.[1]??224)]),{min:32,max:4096})}
+        {field("Input height (px)",config.resize?.[1],v=>update("resize",[Number(config.resize?.[0]??224),Number(v)]),{min:32,max:4096})}
+        {toggle("Image normalization",config.normalize,v=>update("normalize",v),"Apply ImageNet RGB normalization during preprocessing.")}</div>
       </section>
-      <section className="card"><div className="section-head"><div><div className="section-title">Thresholds</div><div className="subtitle">Used by Studio when displaying results.</div></div></div>
-        <div className="settings-list">{Object.entries(thresholds).map(([name,value])=><div key={name}><span>{name.toUpperCase()}</span><b>{Number(value).toFixed(3)}</b></div>)}</div>
+      <section className="card settings-panel"><div className="settings-panel-head"><div className="settings-icon"><CircleGauge size={17}/></div><div><div className="section-title">Detection thresholds</div><div className="subtitle">Separate thresholds for each algorithm.</div></div></div>
+        <div className="settings-form-grid">{field("PaDiM threshold",t.padim,v=>updateThreshold("padim",v),{min:0,step:.001,hint:"Default: 13.0"})}{field("PatchCore threshold",t.patchcore,v=>updateThreshold("patchcore",v),{min:0,step:.001,hint:"Default: 0.25"})}{field("EfficientAD threshold",t.efficientad,v=>updateThreshold("efficientad",v),{min:0,step:.001,hint:"1.0 uses the model's adaptive training threshold."})}</div>
       </section>
-      <section className="card"><div className="section-head"><div><div className="section-title">Drift monitoring</div><div className="subtitle">Existing monitoring configuration.</div></div></div>
-        <div className="settings-list"><div><span>Status</span><b>{config.drift?.enabled?"Enabled":"Disabled"}</b></div><div><span>Window</span><b>{config.drift?.window??"—"}</b></div><div><span>Minimum samples</span><b>{config.drift?.min_samples??"—"}</b></div><div><span>Threshold</span><b>{config.drift?.threshold!=null?Number(config.drift.threshold).toFixed(3):"—"}</b></div><div><span>Evaluation interval</span><b>{config.drift?.evaluation_interval??"—"}</b></div></div>
+      <section className="card settings-panel"><div className="settings-panel-head"><div className="settings-icon"><Activity size={17}/></div><div><div className="section-title">Drift monitoring</div><div className="subtitle">Tune production data-drift observation.</div></div></div>
+        {toggle("Enable drift monitoring",config.drift?.enabled,v=>updateDrift("enabled",v),"Observes incoming data; it does not change anomaly scores.")}
+        <div className="settings-form-grid">{field("Rolling window",config.drift?.window,v=>updateDrift("window",v),{min:2,max:100000,hint:"Recent samples retained."})}{field("Minimum samples",config.drift?.min_samples,v=>updateDrift("min_samples",v),{min:2,max:100000})}{field("Drift alert threshold",config.drift?.threshold,v=>updateDrift("threshold",v),{min:.0001,max:10,step:.01})}{field("Evaluation interval",config.drift?.evaluation_interval,v=>updateDrift("evaluation_interval",v),{min:1,max:100000,hint:"Evaluate every N additional samples."})}</div>
       </section>
-      <section className="card settings-note"><ShieldCheck size={17}/><div><strong>One source of truth</strong><span>Studio reads these values from the existing configuration API. It does not create a second configuration system or modify the anomaly-detection engine.</span></div></section>
+      <section className="card settings-panel"><div className="settings-panel-head"><div className="settings-icon"><MonitorCog size={17}/></div><div><div className="section-title">Performance & visualization</div><div className="subtitle">Tune processing and visualization defaults.</div></div></div>
+        <div className="settings-form-grid">{field("Batch size",config.batch_size,v=>update("batch_size",Number(v)),{min:1,max:256})}{field("Data-loader workers",config.num_workers,v=>update("num_workers",Number(v)),{min:0,max:64})}{field("Heatmap opacity",config.viz_alpha,v=>update("viz_alpha",Number(v)),{min:0,max:1,step:.05,hint:"0 transparent · 1 opaque"})}{field("Visualization padding (px)",config.viz_padding,v=>update("viz_padding",Number(v)),{min:0,max:500})}</div>
+      </section>
+      <section className="settings-savebar"><div><strong>One source of truth</strong><span>Validated settings are written to config.yml. Architecture-changing options may still require retraining or re-exporting a model.</span></div><button className="primary" onClick={save} disabled={!apiHealthy||saving}><ShieldCheck size={14}/>{saving?"Saving…":"Save settings"}</button></section>
     </div>}
   </>;
 }
