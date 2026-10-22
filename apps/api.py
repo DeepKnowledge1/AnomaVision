@@ -574,7 +574,7 @@ async def _run_batch_inference_job(job_id: str, images: list[tuple[str, bytes]],
                     boundary_image_base64=boundary_b64,
                     highlighted_image_base64=highlighted_b64,
                     drift_report=drift_report,
-                ).model_dump()
+                ).dict()
                 row["filename"] = filename
             except Exception as exc:
                 row = {"filename": filename, "error": str(exc)}
