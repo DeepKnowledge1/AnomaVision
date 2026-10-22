@@ -25,7 +25,6 @@ import asyncio
 import base64
 import io
 import os
-import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -534,101 +533,6 @@ async def predict(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-# Batch jobs live in the inference API process, not in the browser request.
-# This lets inference continue if the Studio page is refreshed.
-_BATCH_INFERENCE_JOBS: dict[str, dict] = {}
-
-
-async def _run_batch_inference_job(job_id: str, images: list[tuple[str, bytes]], include_visualizations: bool) -> None:
-    job = _BATCH_INFERENCE_JOBS[job_id]
-    job["status"] = "running"
-    try:
-        for filename, contents in images:
-            try:
-                image_np = _load_image_np(contents)
-                if _drift_project_id:
-                    _apply_project_config(_drift_project_id)
-                result = engine.run(
-                    image_np,
-                    threshold=engine.ANOMALY_THRESHOLD,
-                    include_visualizations=include_visualizations,
-                )
-                drift_report = _update_project_drift(_drift_project_id or "", image_np)
-                heatmap_b64 = ""
-                boundary_b64 = ""
-                highlighted_b64 = ""
-                if include_visualizations:
-                    heatmap_b64, boundary_b64, highlighted_b64 = await asyncio.gather(
-                        _encode_async(result.heatmap_np, _resize_size),
-                        _encode_async(result.boundary_np, _resize_size),
-                        _encode_async(result.highlighted_np, _resize_size),
-                    )
-                row = PredictionResult(
-                    anomaly_score=result.anomaly_score,
-                    is_anomaly=result.is_anomaly,
-                    latency_ms=result.latency_ms,
-                    heatmap_image_base64=heatmap_b64,
-                    boundary_image_base64=boundary_b64,
-                    highlighted_image_base64=highlighted_b64,
-                    drift_report=drift_report,
-                ).dict()
-                row["filename"] = filename
-            except Exception as exc:
-                row = {"filename": filename, "error": str(exc)}
-            job["results"].append(row)
-            job["processed"] = len(job["results"])
-        job["status"] = "completed"
-    except Exception as exc:
-        job["status"] = "failed"
-        job["error"] = str(exc)
-
-
-@app.post("/predict-batch")
-async def start_batch_inference(
-    files: list[UploadFile] = File(...),
-    include_visualizations: bool = True,
-):
-    """Start a batch job that continues independently of the browser connection."""
-    if not engine.is_loaded():
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    if not files or len(files) > 10:
-        raise HTTPException(status_code=400, detail="Select between 1 and 10 images")
-    images: list[tuple[str, bytes]] = []
-    for file in files:
-        if not (file.content_type or "").startswith("image/"):
-            raise HTTPException(status_code=400, detail=f"{file.filename or 'File'} is not an image")
-        images.append((file.filename or "image", await file.read()))
-        await file.close()
-
-    job_id = uuid.uuid4().hex
-    _BATCH_INFERENCE_JOBS[job_id] = {
-        "status": "queued",
-        "total": len(images),
-        "processed": 0,
-        "results": [],
-        "error": None,
-    }
-    asyncio.create_task(_run_batch_inference_job(job_id, images, include_visualizations))
-    return {"job_id": job_id, "status": "queued", "total": len(images)}
-
-
-@app.get("/predict-batch/{job_id}")
-async def get_batch_inference_status(job_id: str):
-    """Return batch progress/results so the Studio page can reconnect after refresh."""
-    job = _BATCH_INFERENCE_JOBS.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Batch inference job not found; the inference service may have restarted")
-    return {
-        "job_id": job_id,
-        "status": job["status"],
-        "total": job["total"],
-        "processed": job["processed"],
-        "results": job["results"] if job["status"] == "completed" else [],
-        "error": job["error"],
-    }
 
 
 def _load_image_np(contents: bytes):
