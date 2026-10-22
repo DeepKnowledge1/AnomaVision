@@ -1296,13 +1296,16 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
   }
   useEffect(()=>{
     fetch(`${API_BASE}/api/config`,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>setStudioConfig(d ? {...d, algorithm: projectAlgorithm || d.algorithm} : null)).catch(()=>setStudioConfig(null));
+    const savedJob=typeof window!=="undefined"&&projectId?window.localStorage.getItem("anomavision:active-inference-job:"+projectId):null;
+    if(savedJob){
+      // The inference API already owns this running job; do not reload its model mid-run.
+      void checkInferenceApi();
+      void resumeBatchJob(savedJob);
+      return;
+    }
     void reloadProjectModel().then(loaded=>{
       if(!loaded) void checkInferenceApi();
     });
-    if(typeof window!=="undefined"&&projectId){
-      const savedJob=window.localStorage.getItem("anomavision:active-inference-job:"+projectId);
-      if(savedJob) void resumeBatchJob(savedJob);
-    }
   },[projectId]);
   useEffect(()=>{if(result) onResult(result,history,studioConfig)},[result,history,studioConfig]);
   useEffect(()=>{
