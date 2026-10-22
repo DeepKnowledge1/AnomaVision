@@ -776,7 +776,7 @@ class BenchmarkRunner:
                 image_scores.append(tensor_to_numpy(scores))
                 masks.append(tensor_to_numpy(gt_masks))
                 maps.append(tensor_to_numpy(anomaly_maps))
-        return compute_auroc(
+        return compute_metrics(
             np.concatenate(image_labels),
             np.concatenate(image_scores),
             np.concatenate(masks),
