@@ -965,14 +965,11 @@ class BenchmarkRunner:
                         else f"<td>{row[k]}</td>"
                     )
                     for k in [
-                        "algorithm",
-                        "name",
-                        "image_auroc", "pixel_auroc",
-                        "training_time_s",
-                        "latency_ms",
-                        "p95_latency_ms",
-                        "throughput_fps",
-                        "state_dict_size_mb",
+                        "algorithm", "name",
+                        "image_ap", "image_f1", "image_auroc", "image_specificity",
+                        "pixel_ap", "pixel_f1", "pixel_auroc", "pixel_aupro", "pixel_dice", "pixel_iou",
+                        "training_time_s", "latency_ms", "p95_latency_ms", "throughput_fps",
+                        "state_dict_size_mb", "training_memory_mb", "inference_memory_mb", "timing_anomaly_flag",
                     ]
                 )
                 + "</tr>"
