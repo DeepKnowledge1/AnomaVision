@@ -24,7 +24,11 @@ import pandas as pd
 import psutil
 import torch
 import torch.nn.functional as F
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import (
+    average_precision_score,
+    precision_recall_curve,
+    roc_auc_score,
+)
 from tabulate import tabulate
 from torch.utils.data import DataLoader
 
@@ -67,7 +71,7 @@ def add_local_anomalib_to_path() -> Path:
     )
 
 
-IMAGE_SIZE = (416, 416)
+IMAGE_SIZE = (224, 224)
 NORMALIZE = True
 BATCH_SIZE = 8
 TIMING_BATCH_SIZE = 1
@@ -164,8 +168,24 @@ def load_torchvision_weights_into_anomalib(model) -> None:
 class ModelMetrics:
     name: str
     algorithm: str
+    image_ap: float = float("nan")
+    image_f1: float = float("nan")
+    image_precision: float = float("nan")
+    image_recall: float = float("nan")
     image_auroc: float = float("nan")
+    image_specificity: float = float("nan")
+    pixel_ap: float = float("nan")
+    pixel_f1: float = float("nan")
+    pixel_precision: float = float("nan")
+    pixel_recall: float = float("nan")
     pixel_auroc: float = float("nan")
+    pixel_aupro: float = float("nan")
+    pixel_dice: float = float("nan")
+    pixel_iou: float = float("nan")
+    end_to_end_latency_ms: float = float("nan")
+    timing_outlier_fraction: float = float("nan")
+    timing_cv: float = float("nan")
+    timing_anomaly_flag: bool = False
     training_time_s: float = float("nan")
     latency_ms: float = float("nan")
     p95_latency_ms: float = float("nan")
@@ -301,9 +321,9 @@ def _resize_masks_to_benchmark_size(masks: np.ndarray) -> np.ndarray:
     return F.interpolate(tensor, size=IMAGE_SIZE, mode="nearest")[:, 0].numpy()
 
 
-def compute_auroc(
+def compute_metrics(
     image_labels, image_scores, masks, anomaly_maps
-) -> Tuple[float, float]:
+) -> Dict[str, float]:
     image_labels = np.asarray(image_labels).reshape(-1).astype(np.uint8)
     image_scores = np.asarray(image_scores).reshape(-1)
     image_auroc = (
@@ -311,6 +331,37 @@ def compute_auroc(
         if np.unique(image_labels).size >= 2
         else float("nan")
     )
+    image_ap = (
+        float(average_precision_score(image_labels, image_scores))
+        if np.unique(image_labels).size >= 2
+        else float("nan")
+    )
+    image_precision_curve, image_recall_curve, image_thresholds = (
+        precision_recall_curve(image_labels, image_scores)
+    )
+    image_f1_curve = (
+        2
+        * image_precision_curve
+        * image_recall_curve
+        / np.maximum(image_precision_curve + image_recall_curve, 1e-12)
+    )
+    image_idx = int(np.nanargmax(image_f1_curve)) if image_f1_curve.size else 0
+    image_threshold = (
+        image_thresholds[min(image_idx, max(0, len(image_thresholds) - 1))]
+        if len(image_thresholds)
+        else float("inf")
+    )
+    image_pred = image_scores >= image_threshold
+    image_tp = int(np.sum((image_pred == 1) & (image_labels == 1)))
+    image_fp = int(np.sum((image_pred == 1) & (image_labels == 0)))
+    image_fn = int(np.sum((image_pred == 0) & (image_labels == 1)))
+    image_tn = int(np.sum((image_pred == 0) & (image_labels == 0)))
+    image_precision = image_tp / max(1, image_tp + image_fp)
+    image_recall = image_tp / max(1, image_tp + image_fn)
+    image_f1 = (
+        2 * image_precision * image_recall / max(1e-12, image_precision + image_recall)
+    )
+    image_specificity = image_tn / max(1, image_tn + image_fp)
     masks = _resize_masks_to_benchmark_size(masks)
     anomaly_maps = _resize_maps_to_benchmark_size(anomaly_maps)
     pixel_labels = masks.reshape(-1).astype(np.uint8)
@@ -320,7 +371,85 @@ def compute_auroc(
         if np.unique(pixel_labels).size >= 2
         else float("nan")
     )
-    return image_auroc, pixel_auroc
+    pixel_ap = (
+        float(average_precision_score(pixel_labels, pixel_scores))
+        if np.unique(pixel_labels).size >= 2
+        else float("nan")
+    )
+    pixel_precision_curve, pixel_recall_curve, pixel_thresholds = (
+        precision_recall_curve(pixel_labels, pixel_scores)
+    )
+    pixel_f1_curve = (
+        2
+        * pixel_precision_curve
+        * pixel_recall_curve
+        / np.maximum(pixel_precision_curve + pixel_recall_curve, 1e-12)
+    )
+    pixel_idx = int(np.nanargmax(pixel_f1_curve)) if pixel_f1_curve.size else 0
+    pixel_threshold = (
+        pixel_thresholds[min(pixel_idx, max(0, len(pixel_thresholds) - 1))]
+        if len(pixel_thresholds)
+        else float("inf")
+    )
+    pixel_pred = pixel_scores >= pixel_threshold
+    pixel_tp = int(np.sum((pixel_pred == 1) & (pixel_labels == 1)))
+    pixel_fp = int(np.sum((pixel_pred == 1) & (pixel_labels == 0)))
+    pixel_fn = int(np.sum((pixel_pred == 0) & (pixel_labels == 1)))
+    pixel_precision = pixel_tp / max(1, pixel_tp + pixel_fp)
+    pixel_recall = pixel_tp / max(1, pixel_tp + pixel_fn)
+    pixel_f1 = (
+        2 * pixel_precision * pixel_recall / max(1e-12, pixel_precision + pixel_recall)
+    )
+    pixel_dice = pixel_f1
+    pixel_iou = pixel_tp / max(1, pixel_tp + pixel_fp + pixel_fn)
+    pixel_aupro = float("nan")
+    try:
+        from scipy.ndimage import label as connected_components
+
+        gt = masks.astype(bool)
+        thresholds = np.unique(np.quantile(anomaly_maps, np.linspace(0.0, 1.0, 100)))
+        region_overlaps, false_positive_rates = [], []
+        normal_pixels = int((~gt).sum())
+        for threshold in thresholds:
+            pred = anomaly_maps >= threshold
+            fpr = float((pred & ~gt).sum() / max(1, normal_pixels))
+            overlaps = []
+            for idx in range(len(gt)):
+                components, count = connected_components(gt[idx])
+                for component_id in range(1, count + 1):
+                    region = components == component_id
+                    overlaps.append(
+                        float((pred[idx] & region).sum() / max(1, region.sum()))
+                    )
+            if overlaps:
+                false_positive_rates.append(fpr)
+                region_overlaps.append(float(np.mean(overlaps)))
+        if len(false_positive_rates) >= 2:
+            order = np.argsort(false_positive_rates)
+            x = np.asarray(false_positive_rates)[order]
+            y = np.asarray(region_overlaps)[order]
+            keep = x <= 0.3
+            x, y = x[keep], y[keep]
+            if len(x) >= 2 and x[-1] > x[0]:
+                pixel_aupro = float(np.trapz(y, x) / (x[-1] - x[0]))
+    except (ImportError, ValueError, FloatingPointError):
+        pass
+    return {
+        "image_ap": image_ap,
+        "image_f1": image_f1,
+        "image_precision": image_precision,
+        "image_recall": image_recall,
+        "image_auroc": image_auroc,
+        "image_specificity": image_specificity,
+        "pixel_ap": pixel_ap,
+        "pixel_f1": pixel_f1,
+        "pixel_precision": pixel_precision,
+        "pixel_recall": pixel_recall,
+        "pixel_auroc": pixel_auroc,
+        "pixel_aupro": pixel_aupro,
+        "pixel_dice": pixel_dice,
+        "pixel_iou": pixel_iou,
+    }
 
 
 def environment(device: torch.device, seed: int) -> Dict[str, str]:
@@ -499,7 +628,7 @@ class BenchmarkRunner:
 
     def _benchmark_latency(
         self, model, batch: torch.Tensor, call_model
-    ) -> Tuple[float, float, float, float]:
+    ) -> Tuple[float, float, float, float, float, float, bool]:
         model.eval()
         batch = batch.to(self.device)
         self._reset_memory()
@@ -514,12 +643,21 @@ class BenchmarkRunner:
                 call_model(batch)
                 sync(self.device)
                 times.append(time.perf_counter() - start)
-        times = np.asarray(times)
+        times = np.asarray(times, dtype=np.float64)
+        median = float(np.median(times))
+        mad = float(np.median(np.abs(times - median)))
+        robust_z = np.abs(times - median) / max(1.4826 * mad, 1e-12)
+        outlier_fraction = float(np.mean(robust_z > 3.5))
+        cv = float(times.std() / max(times.mean(), 1e-12))
+        anomaly_flag = bool(outlier_fraction > 0.10 or cv > 0.25)
         return (
             float(times.mean() * 1000),
             float(np.percentile(times, 95) * 1000),
             float(1.0 / times.mean()),
             float(self._memory_now_mb()),
+            outlier_fraction,
+            cv,
+            anomaly_flag,
         )
 
     def _build_anomavision_model(self, algorithm: str):
@@ -649,7 +787,7 @@ class BenchmarkRunner:
                 image_scores.append(tensor_to_numpy(scores))
                 masks.append(tensor_to_numpy(gt_masks))
                 maps.append(tensor_to_numpy(anomaly_maps))
-        return compute_auroc(
+        return compute_metrics(
             np.concatenate(image_labels),
             np.concatenate(image_scores),
             np.concatenate(masks),
@@ -707,7 +845,7 @@ class BenchmarkRunner:
                 image_scores.append(tensor_to_numpy(scores))
                 masks.append(tensor_to_numpy(gt_masks))
                 maps.append(tensor_to_numpy(anomaly_maps))
-        return compute_auroc(
+        return compute_metrics(
             np.concatenate(image_labels),
             np.concatenate(image_scores),
             np.concatenate(masks),
@@ -753,10 +891,20 @@ class BenchmarkRunner:
             metrics.p95_latency_ms,
             metrics.throughput_fps,
             metrics.inference_memory_mb,
+            outlier_fraction,
+            timing_cv,
+            anomaly_flag,
         ) = self._benchmark_latency(model, timing_batch, model.predict)
-        metrics.image_auroc, metrics.pixel_auroc = self._evaluate_anomavision(
-            model, test_loader
-        )
+        self._last_timing_checks = (outlier_fraction, timing_cv, anomaly_flag)
+        (
+            metrics.timing_outlier_fraction,
+            metrics.timing_cv,
+            metrics.timing_anomaly_flag,
+        ) = self._last_timing_checks
+        metrics.end_to_end_latency_ms = float(
+            "nan"
+        )  # preprocessing is performed by the dataset, outside model.predict timing
+        metrics.__dict__.update(self._evaluate_anomavision(model, test_loader))
         print(
             f"  image={metrics.image_auroc:.4f} pixel={metrics.pixel_auroc:.4f} latency={metrics.latency_ms:.2f}ms"
         )
@@ -820,12 +968,22 @@ class BenchmarkRunner:
             metrics.p95_latency_ms,
             metrics.throughput_fps,
             metrics.inference_memory_mb,
+            outlier_fraction,
+            timing_cv,
+            anomaly_flag,
         ) = self._benchmark_latency(
             model, timing_batch, lambda x: self._anomalib_raw(model, x)
         )
-        metrics.image_auroc, metrics.pixel_auroc = self._evaluate_anomalib(
-            model, test_loader
-        )
+        self._last_timing_checks = (outlier_fraction, timing_cv, anomaly_flag)
+        (
+            metrics.timing_outlier_fraction,
+            metrics.timing_cv,
+            metrics.timing_anomaly_flag,
+        ) = self._last_timing_checks
+        metrics.end_to_end_latency_ms = float(
+            "nan"
+        )  # full data pipeline is intentionally not included in this inference-only benchmark
+        metrics.__dict__.update(self._evaluate_anomalib(model, test_loader))
         print(
             f"  image={metrics.image_auroc:.4f} pixel={metrics.pixel_auroc:.4f} latency={metrics.latency_ms:.2f}ms"
         )
@@ -857,8 +1015,20 @@ class BenchmarkRunner:
             [
                 "algorithm",
                 "name",
+                "image_ap",
+                "image_f1",
+                "image_precision",
+                "image_recall",
                 "image_auroc",
+                "image_specificity",
+                "pixel_ap",
+                "pixel_f1",
+                "pixel_precision",
+                "pixel_recall",
                 "pixel_auroc",
+                "pixel_aupro",
+                "pixel_dice",
+                "pixel_iou",
                 "training_time_s",
                 "latency_ms",
                 "p95_latency_ms",
@@ -866,6 +1036,10 @@ class BenchmarkRunner:
                 "state_dict_size_mb",
                 "training_memory_mb",
                 "inference_memory_mb",
+                "end_to_end_latency_ms",
+                "timing_outlier_fraction",
+                "timing_cv",
+                "timing_anomaly_flag",
             ]
         ].copy()
         with open(f"{stem}.txt", "w", encoding="utf-8") as handle:
@@ -902,19 +1076,30 @@ class BenchmarkRunner:
                     for k in [
                         "algorithm",
                         "name",
+                        "image_ap",
+                        "image_f1",
                         "image_auroc",
+                        "image_specificity",
+                        "pixel_ap",
+                        "pixel_f1",
                         "pixel_auroc",
+                        "pixel_aupro",
+                        "pixel_dice",
+                        "pixel_iou",
                         "training_time_s",
                         "latency_ms",
                         "p95_latency_ms",
                         "throughput_fps",
                         "state_dict_size_mb",
+                        "training_memory_mb",
+                        "inference_memory_mb",
+                        "timing_anomaly_flag",
                     ]
                 )
                 + "</tr>"
             )
         config = rows[0]
-        html = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnomaVision Benchmark - {self.class_name}</title><style>body{{font-family:Inter,Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}}main{{max-width:1400px;margin:40px auto;padding:24px}}h1{{margin-bottom:6px}}.sub{{color:#94a3b8;margin-bottom:28px}}.card{{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin-bottom:24px;overflow:auto}}table{{width:100%;border-collapse:collapse;white-space:nowrap}}th,td{{padding:12px 14px;border-bottom:1px solid #334155;text-align:left}}th{{color:#93c5fd;background:#1e293b;position:sticky;top:0}}tr:hover{{background:#1e293b}}.pill{{display:inline-block;padding:6px 10px;border-radius:999px;background:#1e293b;margin-right:6px}}.config{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}}.config span{{display:block;color:#94a3b8;font-size:12px;margin-bottom:5px}}.config strong{{font-size:15px}}</style></head><body><main><h1>🔬 AnomaVision Benchmark</h1><div class="sub">{self.class_name} · {config['image_size']} · {self.device}</div><div class="card"><span class="pill">PaDiM</span><span class="pill">PatchCore</span><span class="pill">EfficientAD</span><span class="pill">AnomaVision vs Anomalib</span></div><div class="card"><h2>Benchmark Configuration</h2><div class="config"><div><span>Backbone</span><strong>{config['backbone']}</strong></div><div><span>Image size</span><strong>{config['image_size']}</strong></div><div><span>Layer indices</span><strong>{config['layer_indices']}</strong></div><div><span>Layers</span><strong>{config['layers']}</strong></div><div><span>N features</span><strong>{config['n_features']}</strong></div></div></div><div class="card"><table><thead><tr><th>Algorithm</th><th>Implementation</th><th>Image AUROC</th><th>Pixel AUROC</th><th>Fit Time (s)</th><th>Latency (ms)</th><th>P95 (ms)</th><th>FPS</th><th>Model (MB)</th></tr></thead><tbody>{''.join(html_rows)}</tbody></table></div></main></body></html>"""
+        html = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnomaVision Benchmark - {self.class_name}</title><style>body{{font-family:Inter,Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}}main{{max-width:1400px;margin:40px auto;padding:24px}}h1{{margin-bottom:6px}}.sub{{color:#94a3b8;margin-bottom:28px}}.card{{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin-bottom:24px;overflow:auto}}table{{width:100%;border-collapse:collapse;white-space:nowrap}}th,td{{padding:12px 14px;border-bottom:1px solid #334155;text-align:left}}th{{color:#93c5fd;background:#1e293b;position:sticky;top:0}}tr:hover{{background:#1e293b}}.pill{{display:inline-block;padding:6px 10px;border-radius:999px;background:#1e293b;margin-right:6px}}.config{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}}.config span{{display:block;color:#94a3b8;font-size:12px;margin-bottom:5px}}.config strong{{font-size:15px}}</style></head><body><main><h1>🔬 AnomaVision Benchmark</h1><div class="sub">{self.class_name} · {config['image_size']} · {self.device}</div><div class="card"><span class="pill">PaDiM</span><span class="pill">PatchCore</span><span class="pill">EfficientAD</span><span class="pill">AnomaVision vs Anomalib</span></div><div class="card"><h2>Benchmark Configuration</h2><div class="config"><div><span>Backbone</span><strong>{config['backbone']}</strong></div><div><span>Image size</span><strong>{config['image_size']}</strong></div><div><span>Layer indices</span><strong>{config['layer_indices']}</strong></div><div><span>Layers</span><strong>{config['layers']}</strong></div><div><span>N features</span><strong>{config['n_features']}</strong></div></div></div><div class="card"><table><thead><tr><th>Algorithm</th><th>Implementation</th><th>Image AP</th><th>Image F1</th><th>Image AUROC</th><th>Image Specificity</th><th>Pixel AP</th><th>Pixel F1</th><th>Pixel AUROC</th><th>AUPRO</th><th>Dice</th><th>IoU</th><th>Fit Time (s)</th><th>Latency (ms)</th><th>P95 (ms)</th><th>FPS</th><th>Model (MB)</th><th>Train RAM/VRAM (MB)</th><th>Inference RAM/VRAM (MB)</th><th>Timing anomaly</th></tr></thead><tbody>{''.join(html_rows)}</tbody></table></div></main></body></html>"""
         with open(f"{stem}.html", "w", encoding="utf-8") as handle:
             handle.write(html)
         print("\nReports:")
