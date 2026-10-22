@@ -1252,7 +1252,7 @@ function MonitoringPage({project,visible}:{project?:Project;visible:boolean}) {
 }
 
 function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResults}:{apiHealthy:boolean;projectId:string;projectAlgorithm?:string;visible:boolean;onResult:(result:any,history:any[],config:any)=>void;onResults:()=>void}) {
-  const [files,setFiles]=useState<File[]>([]); const [camera,setCamera]=useState(false); const [cameraBusy,setCameraBusy]=useState(false); const [cameraAuto,setCameraAuto]=useState(false); const [cameraError,setCameraError]=useState(""); const [cameraFps,setCameraFps]=useState(0); const [cameraFrames,setCameraFrames]=useState(0); const [cameraInterval,setCameraInterval]=useState(500); const videoRef=useRef<HTMLVideoElement>(null); const streamRef=useRef<MediaStream|null>(null); const cameraLoopRef=useRef<number|null>(null); const cameraBusyRef=useRef(false); const fpsTimesRef=useRef<number[]>([]); const [result,setResult]=useState<any>(null); const [busy,setBusy]=useState(false); const [batchProgress,setBatchProgress]=useState(""); const [error,setError]=useState(""); const [history,setHistory]=useState<any[]>([]); const [totalMs,setTotalMs]=useState(0);
+  const [files,setFiles]=useState<File[]>([]); const [camera,setCamera]=useState(false); const [cameraBusy,setCameraBusy]=useState(false); const [cameraAuto,setCameraAuto]=useState(false); const [cameraError,setCameraError]=useState(""); const [cameraFps,setCameraFps]=useState(0); const [cameraFrames,setCameraFrames]=useState(0); const [cameraInterval,setCameraInterval]=useState(500); const videoRef=useRef<HTMLVideoElement>(null); const streamRef=useRef<MediaStream|null>(null); const cameraLoopRef=useRef<number|null>(null); const cameraBusyRef=useRef(false); const fpsTimesRef=useRef<number[]>([]); const [result,setResult]=useState<any>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const [history,setHistory]=useState<any[]>([]); const [totalMs,setTotalMs]=useState(0);
   const inferenceUrl=process.env.NEXT_PUBLIC_ANOMAVISION_INFERENCE_URL ?? (typeof window !== "undefined" ? window.location.protocol + "//" + window.location.hostname + ":8001" : "http://localhost:8001");
   const [studioConfig,setStudioConfig]=useState<any>(null);
   const [inferenceHealth,setInferenceHealth]=useState<"checking"|"online"|"offline"|"wrong-service">("checking");
@@ -1296,13 +1296,6 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
   }
   useEffect(()=>{
     fetch(`${API_BASE}/api/config`,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>setStudioConfig(d ? {...d, algorithm: projectAlgorithm || d.algorithm} : null)).catch(()=>setStudioConfig(null));
-    const savedJob=typeof window!=="undefined"&&projectId?window.localStorage.getItem("anomavision:active-inference-job:"+projectId):null;
-    if(savedJob){
-      // The inference API already owns this running job; do not reload its model mid-run.
-      void checkInferenceApi();
-      void resumeBatchJob(savedJob);
-      return;
-    }
     void reloadProjectModel().then(loaded=>{
       if(!loaded) void checkInferenceApi();
     });
@@ -1362,72 +1355,28 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
       reader.readAsDataURL(file);
     });
   }
-  async function resumeBatchJob(jobId:string, previewByName:Record<string,string>={}){
-    const storageKey="anomavision:active-inference-job:"+projectId;
-    setBusy(true);setError("");
-    try{
-      while(true){
-        let r:Response;
-        try{
-          r=await fetch(inferenceUrl+"/predict-batch/"+encodeURIComponent(jobId),{cache:"no-store"});
-        }catch{
-          await new Promise(resolve=>window.setTimeout(resolve,1000));
-          continue;
-        }
-        const d=await r.json().catch(()=>({}));
-        if(r.status===404){
-          window.localStorage.removeItem(storageKey);
-          throw new Error(d.detail||"This inference job is no longer available. The inference service may have restarted.");
-        }
-        if(!r.ok)throw new Error(d.detail||"Could not read batch inference status");
-        setInferenceHealth("online");setInferenceHealthMessage("Inference API is connected and responding.");
-        setBatchProgress(String(d.processed??0)+"/"+String(d.total??0));
-        if(d.status==="completed"){
-          const rows:any[]=(d.results||[]).map((row:any)=>({...row,original_image_data_url:previewByName[row.filename]}));
-          const output=rows.length===1?rows[0]:{batch_results:rows.map(({filename,...item}:any)=>({filename,result:item}))};
-          setResult(output);
-          setHistory(prev=>[...rows,...prev].slice(0,20));
-          setTotalMs(rows.reduce((sum:number,row:any)=>sum+(Number(row.latency_ms)||0),0));
-          window.localStorage.removeItem(storageKey);
-          setBatchProgress("");
-          return;
-        }
-        if(d.status==="failed"){
-          window.localStorage.removeItem(storageKey);
-          throw new Error(d.error||"Batch inference failed");
-        }
-        await new Promise(resolve=>window.setTimeout(resolve,700));
-      }
-    }catch(e){
-      const message=e instanceof TypeError?"Cannot reach inference API at "+inferenceUrl+". Check that the inference service is running on port 8001.":(e instanceof Error?e.message:"Inference failed");
-      setError(message);
-    }finally{
-      setBusy(false);
-    }
-  }
   async function predictBatch(){
     if(!files.length)return;
-    setBusy(true);setError("");setResult(null);setBatchProgress("Uploading…");
+    setBusy(true);setError("");setResult(null);
     try{
-      const body=new FormData();
-      for(const file of files.slice(0,10))body.append("files",file,file.name);
-      const r=await fetch(inferenceUrl+"/predict-batch?include_visualizations=true",{method:"POST",body});
-      const d=await r.json().catch(()=>({}));
-      if(!r.ok)throw new Error(d.detail||"Could not start batch inference ("+r.status+")");
-      if(!d.job_id)throw new Error("Inference API did not return a batch job ID");
-      window.localStorage.setItem("anomavision:active-inference-job:"+projectId,String(d.job_id));
-      setBatchProgress("Starting…");
-      setInferenceHealth("online");setInferenceHealthMessage("Inference API is connected and responding.");
-      const previews:Record<string,string>={};
+      const started=performance.now();
+      const rows:any[]=[];
       for(const file of files.slice(0,10)){
-        try{previews[file.name]=await createImagePreview(file)}catch{/* Preview failure must not block inference. */}
+        const body=new FormData();body.append("file",file,file.name);
+        const r=await fetch(inferenceUrl+"/predict?include_visualizations=true",{method:"POST",body});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(d.detail||"Inference API error ("+r.status+")");
+        setInferenceHealth("online");setInferenceHealthMessage("Inference API is connected and responding.");
+        let originalPreview:string|undefined;
+        try{originalPreview=await createImagePreview(file)}catch{/* Preview failure must not block a valid inference result. */}
+        rows.push({filename:file.name,...d,original_image_data_url:originalPreview});
       }
-      await resumeBatchJob(String(d.job_id),previews);
-    }catch(e){
-      const message=e instanceof TypeError?"Cannot reach inference API at "+inferenceUrl+". Studio API is on port 8000; inference API must be on port 8001. Start scripts/run_studio.ps1.":(e instanceof Error?e.message:"Inference failed");
-      setInferenceHealth("offline");setInferenceHealthMessage(message);setError(message);setBatchProgress("");
-      setBusy(false);
-    }
+      const d=rows.length===1?rows[0]:{batch_results:rows.map(({filename,...result})=>({filename,result}))};
+      setResult(d);
+      setHistory(prev=>[...rows,...prev].slice(0,20));
+      setTotalMs(rows.reduce((sum:number,x:any)=>sum+(Number(x.latency_ms)||0),0)||performance.now()-started);
+    }catch(e){const message=e instanceof TypeError?"Cannot reach inference API at "+inferenceUrl+". Studio API is on port 8000; inference API must be on port 8001. Start scripts/run_studio.ps1.":(e instanceof Error?e.message:"Inference failed");setInferenceHealth("offline");setInferenceHealthMessage(message);setError(message)}
+    finally{setBusy(false)}
   }
   const cameraDriftReport=history[0]?.drift_report;
   const cameraDriftScore=cameraDriftReport?.drift_score!=null?Number(cameraDriftReport.drift_score):null;
@@ -1441,7 +1390,7 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
     <div className="card"><div className="section-head"><div><div className="section-title">Run inference</div><div className="subtitle">Select images or a folder. Results come from the existing <code>/predict-batch</code> runtime.</div></div></div>
       <div className="form-grid"><label className="field"><span>Images</span><input type="file" accept="image/*" multiple onChange={e=>setFiles(Array.from(e.target.files||[]).slice(0,10))}/></label><label className="field"><span>Folder</span><input type="file" accept="image/*" multiple {...({webkitdirectory:""} as any)} onChange={e=>setFiles(Array.from(e.target.files||[]).slice(0,10))}/></label></div>
       {files.length>0&&<div className="file-list">{files.map((f,i)=><span key={i} className="status-chip">{f.name}</span>)}</div>}
-      <button className="primary" onClick={predictBatch} disabled={!files.length||busy}><Play size={13}/>{busy?"Analyzing… "+batchProgress:files.length===1?"Analyze image":"Run batch inference"}</button>{error&&<div className="form-error">{error}</div>}
+      <button className="primary" onClick={predictBatch} disabled={!files.length||busy}><Play size={13}/>{busy?"Analyzing…":files.length===1?"Analyze image":"Run batch inference"}</button>{error&&<div className="form-error">{error}</div>}
       {result&&<div className="deployment-result"><div className="performance-grid"><div><span>Processed</span><b>{result.batch_results?.length??0}</b></div><div><span>Anomalies</span><b>{history.slice(0,result.batch_results?.length??0).filter(x=>!x.error&&(activeThreshold!=null?Number(x.anomaly_score||0)>=Number(activeThreshold):x.is_anomaly)).length}</b></div><div><span>Threshold</span><b>{activeThreshold!=null?Number(activeThreshold).toFixed(3):"—"}</b></div><div><span>Latest drift</span><b className={cameraDriftDetected?"result-drift-alert":""}>{cameraDriftScore!=null?cameraDriftScore.toFixed(3):cameraDriftReport?.status||"Not enabled"}</b></div></div></div>}
       {result&&<button className="secondary results-cta" onClick={onResults}><ShieldCheck size={13}/> Open detailed results</button>}
     </div>
