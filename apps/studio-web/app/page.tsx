@@ -1296,6 +1296,8 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
   }
   useEffect(()=>{
     fetch(`${API_BASE}/api/config`,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>setStudioConfig(d ? {...d, algorithm: projectAlgorithm || d.algorithm} : null)).catch(()=>setStudioConfig(null));
+    const savedJob=typeof window!=="undefined"&&projectId?window.localStorage.getItem("anomavision:batch:"+projectId):null;
+    if(savedJob){setInferenceHealth("online");setInferenceHealthMessage("Reconnecting to the existing batch inference job.");return;}
     void reloadProjectModel().then(loaded=>{
       if(!loaded) void checkInferenceApi();
     });
@@ -1321,7 +1323,7 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
         setBatchProgress(Number(data.progress_percent)||0);
         if(data.status==="completed"){
           const rows=Array.isArray(data.results)?data.results:[];
-          setHistory(rows.slice().reverse().concat(history.filter((old:any)=>!rows.some((row:any)=>row.filename===old.filename))).slice(0,20));
+          setHistory((prev:any[])=>rows.slice().reverse().concat(prev.filter((old:any)=>!rows.some((row:any)=>row.filename===old.filename))).slice(0,20));
           const completedResult=rows.length===1?rows[0]:{batch_results:rows.map(({filename,...item}:any)=>({filename,result:item}))};
           setResult(completedResult);
           setTotalMs(rows.reduce((sum:number,row:any)=>sum+(Number(row.latency_ms)||0),0));
@@ -1329,7 +1331,13 @@ function LivePage({apiHealthy,projectId,projectAlgorithm,visible,onResult,onResu
         }else if(data.status==="failed"){
           setError(data.message||"Batch inference failed.");window.localStorage.removeItem(key);setBatchJobId("");setBusy(false);
         }
-      }catch(e){if(active)setError(e instanceof Error?e.message:"Could not reconnect to batch inference.");}
+      }catch(e){
+        if(active){
+          const message=e instanceof Error?e.message:"Could not reconnect to batch inference.";
+          setError(message);
+          if(message.includes("Batch inference job not found")){window.localStorage.removeItem(key);setBatchJobId("");setBusy(false);}
+        }
+      }
     };
     void poll();
     const timer=window.setInterval(()=>void poll(),1000);
