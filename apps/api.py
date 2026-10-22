@@ -25,8 +25,6 @@ import asyncio
 import base64
 import io
 import os
-import threading
-import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -476,100 +474,6 @@ async def update_config(config: ConfigModel):
     engine.ANOMALY_THRESHOLD = config.threshold
     _resize_size = (config.resize_width, config.resize_height)
     return {"threshold": engine.ANOMALY_THRESHOLD, "resize_size": _resize_size}
-
-
-# Batch jobs live in the inference service, not in the browser request lifecycle.
-# Their state remains available when Studio's page is reloaded.
-_batch_jobs: dict[str, dict] = {}
-_batch_jobs_lock = threading.Lock()
-
-
-def _batch_inference_worker(job_id: str, project_id: Optional[str], files: list[tuple[str, bytes]], include_visualizations: bool) -> None:
-    results = []
-    try:
-        with _batch_jobs_lock:
-            job = _batch_jobs.get(job_id)
-            if not job:
-                return
-            job.update(status="running", message="Inference in progress")
-        if project_id:
-            _apply_project_config(project_id)
-        for index, (filename, contents) in enumerate(files):
-            try:
-                image_np = _load_image_np(contents)
-                result = engine.run(
-                    image_np,
-                    threshold=engine.ANOMALY_THRESHOLD,
-                    include_visualizations=include_visualizations,
-                )
-                drift_report = _update_project_drift(project_id or "", image_np)
-                heatmap_b64 = boundary_b64 = highlighted_b64 = ""
-                if include_visualizations:
-                    heatmap_b64 = _numpy_to_base64(result.heatmap_np, _resize_size)
-                    boundary_b64 = _numpy_to_base64(result.boundary_np, _resize_size)
-                    highlighted_b64 = _numpy_to_base64(result.highlighted_np, _resize_size)
-                results.append({
-                    "filename": filename,
-                    "anomaly_score": result.anomaly_score,
-                    "is_anomaly": result.is_anomaly,
-                    "latency_ms": result.latency_ms,
-                    "heatmap_image_base64": heatmap_b64,
-                    "boundary_image_base64": boundary_b64,
-                    "highlighted_image_base64": highlighted_b64,
-                    "drift_report": drift_report,
-                })
-            except Exception as exc:
-                results.append({"filename": filename, "error": str(exc)})
-            with _batch_jobs_lock:
-                job = _batch_jobs.get(job_id)
-                if job:
-                    job.update(completed=len(results), results=list(results), progress_percent=round(len(results) / max(1, len(files)) * 100, 1), message=f"Processed {len(results)} of {len(files)} images")
-        with _batch_jobs_lock:
-            job = _batch_jobs.get(job_id)
-            if job:
-                job.update(status="completed", completed=len(results), results=results, progress_percent=100.0, message="Batch inference completed")
-    except Exception as exc:
-        with _batch_jobs_lock:
-            job = _batch_jobs.get(job_id)
-            if job:
-                job.update(status="failed", message=str(exc), results=results)
-
-
-@app.post("/predict-batch", status_code=202)
-async def start_batch_prediction(
-    files: list[UploadFile] = File(...),
-    project_id: Optional[str] = None,
-    include_visualizations: bool = True,
-):
-    if not engine.is_loaded():
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    if not files:
-        raise HTTPException(status_code=400, detail="At least one image is required")
-    if len(files) > 10:
-        raise HTTPException(status_code=400, detail="A maximum of 10 images is allowed per batch")
-    payload = []
-    for file in files:
-        if not (file.content_type or "").startswith("image/"):
-            raise HTTPException(status_code=400, detail=f"{file.filename or 'File'} is not an image")
-        payload.append((file.filename or "image", await file.read()))
-    job_id = uuid.uuid4().hex
-    with _batch_jobs_lock:
-        _batch_jobs[job_id] = {
-            "job_id": job_id, "project_id": project_id, "status": "queued",
-            "message": "Batch inference queued", "total": len(payload), "completed": 0,
-            "progress_percent": 0.0, "results": [],
-        }
-    threading.Thread(target=_batch_inference_worker, args=(job_id, project_id, payload, include_visualizations), daemon=True).start()
-    return {"job_id": job_id, "status": "queued", "total": len(payload), "completed": 0, "progress_percent": 0.0, "message": "Batch inference queued"}
-
-
-@app.get("/predict-batch/{job_id}")
-async def batch_prediction_status(job_id: str):
-    with _batch_jobs_lock:
-        job = _batch_jobs.get(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="Batch inference job not found. The inference service may have restarted.")
-        return dict(job)
 
 
 @app.post("/predict", response_model=PredictionResult)
