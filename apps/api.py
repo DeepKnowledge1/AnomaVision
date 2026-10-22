@@ -104,6 +104,7 @@ class ConfigModel(BaseModel):
     threshold: float = engine.ANOMALY_THRESHOLD
     resize_width: int = 224
     resize_height: int = 224
+    enable_drift_monitoring: Optional[bool] = None
 
 
 # Runtime-mutable config (REST clients can adjust without restart)
@@ -112,6 +113,7 @@ _resize_size: tuple = (224, 224)
 _drift_monitor: Optional[ProductionDriftMonitor] = None
 _drift_project_id: Optional[str] = None
 _drift_config: dict = {}
+_active_project_id: Optional[str] = None
 
 
 def _project_root(project_id: str) -> Path:
@@ -400,6 +402,13 @@ def _apply_project_config(project_id: Optional[str]) -> None:
         return
 
     cfg = load_config(str(config_path)) or {}
+    # Studio's global Settings toggle is authoritative for whether drift
+    # monitoring is enabled. Model-specific configs still provide the model's
+    # reference path and other monitoring parameters.
+    global_config_path = Path(os.getenv("ANOMAVISION_CONFIG", "config.yml")).expanduser()
+    global_cfg = load_config(str(global_config_path)) or {}
+    if "enable_drift_monitoring" in global_cfg:
+        cfg["enable_drift_monitoring"] = bool(global_cfg["enable_drift_monitoring"])
     global _drift_monitor, _drift_project_id, _drift_config
     # Drift monitoring is opt-in. A missing/invalid reference must never prevent
     # model reload or inference, and disabled monitoring must not retain a stale
@@ -431,10 +440,12 @@ def _apply_project_config(project_id: Optional[str]) -> None:
 @app.post("/reload-model")
 async def reload_model(project_id: Optional[str] = None):
     """Load the selected Studio project's latest trained model."""
+    global _active_project_id
     try:
         status = engine.load_model(project_id=project_id)
         if not engine.is_loaded():
             raise HTTPException(status_code=404, detail=status)
+        _active_project_id = project_id
         _apply_project_config(project_id)
         return {
             "status": "loaded",
@@ -473,7 +484,17 @@ async def update_config(config: ConfigModel):
     global _resize_size
     engine.ANOMALY_THRESHOLD = config.threshold
     _resize_size = (config.resize_width, config.resize_height)
-    return {"threshold": engine.ANOMALY_THRESHOLD, "resize_size": _resize_size}
+    if config.enable_drift_monitoring is not None and _active_project_id:
+        _apply_project_config(_active_project_id)
+    return {
+        "threshold": engine.ANOMALY_THRESHOLD,
+        "resize_size": _resize_size,
+        "enable_drift_monitoring": (
+            _drift_monitor is not None
+            if _active_project_id
+            else config.enable_drift_monitoring
+        ),
+    }
 
 
 @app.post("/predict", response_model=PredictionResult)
