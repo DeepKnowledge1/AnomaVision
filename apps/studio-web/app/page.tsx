@@ -1515,7 +1515,7 @@ function SettingsPage({apiHealthy}:{apiHealthy:boolean}) {
       try{
         const threshold=payload.algorithm==="padim"?payload.thresh_padim:payload.algorithm==="efficientad"?payload.thresh_efficientad:payload.thresh_patchcore;
         const runtime=await fetch("http://127.0.0.1:8001/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({threshold,resize_width:payload.resize[0],resize_height:payload.resize[1]})});
-        message+=runtime.ok?" The active inference threshold and input size were sent to the running inference service.":" Runtime settings may require reloading the active model.";
+        message+=runtime.ok?" The active threshold and visualization output size were sent to the running inference service. A selected project training config may override its threshold.":" The runtime threshold could not be applied; reload the active model after saving.";
       }catch{message+=" The inference service was unreachable; reload the active model to apply runtime settings.";}
       setNotice(message);
     }catch(e){setError(e instanceof Error?e.message:"Could not save settings")}finally{setSaving(false)}
