@@ -12,7 +12,14 @@ from torch.utils.data import DataLoader
 import anomavision
 from anomavision.config import load_config
 from anomavision.general import GitStatusChecker, increment_path
-from anomavision.utils import get_logger, merge_config, save_args_to_yaml, setup_logging
+from anomavision.utils import (
+    _ProgressDataset,
+    calibrate_training_threshold,
+    get_logger,
+    merge_config,
+    save_args_to_yaml,
+    setup_logging,
+)
 
 
 def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
@@ -164,6 +171,21 @@ def create_parser(add_help: bool = True) -> argparse.ArgumentParser:
         default=None,
         help="Percentile of normal EfficientAD scores used for the adaptive threshold.",
     )
+
+    # Threshold calibration parameters.
+    parser.add_argument(
+        "--calibrate_threshold",
+        action="store_true",
+        default=None,
+        help="Calculate and save the selected algorithm's threshold after training.",
+    )
+    parser.add_argument(
+        "--threshold_percentile",
+        type=float,
+        default=None,
+        help="Percentile of normal training-image scores for PaDiM/PatchCore (default: 99.5).",
+    )
+
     return parser
 
 
@@ -222,6 +244,10 @@ def run_training(args):
     if len(ds) == 0:
         raise ValueError(f"No training images found in {root}")
 
+    progress_callback = getattr(args, "progress_callback", None)
+    if progress_callback:
+        progress_callback(5.0, f"Loaded {len(ds)} training images")
+        ds = _ProgressDataset(ds, progress_callback)
     dl = DataLoader(ds, batch_size=int(config.batch_size), shuffle=False)
     logger.info("dataset: %d images | batch_size=%d", len(ds), config.batch_size)
 
@@ -272,8 +298,25 @@ def run_training(args):
         )
 
     t_fit = time.perf_counter()
+    if progress_callback:
+        progress_callback(5.0, "Fitting detector")
     model.fit(dl)
     logger.info("fit: completed in %.2fs", time.perf_counter() - t_fit)
+
+    # Optional threshold calibration; only the selected algorithm's key is changed.
+    if bool(config.get("calibrate_threshold", False)):
+        calibration_dataset = ds.dataset if isinstance(ds, _ProgressDataset) else ds
+        calibrate_training_threshold(
+            model=model,
+            dataset=calibration_dataset,
+            batch_size=config.batch_size,
+            device=device,
+            config=config,
+            logger=logger,
+        )
+
+    if progress_callback:
+        progress_callback(92.0, "Saving trained model")
 
     model_path = Path(run_dir) / config.output_model
     torch.save(model, str(model_path))
@@ -288,6 +331,8 @@ def run_training(args):
     save_args_to_yaml(config, str(Path(run_dir) / "config.yml"))
     logger.info("saved: model=%s, config=%s", model_path, Path(run_dir) / "config.yml")
     logger.info("=== Training done in %.2fs ===", time.perf_counter() - t0)
+    if progress_callback:
+        progress_callback(100.0, "Training completed")
     return model, config, run_dir, {"train": dl}
 
 

@@ -13,6 +13,7 @@ import torch
 import yaml
 from PIL import Image
 from sklearn.metrics import auc, precision_recall_curve, roc_auc_score, roc_curve
+from torch.utils.data import DataLoader
 from torchvision import transforms as T
 
 # Default standard transforms - kept for backward compatibility
@@ -915,3 +916,97 @@ def find_optimal_threshold(labels, scores):
     idx = np.argmax(f1)
 
     return thresholds[idx], f1[idx]
+
+
+class _ProgressDataset(torch.utils.data.Dataset):
+    """Track real image samples consumed by the training DataLoader."""
+
+    def __init__(self, dataset, callback):
+        self.dataset = dataset
+        self.callback = callback
+        self.total = len(dataset)
+        self.seen = 0
+
+    def __len__(self):
+        return self.total
+
+    def __getitem__(self, index):
+        item = self.dataset[index]
+        self.seen += 1
+        if self.callback:
+            self.callback(
+                5.0 + 85.0 * self.seen / max(1, self.total),
+                f"Processing training images: {self.seen}/{self.total}",
+            )
+        return item
+
+
+def calibrate_training_threshold(model, dataset, batch_size, device, config, logger):
+    """Calibrate and update only the selected algorithm's threshold."""
+
+    algorithm = str(config.algorithm).lower()
+    threshold_key = f"thresh_{algorithm}"
+
+    if algorithm not in {"padim", "patchcore", "efficientad"}:
+        raise ValueError(
+            f"Unsupported algorithm for threshold calibration: {algorithm}"
+        )
+
+    if algorithm == "efficientad":
+        # EfficientAD already calibrates its internal threshold during fit().
+        threshold = 1.0
+        logger.info(
+            "EfficientAD internal threshold calibrated during fit; " "saving %s=%.6f",
+            threshold_key,
+            threshold,
+        )
+    else:
+        percentile = float(config.get("threshold_percentile") or 99.5)
+        if not 0.0 < percentile <= 100.0:
+            raise ValueError(
+                f"threshold_percentile must be in (0, 100], got {percentile}"
+            )
+
+        loader = DataLoader(
+            dataset,
+            batch_size=int(batch_size),
+            shuffle=False,
+        )
+        normal_scores = []
+
+        with torch.inference_mode():
+            for batch in loader:
+                if isinstance(batch, (tuple, list)):
+                    batch = batch[0]
+
+                batch = batch.to(device)
+                image_scores, _ = model.predict(batch)
+                normal_scores.append(image_scores.detach().float().reshape(-1).cpu())
+
+        if not normal_scores:
+            raise ValueError(
+                "Cannot calibrate threshold: no training scores were produced."
+            )
+
+        scores = torch.cat(normal_scores)
+
+        if not torch.isfinite(scores).all():
+            raise ValueError(
+                "Cannot calibrate threshold: scores contain NaN or infinity."
+            )
+
+        threshold = float(torch.quantile(scores, percentile / 100.0).item())
+
+        logger.info(
+            "Calibrated %s from normal training images: "
+            "percentile=%.3f, threshold=%.8f",
+            threshold_key,
+            percentile,
+            threshold,
+        )
+
+    # Change only the selected algorithm's threshold.
+    config[threshold_key] = threshold
+    logger.info("Updated %s=%.8f", threshold_key, threshold)
+
+    return threshold
