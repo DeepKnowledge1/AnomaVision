@@ -810,6 +810,7 @@ class BenchmarkRunner:
     def _anomalib_raw(model, images):
         """Torch model on already pre-processed images, skipping Anomalib's
         post-processor (min-max normalisation + clamping), like AnomaVision."""
+        model.model = model.model.to(images.device)
         output = model.model(images)
 
         if not getattr(model, "_debug_features_printed", False):
