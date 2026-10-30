@@ -555,32 +555,12 @@ class BenchmarkRunner:
         )
         return train, test
 
-    # def _build_anomalib_datamodule(self, algorithm: str):
-    #     # from anomalib.data import MVTecAD
-
-    #     from anomalib.data import Visa as MVTecAD
-    #     kwargs = {
-    #         "root": str(self.dataset_path),
-    #         "category": self.class_name,
-    #         "train_batch_size": 1 if algorithm == "efficientad" else BATCH_SIZE,
-    #         "eval_batch_size": BATCH_SIZE,
-    #         "num_workers": 0,
-    #         "seed": self.seed,
-    #     }
-    #     params = inspect.signature(MVTecAD).parameters
-    #     datamodule = MVTecAD(**{k: v for k, v in kwargs.items() if k in params})
-    #     datamodule.setup()
-    #     return datamodule
-
     def _build_anomalib_datamodule(self, algorithm: str):
         from anomalib.data import MVTecAD, Visa
 
         dataset_name = self.dataset_path.name.lower()
 
-        if "visa" in dataset_name:
-            datamodule_cls = Visa
-        else:
-            datamodule_cls = MVTecAD
+        datamodule_cls = Visa if "visa" in dataset_name else MVTecAD
 
         kwargs = {
             "root": str(self.dataset_path),
@@ -593,7 +573,6 @@ class BenchmarkRunner:
 
         params = inspect.signature(datamodule_cls).parameters
 
-        # Apply the benchmark image size only if supported by this constructor.
         if "image_size" in params:
             kwargs["image_size"] = IMAGE_SIZE
 
@@ -659,6 +638,44 @@ class BenchmarkRunner:
             cv,
             anomaly_flag,
         )
+
+    def _benchmark_end_to_end_latency(self, dataset, call_batch) -> float:
+        """Measure per-image latency including dataset retrieval and preprocessing.
+
+        Samples are fetched directly with ``dataset[index]`` rather than through a
+        DataLoader. This avoids PyTorch's default collation, which cannot handle
+        Anomalib's ImageItem dataclass. Timing includes dataset transforms, device
+        transfer, model preprocessing/inference, and prediction generation; metric
+        computation and report writing are excluded.
+        """
+        dataset_size = len(dataset)
+        if dataset_size == 0:
+            raise RuntimeError("Cannot time end-to-end latency on an empty dataset")
+
+        sample_index = 0
+
+        def next_sample():
+            nonlocal sample_index
+            sample = dataset[sample_index]
+            sample_index = (sample_index + 1) % dataset_size
+            return sample
+
+        self._reset_memory()
+        with torch.inference_mode():
+            for _ in range(WARMUP_ITERS):
+                call_batch(next_sample())
+                sync(self.device)
+
+            times = []
+            for _ in range(TIMING_ITERS):
+                sync(self.device)
+                start = time.perf_counter()
+                sample = next_sample()
+                call_batch(sample)
+                sync(self.device)
+                times.append(time.perf_counter() - start)
+
+        return float(np.mean(times) * 1000.0)
 
     def _build_anomavision_model(self, algorithm: str):
         if algorithm == "padim":
@@ -810,6 +827,7 @@ class BenchmarkRunner:
     def _anomalib_raw(model, images):
         """Torch model on already pre-processed images, skipping Anomalib's
         post-processor (min-max normalisation + clamping), like AnomaVision."""
+        model.model = model.model.to(images.device)
         output = model.model(images)
 
         if not getattr(model, "_debug_features_printed", False):
@@ -901,9 +919,18 @@ class BenchmarkRunner:
             metrics.timing_cv,
             metrics.timing_anomaly_flag,
         ) = self._last_timing_checks
-        metrics.end_to_end_latency_ms = float(
-            "nan"
-        )  # preprocessing is performed by the dataset, outside model.predict timing
+
+        def anomavision_end_to_end(sample):
+            images = sample[0]
+            if not isinstance(images, torch.Tensor):
+                images = torch.as_tensor(images)
+            if images.ndim == 3:
+                images = images.unsqueeze(0)
+            model.predict(images.to(self.device))
+
+        metrics.end_to_end_latency_ms = self._benchmark_end_to_end_latency(
+            test_dataset, anomavision_end_to_end
+        )
         metrics.__dict__.update(self._evaluate_anomavision(model, test_loader))
         print(
             f"  image={metrics.image_auroc:.4f} pixel={metrics.pixel_auroc:.4f} latency={metrics.latency_ms:.2f}ms"
@@ -980,9 +1007,20 @@ class BenchmarkRunner:
             metrics.timing_cv,
             metrics.timing_anomaly_flag,
         ) = self._last_timing_checks
-        metrics.end_to_end_latency_ms = float(
-            "nan"
-        )  # full data pipeline is intentionally not included in this inference-only benchmark
+
+        def anomalib_end_to_end(batch):
+            images = _get_anomalib_batch_value(batch, "image")
+            if not isinstance(images, torch.Tensor):
+                images = torch.as_tensor(images)
+            if images.ndim == 3:
+                images = images.unsqueeze(0)
+            images = images.to(self.device)
+            processed = self._anomalib_preprocess(model, images)
+            self._anomalib_raw(model, processed)
+
+        metrics.end_to_end_latency_ms = self._benchmark_end_to_end_latency(
+            test_loader.dataset, anomalib_end_to_end
+        )
         metrics.__dict__.update(self._evaluate_anomalib(model, test_loader))
         print(
             f"  image={metrics.image_auroc:.4f} pixel={metrics.pixel_auroc:.4f} latency={metrics.latency_ms:.2f}ms"
@@ -1093,13 +1131,14 @@ class BenchmarkRunner:
                         "state_dict_size_mb",
                         "training_memory_mb",
                         "inference_memory_mb",
+                        "end_to_end_latency_ms",
                         "timing_anomaly_flag",
                     ]
                 )
                 + "</tr>"
             )
         config = rows[0]
-        html = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnomaVision Benchmark - {self.class_name}</title><style>body{{font-family:Inter,Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}}main{{max-width:1400px;margin:40px auto;padding:24px}}h1{{margin-bottom:6px}}.sub{{color:#94a3b8;margin-bottom:28px}}.card{{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin-bottom:24px;overflow:auto}}table{{width:100%;border-collapse:collapse;white-space:nowrap}}th,td{{padding:12px 14px;border-bottom:1px solid #334155;text-align:left}}th{{color:#93c5fd;background:#1e293b;position:sticky;top:0}}tr:hover{{background:#1e293b}}.pill{{display:inline-block;padding:6px 10px;border-radius:999px;background:#1e293b;margin-right:6px}}.config{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}}.config span{{display:block;color:#94a3b8;font-size:12px;margin-bottom:5px}}.config strong{{font-size:15px}}</style></head><body><main><h1>🔬 AnomaVision Benchmark</h1><div class="sub">{self.class_name} · {config['image_size']} · {self.device}</div><div class="card"><span class="pill">PaDiM</span><span class="pill">PatchCore</span><span class="pill">EfficientAD</span><span class="pill">AnomaVision vs Anomalib</span></div><div class="card"><h2>Benchmark Configuration</h2><div class="config"><div><span>Backbone</span><strong>{config['backbone']}</strong></div><div><span>Image size</span><strong>{config['image_size']}</strong></div><div><span>Layer indices</span><strong>{config['layer_indices']}</strong></div><div><span>Layers</span><strong>{config['layers']}</strong></div><div><span>N features</span><strong>{config['n_features']}</strong></div></div></div><div class="card"><table><thead><tr><th>Algorithm</th><th>Implementation</th><th>Image AP</th><th>Image F1</th><th>Image AUROC</th><th>Image Specificity</th><th>Pixel AP</th><th>Pixel F1</th><th>Pixel AUROC</th><th>AUPRO</th><th>Dice</th><th>IoU</th><th>Fit Time (s)</th><th>Latency (ms)</th><th>P95 (ms)</th><th>FPS</th><th>Model (MB)</th><th>Train RAM/VRAM (MB)</th><th>Inference RAM/VRAM (MB)</th><th>Timing anomaly</th></tr></thead><tbody>{''.join(html_rows)}</tbody></table></div></main></body></html>"""
+        html = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AnomaVision Benchmark - {self.class_name}</title><style>body{{font-family:Inter,Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}}main{{max-width:1400px;margin:40px auto;padding:24px}}h1{{margin-bottom:6px}}.sub{{color:#94a3b8;margin-bottom:28px}}.card{{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin-bottom:24px;overflow:auto}}table{{width:100%;border-collapse:collapse;white-space:nowrap}}th,td{{padding:12px 14px;border-bottom:1px solid #334155;text-align:left}}th{{color:#93c5fd;background:#1e293b;position:sticky;top:0}}tr:hover{{background:#1e293b}}.pill{{display:inline-block;padding:6px 10px;border-radius:999px;background:#1e293b;margin-right:6px}}.config{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}}.config span{{display:block;color:#94a3b8;font-size:12px;margin-bottom:5px}}.config strong{{font-size:15px}}</style></head><body><main><h1>🔬 AnomaVision Benchmark</h1><div class="sub">{self.class_name} · {config['image_size']} · {self.device}</div><div class="card"><span class="pill">PaDiM</span><span class="pill">PatchCore</span><span class="pill">EfficientAD</span><span class="pill">AnomaVision vs Anomalib</span></div><div class="card"><h2>Benchmark Configuration</h2><div class="config"><div><span>Backbone</span><strong>{config['backbone']}</strong></div><div><span>Image size</span><strong>{config['image_size']}</strong></div><div><span>Layer indices</span><strong>{config['layer_indices']}</strong></div><div><span>Layers</span><strong>{config['layers']}</strong></div><div><span>N features</span><strong>{config['n_features']}</strong></div></div></div><div class="card"><table><thead><tr><th>Algorithm</th><th>Implementation</th><th>Image AP</th><th>Image F1</th><th>Image AUROC</th><th>Image Specificity</th><th>Pixel AP</th><th>Pixel F1</th><th>Pixel AUROC</th><th>AUPRO</th><th>Dice</th><th>IoU</th><th>Fit Time (s)</th><th>Latency (ms)</th><th>P95 (ms)</th><th>FPS</th><th>Model (MB)</th><th>Train RAM/VRAM (MB)</th><th>Inference RAM/VRAM (MB)</th><th>End-to-end (ms/image)</th><th>Timing anomaly</th></tr></thead><tbody>{''.join(html_rows)}</tbody></table></div></main></body></html>"""
         with open(f"{stem}.html", "w", encoding="utf-8") as handle:
             handle.write(html)
         print("\nReports:")
