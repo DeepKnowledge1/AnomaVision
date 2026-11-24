@@ -327,7 +327,7 @@ def main():
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(output, indent=2, allow_nan=False))
-    print(json.dumps(output, indent=2, allow_nan=False))
+    # print(json.dumps(output, indent=2, allow_nan=False))
 
 
 if __name__ == "__main__":
