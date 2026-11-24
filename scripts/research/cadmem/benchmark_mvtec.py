@@ -68,13 +68,13 @@ def metrics(labels, scores, masks, maps, threshold):
         "image_auroc": float(roc_auc_score(labels, scores))
         if len(np.unique(labels)) == 2 else None,
         "image_ap": float(average_precision_score(labels, scores))
-        if defective.any() else None,
+        if defective.any() and threshold is not None else None,
         "pixel_auroc": float(roc_auc_score(mask, pixels))
         if len(np.unique(mask)) == 2 else None,
         "pixel_ap": float(average_precision_score(mask, pixels))
         if mask.sum() else None,
         "fpr_frozen": float((scores[normal] > threshold).mean())
-        if normal.any() else None,
+        if normal.any() and threshold is not None else None,
         "defect_recall_frozen": float((scores[defective] > threshold).mean())
         if defective.any() else None,
     }
@@ -175,7 +175,7 @@ def main():
         # a supported low-FPR operating threshold.
         thresholds[name] = (
             float(np.sort(values)[order_stat - 1])
-            if order_stat <= n else float("inf")
+            if order_stat <= n else None
         )
 
     output = {
