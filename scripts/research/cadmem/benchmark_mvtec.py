@@ -68,7 +68,7 @@ def metrics(labels, scores, masks, maps, threshold):
         "image_auroc": float(roc_auc_score(labels, scores))
         if len(np.unique(labels)) == 2 else None,
         "image_ap": float(average_precision_score(labels, scores))
-        if defective.any() and threshold is not None else None,
+        if defective.any() else None,
         "pixel_auroc": float(roc_auc_score(mask, pixels))
         if len(np.unique(mask)) == 2 else None,
         "pixel_ap": float(average_precision_score(mask, pixels))
