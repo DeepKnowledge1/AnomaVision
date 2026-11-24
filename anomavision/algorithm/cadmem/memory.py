@@ -4,6 +4,7 @@ normal: [N,D] aligned reference patch features.
 counterfactual: [T,N,D] feature embeddings after benign transformations.
 Patch i must correspond to the same physical image location in both arrays.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -32,7 +33,9 @@ class BoundedNuisanceMemory(nn.Module):
     ) -> None:
         super().__init__()
         if min(rank, max_prototypes, neighbors, chunk_size) < 1:
-            raise ValueError("rank, prototypes, neighbors and chunk size must be positive")
+            raise ValueError(
+                "rank, prototypes, neighbors and chunk size must be positive"
+            )
         if candidate_neighbors is not None and candidate_neighbors < 1:
             raise ValueError("candidate_neighbors must be positive or None")
         if not 0 < budget_quantile <= 1 or scale_floor <= 0:
@@ -77,10 +80,16 @@ class BoundedNuisanceMemory(nn.Module):
         normal = normal.float()
         counterfactual = counterfactual.to(normal)
         if prototypes is None:
-            indices = torch.linspace(
-                0, n - 1, steps=min(n, self.max_prototypes),
-                device=normal.device,
-            ).round().long()
+            indices = (
+                torch.linspace(
+                    0,
+                    n - 1,
+                    steps=min(n, self.max_prototypes),
+                    device=normal.device,
+                )
+                .round()
+                .long()
+            )
             centers = normal[indices]
         else:
             if (
@@ -94,9 +103,11 @@ class BoundedNuisanceMemory(nn.Module):
         deltas = counterfactual - normal.unsqueeze(0)
         bases, budgets, scales = [], [], []
         for center in centers:
-            closest = torch.linalg.vector_norm(normal - center, dim=1).topk(
-                min(n, self.neighbors), largest=False
-            ).indices
+            closest = (
+                torch.linalg.vector_norm(normal - center, dim=1)
+                .topk(min(n, self.neighbors), largest=False)
+                .indices
+            )
             variations = deltas[:, closest].reshape(-1, d)
             # Uncentered SVD: zero is a meaningful no-change reference.
             _, _, vh = torch.linalg.svd(variations, full_matrices=False)
@@ -104,16 +115,12 @@ class BoundedNuisanceMemory(nn.Module):
             basis = variations.new_zeros(d, self.rank)
             basis[:, :r] = vh[:r].T
             coefficients = variations @ basis[:, :r]
-            bounds = torch.quantile(
-                coefficients.abs(), self.budget_quantile, dim=0
-            )
+            bounds = torch.quantile(coefficients.abs(), self.budget_quantile, dim=0)
             budget = variations.new_zeros(self.rank)
             budget[:r] = bounds
             explained = coefficients.clamp(-bounds, bounds) @ basis[:, :r].T
             residuals = torch.linalg.vector_norm(variations - explained, dim=1)
-            scale = residuals.quantile(self.budget_quantile).clamp_min(
-                self.scale_floor
-            )
+            scale = residuals.quantile(self.budget_quantile).clamp_min(self.scale_floor)
             bases.append(basis)
             budgets.append(budget)
             scales.append(scale)
@@ -142,35 +149,34 @@ class BoundedNuisanceMemory(nn.Module):
             if self.candidate_neighbors is None or self.candidate_neighbors >= count:
                 minimum = q.new_full((len(q),), float("inf"))
                 for start in range(0, count, self.chunk_size):
-                    centers = self.prototypes[start:start + self.chunk_size]
-                    basis = self.bases[start:start + self.chunk_size]
-                    bounds = self.budgets[start:start + self.chunk_size]
+                    centers = self.prototypes[start : start + self.chunk_size]
+                    basis = self.bases[start : start + self.chunk_size]
+                    bounds = self.budgets[start : start + self.chunk_size]
                     delta = q[:, None, :] - centers[None]
                     coeff = torch.einsum("qkd,kdr->qkr", delta, basis)
                     coeff = torch.maximum(
                         torch.minimum(coeff, bounds[None]), -bounds[None]
                     )
-                    residual = delta - torch.einsum(
-                        "qkr,kdr->qkd", coeff, basis
-                    )
+                    residual = delta - torch.einsum("qkr,kdr->qkd", coeff, basis)
                     distances = torch.linalg.vector_norm(residual, dim=-1)
                     if self.normalize_residual:
-                        distances = distances / self.scales[
-                            start:start + self.chunk_size
-                        ][None]
+                        distances = (
+                            distances
+                            / self.scales[start : start + self.chunk_size][None]
+                        )
                     minimum = torch.minimum(minimum, distances.min(1).values)
                 chunks.append(minimum)
             else:
-                indices = torch.cdist(q, self.prototypes).topk(
-                    self.candidate_neighbors, largest=False
-                ).indices
+                indices = (
+                    torch.cdist(q, self.prototypes)
+                    .topk(self.candidate_neighbors, largest=False)
+                    .indices
+                )
                 delta = q[:, None, :] - self.prototypes[indices]
                 basis, bounds = self.bases[indices], self.budgets[indices]
                 coeff = torch.einsum("qkd,qkdr->qkr", delta, basis)
                 coeff = torch.maximum(torch.minimum(coeff, bounds), -bounds)
-                residual = delta - torch.einsum(
-                    "qkr,qkdr->qkd", coeff, basis
-                )
+                residual = delta - torch.einsum("qkr,qkdr->qkd", coeff, basis)
                 distances = torch.linalg.vector_norm(residual, dim=-1)
                 if self.normalize_residual:
                     distances = distances / self.scales[indices]
@@ -178,9 +184,7 @@ class BoundedNuisanceMemory(nn.Module):
         return torch.cat(chunks) if chunks else queries.new_empty(0)
 
 
-def conformal_p_values(
-    calibration_scores: Tensor, test_scores: Tensor
-) -> Tensor:
+def conformal_p_values(calibration_scores: Tensor, test_scores: Tensor) -> Tensor:
     """Normal-only upper-tail split conformal p-values.
 
     Finite-sample false-alarm validity requires exchangeable observations.
@@ -195,7 +199,5 @@ def conformal_p_values(
     ):
         raise ValueError("Scores must be finite")
     return (
-        1 + (
-            calibration_scores[None, :] >= test_scores[:, None]
-        ).sum(dim=1)
+        1 + (calibration_scores[None, :] >= test_scores[:, None]).sum(dim=1)
     ).float() / (len(calibration_scores) + 1)

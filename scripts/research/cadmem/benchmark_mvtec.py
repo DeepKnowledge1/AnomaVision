@@ -8,6 +8,7 @@ Run:
 This is an exploratory, single-category benchmark. It is NOT evidence of
 scientific novelty or robustness under real acquisition changes.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,10 +52,12 @@ def score_patches(model, bank, images, kind):
         scores = bank.score(patches)
     else:
         # Point-memory score with the exact SAME stored prototypes.
-        scores = torch.cat([
-            torch.cdist(part, bank.to(part)).min(dim=1).values
-            for part in patches.split(256)
-        ])
+        scores = torch.cat(
+            [
+                torch.cdist(part, bank.to(part)).min(dim=1).values
+                for part in patches.split(256)
+            ]
+        )
     return scores.reshape(images.shape[0], width, height)
 
 
@@ -65,18 +68,28 @@ def metrics(labels, scores, masks, maps, threshold):
     pixels = np.concatenate(maps)
     normal, defective = labels == 0, labels == 1
     return {
-        "image_auroc": float(roc_auc_score(labels, scores))
-        if len(np.unique(labels)) == 2 else None,
-        "image_ap": float(average_precision_score(labels, scores))
-        if defective.any() else None,
-        "pixel_auroc": float(roc_auc_score(mask, pixels))
-        if len(np.unique(mask)) == 2 else None,
-        "pixel_ap": float(average_precision_score(mask, pixels))
-        if mask.sum() else None,
-        "fpr_frozen": float((scores[normal] > threshold).mean())
-        if normal.any() and threshold is not None else None,
-        "defect_recall_frozen": float((scores[defective] > threshold).mean())
-        if defective.any() else None,
+        "image_auroc": (
+            float(roc_auc_score(labels, scores))
+            if len(np.unique(labels)) == 2
+            else None
+        ),
+        "image_ap": (
+            float(average_precision_score(labels, scores)) if defective.any() else None
+        ),
+        "pixel_auroc": (
+            float(roc_auc_score(mask, pixels)) if len(np.unique(mask)) == 2 else None
+        ),
+        "pixel_ap": (
+            float(average_precision_score(mask, pixels)) if mask.sum() else None
+        ),
+        "fpr_frozen": (
+            float((scores[normal] > threshold).mean())
+            if normal.any() and threshold is not None
+            else None
+        ),
+        "defect_recall_frozen": (
+            float((scores[defective] > threshold).mean()) if defective.any() else None
+        ),
     }
 
 
@@ -112,30 +125,39 @@ def main():
         parser.error(f"Missing MVTec normal training images: {folder}")
 
     train = AnodetDataset(
-        str(folder), resize=(args.size, args.size),
+        str(folder),
+        resize=(args.size, args.size),
         crop_size=(args.size, args.size),
     )
     if len(train) < 5:
         parser.error("At least five independent normal images are needed")
     order = torch.randperm(len(train), generator=rng).tolist()
-    n_cal = max(
-        1, min(len(train) - 1, round(len(train) * args.calibration_fraction))
-    )
+    n_cal = max(1, min(len(train) - 1, round(len(train) * args.calibration_fraction)))
     fit_ids, cal_ids = order[n_cal:], order[:n_cal]
+
     def loader(indices):
         return DataLoader(
-            Subset(train, indices), batch_size=args.batch_size,
-            shuffle=False, collate_fn=collate_anodet_batch,
+            Subset(train, indices),
+            batch_size=args.batch_size,
+            shuffle=False,
+            collate_fn=collate_anodet_batch,
         )
+
     test = MVTecDataset(
-        str(root), args.category, is_train=False,
-        resize=(args.size, args.size), crop_size=(args.size, args.size),
+        str(root),
+        args.category,
+        is_train=False,
+        resize=(args.size, args.size),
+        crop_size=(args.size, args.size),
     )
     test_loader = DataLoader(test, batch_size=1, shuffle=False)
     extractor = PatchCore(
-        backbone="resnet18", device=torch.device(args.device),
-        layer_indices=[1, 2], patch_grid=14,
-        max_memory_patches=args.prototypes, coreset_seed=args.seed,
+        backbone="resnet18",
+        device=torch.device(args.device),
+        layer_indices=[1, 2],
+        patch_grid=14,
+        max_memory_patches=args.prototypes,
+        coreset_seed=args.seed,
     )
     extractor.eval()
 
@@ -149,15 +171,17 @@ def main():
         paired.append(torch.stack(transformed))
     normal = torch.cat(originals)
     counterfactual = torch.cat(paired, dim=1)
-    centers = extractor._select_coreset(
-        normal, min(args.prototypes, len(normal))
-    ).to(args.device)
+    centers = extractor._select_coreset(normal, min(args.prototypes, len(normal))).to(
+        args.device
+    )
     cadmem = BoundedNuisanceMemory(
-        rank=args.rank, max_prototypes=args.prototypes,
+        rank=args.rank,
+        max_prototypes=args.prototypes,
         neighbors=args.neighbors,
     ).to(args.device)
     cadmem.fit_features(
-        normal.to(args.device), counterfactual.to(args.device),
+        normal.to(args.device),
+        counterfactual.to(args.device),
         prototypes=centers,
     )
     methods = {"point_memory": centers, "cadmem": cadmem}
@@ -174,8 +198,7 @@ def main():
         # Insufficient calibration samples -> abstain rather than fabricate
         # a supported low-FPR operating threshold.
         thresholds[name] = (
-            float(np.sort(values)[order_stat - 1])
-            if order_stat <= n else None
+            float(np.sort(values)[order_stat - 1]) if order_stat <= n else None
         )
 
     output = {
@@ -189,24 +212,27 @@ def main():
     }
     for name, bank in methods.items():
         output["results"][name] = {}
-        for condition, shift in (
-            ("clean", 0.0), ("synthetic_brightness", args.shift)
-        ):
+        for condition, shift in (("clean", 0.0), ("synthetic_brightness", args.shift)):
             labels, image_scores, gt_masks, pred_maps = [], [], [], []
             for images, _, label, mask in test_loader:
                 images = brightness(images, shift)
                 patch_map = score_patches(extractor, bank, images, name)
                 image_score = patch_map.flatten(1).amax(1)
                 interpolated = F.interpolate(
-                    patch_map[:, None], size=mask.shape[-2:],
-                    mode="bilinear", align_corners=False,
+                    patch_map[:, None],
+                    size=mask.shape[-2:],
+                    mode="bilinear",
+                    align_corners=False,
                 )[:, 0]
                 labels.append(int(label.item()))
                 image_scores.append(float(image_score.item()))
                 gt_masks.append((mask > 0.5).numpy().reshape(-1))
                 pred_maps.append(interpolated.cpu().numpy().reshape(-1))
             output["results"][name][condition] = metrics(
-                labels, image_scores, gt_masks, pred_maps,
+                labels,
+                image_scores,
+                gt_masks,
+                pred_maps,
                 thresholds[name],
             )
     path = Path(args.output)

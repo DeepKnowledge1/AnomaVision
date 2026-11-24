@@ -3,13 +3,14 @@
 Intentionally NOT registered with the production CLI, model loader, or export
 backends until serialization, parity, and backward-compatibility are validated.
 """
+
 from __future__ import annotations
 
 from typing import Callable, Optional
 
 import torch
-from torch import Tensor, nn
 import torch.nn.functional as F
+from torch import Tensor, nn
 
 from ..patchcore.patchcore import PatchCore
 from .memory import BoundedNuisanceMemory
@@ -76,12 +77,8 @@ class CADMem(nn.Module):
                 if shifted.shape != images.shape:
                     raise ValueError("Transformation must preserve image shape")
                 embeddings, _, _ = self.feature_model._extract(shifted)
-                variants.append(
-                    embeddings.reshape(-1, embeddings.shape[-1]).cpu()
-                )
-            originals.append(
-                features.reshape(-1, features.shape[-1]).cpu()
-            )
+                variants.append(embeddings.reshape(-1, embeddings.shape[-1]).cpu())
+            originals.append(features.reshape(-1, features.shape[-1]).cpu())
             transformed.append(torch.stack(variants, dim=0))
         if not originals:
             raise ValueError("Normal dataloader is empty")
@@ -91,16 +88,12 @@ class CADMem(nn.Module):
         self.memory.to(self.device)
 
     @torch.no_grad()
-    def forward(
-        self, batch: Tensor, return_map: bool = True, export: bool = False
-    ):
+    def forward(self, batch: Tensor, return_map: bool = True, export: bool = False):
         if not self.memory.is_fitted:
             raise RuntimeError("CADMem is not fitted")
         embeddings, width, height = self.feature_model._extract(batch)
         flat = embeddings.reshape(-1, embeddings.shape[-1])
-        patch_scores = self.memory.score(flat).reshape(
-            batch.shape[0], width, height
-        )
+        patch_scores = self.memory.score(flat).reshape(batch.shape[0], width, height)
         image_scores = patch_scores.flatten(1).amax(dim=1)
         if not return_map:
             return image_scores, None
