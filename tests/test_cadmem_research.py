@@ -113,9 +113,9 @@ def test_paired_directions_are_distinct_from_local_normal_pca():
     normal = torch.tensor([[0.0, -0.1], [0.0, 0.0], [0.0, 0.1]])
     cf = normal.unsqueeze(0) + torch.tensor([0.5, 0.0])
     center = normal[1:2]
-    paired = BoundedNuisanceMemory(
-        rank=1, max_prototypes=1, neighbors=3
-    ).fit_features(normal, cf, prototypes=center)
+    paired = BoundedNuisanceMemory(rank=1, max_prototypes=1, neighbors=3).fit_features(
+        normal, cf, prototypes=center
+    )
     local = fit_local_normal_pca(normal, center, rank=1, neighbors=3)
     query_x = torch.tensor([[0.3, 0.0]])
     assert paired.score(query_x).item() < 1e-5
@@ -124,9 +124,9 @@ def test_paired_directions_are_distinct_from_local_normal_pca():
 
 def test_unbounded_projection_can_hide_large_aligned_deviations():
     normal, cf = example()
-    bounded = BoundedNuisanceMemory(
-        rank=1, max_prototypes=1, neighbors=3
-    ).fit_features(normal, cf, prototypes=normal[:1])
+    bounded = BoundedNuisanceMemory(rank=1, max_prototypes=1, neighbors=3).fit_features(
+        normal, cf, prototypes=normal[:1]
+    )
     unbounded = without_budgets(bounded)
     distant_query = torch.tensor([[5.0, 0.0]])
     assert unbounded.score(distant_query).item() < 1e-5

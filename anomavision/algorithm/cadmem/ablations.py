@@ -3,6 +3,7 @@
 These baselines are intentionally separate from the proposed method. All
 methods must share the same pretrained features and prototype locations.
 """
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -40,18 +41,19 @@ def fit_local_normal_pca(
     centers = prototypes.to(normal).float()
     bases, budgets, scales = [], [], []
     for center in centers:
-        indices = torch.cdist(
-            center[None, :], normal
-        ).flatten().topk(min(len(normal), neighbors), largest=False).indices
+        indices = (
+            torch.cdist(center[None, :], normal)
+            .flatten()
+            .topk(min(len(normal), neighbors), largest=False)
+            .indices
+        )
         deviations = normal[indices] - center
         _, _, vh = torch.linalg.svd(deviations, full_matrices=False)
         effective_rank = min(rank, vh.shape[0])
         basis = deviations.new_zeros(normal.shape[1], rank)
         basis[:, :effective_rank] = vh[:effective_rank].T
         coeff = deviations @ basis[:, :effective_rank]
-        bound = torch.quantile(
-            coeff.abs(), budget_quantile, dim=0
-        )
+        bound = torch.quantile(coeff.abs(), budget_quantile, dim=0)
         budget = deviations.new_zeros(rank)
         budget[:effective_rank] = bound
         compensated = coeff.clamp(-bound, bound) @ basis[:, :effective_rank].T

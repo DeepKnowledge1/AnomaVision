@@ -189,9 +189,7 @@ def main():
         prototypes=centers,
     )
     # Equal prototype-count controls for ordinary augmentation and local PCA.
-    augmented = torch.cat(
-        [normal, counterfactual.reshape(-1, normal.shape[-1])], dim=0
-    )
+    augmented = torch.cat([normal, counterfactual.reshape(-1, normal.shape[-1])], dim=0)
     augmented_centers = extractor._select_coreset(
         augmented, min(args.prototypes, len(augmented))
     ).to(args.device)
