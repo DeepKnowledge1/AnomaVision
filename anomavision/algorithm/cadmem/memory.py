@@ -39,6 +39,7 @@ class CADMem:
         self.agreement_limit = float(np.quantile(
             self.calibration_scores, self.config.agreement_quantile))
         self.adaptive = np.empty((0, self.anchor.shape[1]), dtype=np.float32)
+        self.last_admitted_indices = np.empty(0, dtype=np.int64)
 
     @staticmethod
     def _matrix(x):
@@ -70,16 +71,22 @@ class CADMem:
         return d0 - self.config.gate_cap * np.maximum(d0 - da, 0)
 
     def update(self, patches):
+        self.last_admitted_indices = np.empty(0, dtype=np.int64)
         x = self._matrix(patches)
         if x.shape[1] != self.anchor.shape[1]:
             raise ValueError("Feature dimensions differ")
         d0 = self._nearest(x, self.anchor)
-        eligible = x[d0 <= self.admission_limit]
+        indices = np.flatnonzero(d0 <= self.admission_limit)
+        eligible = x[indices]
         if len(eligible) < self.config.min_support:
             return 0
-        pair = np.linalg.norm(eligible[:, None, :] - eligible[None, :, :], axis=-1)
-        np.fill_diagonal(pair, np.inf)
-        supported = (pair <= self.agreement_limit).sum(axis=1) >= self.config.min_support - 1
+        supported = np.zeros(len(eligible), dtype=bool)
+        for start in range(0, len(eligible), 32):
+            stop = min(start + 32, len(eligible))
+            pair = np.linalg.norm(eligible[start:stop, None, :] - eligible[None, :, :], axis=-1)
+            pair[np.arange(stop - start), np.arange(start, stop)] = np.inf
+            supported[start:stop] = (pair <= self.agreement_limit).sum(axis=1) >= self.config.min_support - 1
+        indices = indices[supported]
         eligible = eligible[supported]
         budget = min(self.config.max_adaptive - len(self.adaptive),
                      int(np.floor(self.config.max_update_fraction * len(x))))
@@ -87,6 +94,7 @@ class CADMem:
             return 0
         center = np.median(eligible, axis=0)
         order = np.argsort(np.linalg.norm(eligible - center, axis=1), kind="stable")
+        self.last_admitted_indices = indices[order[:budget]]
         selected = eligible[order[:budget]]
         self.adaptive = np.concatenate((self.adaptive, selected), axis=0)
         return len(selected)
