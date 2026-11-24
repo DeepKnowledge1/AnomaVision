@@ -97,7 +97,9 @@ def metrics(labels, scores, masks, maps, threshold):
             else None
         ),
         "defect_recall_frozen": (
-            float((scores[defective] > threshold).mean()) if defective.any() else None
+            float((scores[defective] > threshold).mean())
+            if defective.any() and threshold is not None
+            else None
         ),
     }
 
