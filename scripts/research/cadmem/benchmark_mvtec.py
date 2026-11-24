@@ -22,6 +22,10 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from torch.utils.data import DataLoader, Subset
 
 from anomavision.algorithm.cadmem import BoundedNuisanceMemory
+from anomavision.algorithm.cadmem.ablations import (
+    fit_local_normal_pca,
+    without_budgets,
+)
 from anomavision.algorithm.patchcore.patchcore import PatchCore
 from anomavision.datasets.dataset import AnodetDataset, collate_anodet_batch
 from anomavision.datasets.mvtec_dataset import MVTecDataset
@@ -48,7 +52,7 @@ def extract(model, images):
 def score_patches(model, bank, images, kind):
     patches, width, height = model._extract(images)
     patches = patches.reshape(-1, patches.shape[-1])
-    if kind == "cadmem":
+    if isinstance(bank, BoundedNuisanceMemory):
         scores = bank.score(patches)
     else:
         # Point-memory score with the exact SAME stored prototypes.
@@ -184,7 +188,27 @@ def main():
         counterfactual.to(args.device),
         prototypes=centers,
     )
-    methods = {"point_memory": centers, "cadmem": cadmem}
+    # Equal prototype-count controls for ordinary augmentation and local PCA.
+    augmented = torch.cat(
+        [normal, counterfactual.reshape(-1, normal.shape[-1])], dim=0
+    )
+    augmented_centers = extractor._select_coreset(
+        augmented, min(args.prototypes, len(augmented))
+    ).to(args.device)
+    local_pca = fit_local_normal_pca(
+        normal.to(args.device),
+        centers,
+        rank=args.rank,
+        neighbors=args.neighbors,
+    )
+    unbounded = without_budgets(cadmem)
+    methods = {
+        "point_memory": centers,
+        "augmentation_only": augmented_centers,
+        "local_normal_pca": local_pca,
+        "unbounded_projection": unbounded,
+        "cadmem": cadmem,
+    }
 
     # Calibration uses held-out NORMAL training images; no test labels.
     thresholds = {}
