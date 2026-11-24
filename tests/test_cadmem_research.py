@@ -3,6 +3,10 @@
 import pytest
 import torch
 
+from anomavision.algorithm.cadmem.ablations import (
+    fit_local_normal_pca,
+    without_budgets,
+)
 from anomavision.algorithm.cadmem.cadmem import CADMem
 from anomavision.algorithm.cadmem.memory import (
     BoundedNuisanceMemory,
@@ -103,3 +107,28 @@ def test_image_wrapper_contract_without_network_download():
     assert scores.shape == (2,)
     assert maps.shape == (2, 2, 2)
     assert torch.isfinite(scores).all()
+
+
+def test_paired_directions_are_distinct_from_local_normal_pca():
+    normal = torch.tensor([[0.0, -0.1], [0.0, 0.0], [0.0, 0.1]])
+    cf = normal.unsqueeze(0) + torch.tensor([0.5, 0.0])
+    center = normal[1:2]
+    paired = BoundedNuisanceMemory(
+        rank=1, max_prototypes=1, neighbors=3
+    ).fit_features(normal, cf, prototypes=center)
+    local = fit_local_normal_pca(normal, center, rank=1, neighbors=3)
+    query_x = torch.tensor([[0.3, 0.0]])
+    assert paired.score(query_x).item() < 1e-5
+    assert local.score(query_x).item() > 0.29
+
+
+def test_unbounded_projection_can_hide_large_aligned_deviations():
+    normal, cf = example()
+    bounded = BoundedNuisanceMemory(
+        rank=1, max_prototypes=1, neighbors=3
+    ).fit_features(normal, cf, prototypes=normal[:1])
+    unbounded = without_budgets(bounded)
+    distant_query = torch.tensor([[5.0, 0.0]])
+    assert unbounded.score(distant_query).item() < 1e-5
+    assert bounded.score(distant_query).item() > 4.0
+    assert bounded.budgets.max().item() < 1.0
