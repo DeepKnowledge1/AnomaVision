@@ -105,8 +105,15 @@ python scripts/research/cadmem/benchmark_mvtec.py \
   --seed 42 --output results/cadmem_bottle.json
 ```
 
-The benchmark uses the same frozen ResNet-18 feature extractor, coreset and
-224-pixel preprocessing for point-memory and CADMem. It reserves independent
+The benchmark uses the same frozen ResNet-18 feature extractor and 224-pixel
+preprocessing for five explicit methods: (1) point memory with identical
+prototypes, (2) augmentation-only point memory with equal prototype count,
+(3) local-normal PCA memory using offsets from the same prototypes,
+(4) unbounded paired-subspace projection and (5) bounded CADMem. The PCA
+and unbounded implementations are isolated in
+`anomavision/algorithm/cadmem/ablations.py`.
+Prototype counts are matched but representation storage differs, so
+equal-byte evaluations remain necessary. It reserves independent
 normal training images for a fixed upper-tail calibration threshold; it does
 not optimize a threshold using test labels. If the sample count is too small
 for the specified significance level, the threshold and its operating
